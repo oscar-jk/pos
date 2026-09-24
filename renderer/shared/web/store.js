@@ -71,6 +71,12 @@ window.__PUNTOX_ES_ELECTRON = Boolean(window.puntoX);
       cajas: [{ id: cajaId, nombre: 'Caja Principal', deleted_at: null }],
       monedas: [{ id: monedaId, codigo: 'DOP', nombre: 'Peso Dominicano', es_local: true, activo: true }],
       tasasItbis: [{ id: tasaId, nombre: '18%', porcentaje: 0.18, es_default: true, activo: true }],
+      tiposNcf: [
+        { id: uuid(), codigo: 'B02', nombre: 'Consumo', aplica_cliente: 'consumo', secuencia_desde: 1, secuencia_hasta: 500, secuencia_actual: 1, activo: true },
+        { id: uuid(), codigo: 'B01', nombre: 'Crédito Fiscal', aplica_cliente: 'credito_fiscal', secuencia_desde: 1, secuencia_hasta: 500, secuencia_actual: 1, activo: true },
+        { id: uuid(), codigo: 'B14', nombre: 'Gubernamental', aplica_cliente: 'gubernamental', secuencia_desde: 1, secuencia_hasta: 500, secuencia_actual: 1, activo: true },
+        { id: uuid(), codigo: 'B15', nombre: 'Régimen Especial', aplica_cliente: 'regimen_especial', secuencia_desde: 1, secuencia_hasta: 500, secuencia_actual: 1, activo: true },
+      ],
       categoriasCliente: [
         { id: categoriaDetalle, nombre: 'Detalle', nivel_precio: 'detalle' },
         { id: categoriaMayorista, nombre: 'Mayorista', nivel_precio: 'mayorista' },

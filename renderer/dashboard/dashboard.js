@@ -17,11 +17,7 @@ function primerNombre(nombreCompleto) {
   return nombreCompleto.trim().split(/\s+/)[0];
 }
 
-// En la versión web de prueba, solo una parte de los módulos está portada todavía —
-// window.__PUNTOX_ES_ELECTRON lo define renderer/shared/web/store.js antes que este script.
-const MODULOS_CONSTRUIDOS = window.__PUNTOX_ES_ELECTRON
-  ? new Set(['ventas', 'inventario', 'caja', 'cxc', 'cxp', 'compras', 'contabilidad', 'configuracion', 'reportes'])
-  : new Set(['ventas', 'inventario', 'caja', 'cxc']);
+const MODULOS_CONSTRUIDOS = new Set(['ventas', 'inventario', 'caja', 'cxc', 'cxp', 'compras', 'contabilidad', 'configuracion', 'reportes']);
 
 function renderModuleGrid() {
   const contenedor = document.getElementById('module-grid');

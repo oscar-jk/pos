@@ -1,15 +1,17 @@
 // Ventas y Facturación, versión web. Réplica de main/ipc/ventas.js sobre el store local:
 // mismo cálculo de ITBIS incluido, mismo manejo de inventario/kits, mismas notas de
-// crédito/débito — sin el límite de descuento por rol (no hay matriz de roles en la web) y
-// sin el asiento contable en partida doble (eso se muestra solo en la app de escritorio).
+// crédito/débito — sin el límite de descuento por rol (no hay matriz de roles en la web),
+// pero con el mismo asiento contable en partida doble que la app de escritorio.
 (function () {
   if (window.__PUNTOX_ES_ELECTRON) return;
   const store = window.PuntoXWebStore;
   const inv = window.puntoXInventario._interno;
   const cxcInterno = window.puntoXCxc._interno;
   const cajaInterno = window.puntoXCaja._interno;
+  const conta = window.puntoXContabilidad._interno;
 
   const CODIGO_TIPO_NCF = { consumo: 'B02', credito_fiscal: 'B01', gubernamental: 'B14', regimen_especial: 'B15' };
+  const CUENTA_POR_FORMA_PAGO = { efectivo: '1100', tarjeta: '1200', transferencia: '1200', credito: '1400' };
 
   function tomarNcf(db, codigoTipo) {
     db.secuenciasNcf = db.secuenciasNcf || {};
@@ -116,18 +118,37 @@
       estado: 'facturado', concepto: null, usuario_id: usuarioId,
     });
 
+    let costoTotal = 0;
     for (const l of lineasCalculadas) {
+      const costoUnitarioLinea = inv.costoUnitarioVenta(db, l.producto);
       db.documentosVentaDetalle.push({
         id: store.uuid(), documento_id: documentoId, producto_id: l.producto.id, cantidad: l.cantidad, precio_unitario: l.precioUnitario,
         descuento_pct: l.descuentoPct, descuento_monto: l.descuentoMonto, tasa_itbis: l.tasaItbis, base_imponible: l.baseImponible,
-        itbis_monto: l.itbisMonto, total_linea: l.totalLinea, costo_unitario: inv.costoUnitarioVenta(db, l.producto), cantidad_devuelta: 0,
+        itbis_monto: l.itbisMonto, total_linea: l.totalLinea, costo_unitario: costoUnitarioLinea, cantidad_devuelta: 0,
       });
       inv.moverInventarioPorVenta(db, { producto: l.producto, almacenId, cantidad: -l.cantidad, documentoOrigenTipo: 'documentos_venta', documentoOrigenId: documentoId, usuarioId });
+      costoTotal += costoUnitarioLinea * l.cantidad;
     }
+    costoTotal = store.redondear(costoTotal);
 
     for (const p of pagos) {
       db.pagosVenta.push({ id: store.uuid(), documento_id: documentoId, forma_pago: p.formaPago, monto: p.monto, referencia: p.referencia || null });
       if (p.formaPago === 'efectivo' && p.monto > 0) cajaInterno.registrarMovimiento(db, { turnoCajaId: turno.id, tipo: 'venta_efectivo', concepto: `Factura ${numero}`, monto: p.monto, documentoOrigenTipo: 'documentos_venta', documentoOrigenId: documentoId, usuarioId });
+    }
+
+    const lineasAsiento = [];
+    for (const forma of ['efectivo', 'tarjeta', 'transferencia', 'credito']) {
+      const monto = store.redondear((pagos || []).filter((p) => p.formaPago === forma).reduce((acc, p) => acc + p.monto, 0));
+      if (monto > 0) lineasAsiento.push({ cuentaCodigo: CUENTA_POR_FORMA_PAGO[forma], debe: monto, descripcion: `Venta ${forma}` });
+    }
+    lineasAsiento.push({ cuentaCodigo: '4100', haber: subtotal, descripcion: 'Ingresos por ventas' });
+    if (itbisTotal > 0) lineasAsiento.push({ cuentaCodigo: '2200', haber: itbisTotal, descripcion: 'ITBIS por pagar' });
+    conta.generarAsiento(db, { fecha: fechaIso, concepto: `Factura de venta ${numero}`, origenModulo: 'ventas', origenDocumentoTipo: 'documentos_venta', origenDocumentoId: documentoId, usuarioId, lineas: lineasAsiento });
+    if (costoTotal > 0) {
+      conta.generarAsiento(db, {
+        fecha: fechaIso, concepto: `Costo de venta - Factura ${numero}`, origenModulo: 'ventas', origenDocumentoTipo: 'documentos_venta', origenDocumentoId: documentoId, usuarioId,
+        lineas: [{ cuentaCodigo: '5100', debe: costoTotal, descripcion: 'Costo de ventas' }, { cuentaCodigo: '1300', haber: costoTotal, descripcion: 'Salida de inventario' }],
+      });
     }
 
     if (vendedorId) {
@@ -157,6 +178,15 @@
       cajaInterno.registrarMovimiento(db, { turnoCajaId: m.turno_caja_id, tipo: 'venta_efectivo', concepto: `Anulación factura ${documento.numero}`, monto: -m.monto, documentoOrigenTipo: 'documentos_venta_anulacion', documentoOrigenId: documentoId, usuarioId });
     }
     for (const c of db.comisionesVendedor.filter((x) => x.documento_venta_id === documentoId)) c.monto_comision = 0;
+
+    const cuentasPorId = Object.fromEntries(db.cuentasContables.map((c) => [c.id, c.codigo]));
+    for (const asiento of db.asientosContables.filter((a) => a.origen_documento_tipo === 'documentos_venta' && a.origen_documento_id === documentoId && a.estado === 'confirmado')) {
+      const det = db.asientosContablesDetalle.filter((d) => d.asiento_id === asiento.id);
+      conta.generarAsiento(db, {
+        fecha: store.ahora(), concepto: `Reversión: ${asiento.concepto}`, origenModulo: 'ventas', origenDocumentoTipo: 'documentos_venta_anulacion', origenDocumentoId: documentoId, usuarioId,
+        lineas: det.map((d) => ({ cuentaCodigo: cuentasPorId[d.cuenta_id], debe: d.haber, haber: d.debe, descripcion: `Reversión: ${d.descripcion || ''}` })),
+      });
+    }
     store.guardar();
   }
 
@@ -216,6 +246,7 @@
       moneda_id: factura.moneda_id, tasa_cambio: factura.tasa_cambio, documento_referencia_id: facturaOrigenId, fecha: store.ahora(),
       subtotal, descuento_total: 0, itbis_total: itbisTotal, total, estado: 'facturado', concepto: motivo.trim(), usuario_id: usuarioId,
     });
+    let costoTotal = 0;
     for (const l of lineasCalculadas) {
       db.documentosVentaDetalle.push({
         id: store.uuid(), documento_id: documentoId, producto_id: l.detalleOriginal.producto_id, cantidad: l.cantidad,
@@ -225,6 +256,20 @@
       const producto = db.productos.find((p) => p.id === l.detalleOriginal.producto_id);
       inv.moverInventarioPorVenta(db, { producto, almacenId: factura.almacen_id, cantidad: l.cantidad, documentoOrigenTipo: 'documentos_venta', documentoOrigenId: documentoId, usuarioId });
       l.detalleOriginal.cantidad_devuelta = store.redondear(l.detalleOriginal.cantidad_devuelta + l.cantidad);
+      costoTotal += l.costoUnitario * l.cantidad;
+    }
+    costoTotal = store.redondear(costoTotal);
+
+    const cuentaContrapartida = factura.cliente_id ? '1400' : '1100';
+    const lineasAsiento = [{ cuentaCodigo: '4100', debe: subtotal, descripcion: 'Devolución de ventas' }];
+    if (itbisTotal > 0) lineasAsiento.push({ cuentaCodigo: '2200', debe: itbisTotal, descripcion: 'ITBIS de la devolución' });
+    lineasAsiento.push({ cuentaCodigo: cuentaContrapartida, haber: total, descripcion: factura.cliente_id ? 'Crédito a cuenta del cliente' : 'Devolución en efectivo' });
+    conta.generarAsiento(db, { fecha: store.ahora(), concepto: `Nota de crédito ${numero} (devolución de factura ${factura.numero})`, origenModulo: 'ventas', origenDocumentoTipo: 'documentos_venta', origenDocumentoId: documentoId, usuarioId, lineas: lineasAsiento });
+    if (costoTotal > 0) {
+      conta.generarAsiento(db, {
+        fecha: store.ahora(), concepto: `Reingreso de inventario - Nota de crédito ${numero}`, origenModulo: 'ventas', origenDocumentoTipo: 'documentos_venta', origenDocumentoId: documentoId, usuarioId,
+        lineas: [{ cuentaCodigo: '1300', debe: costoTotal, descripcion: 'Reingreso de inventario' }, { cuentaCodigo: '5100', haber: costoTotal, descripcion: 'Reversión de costo de ventas' }],
+      });
     }
     if (!factura.cliente_id) {
       cajaInterno.registrarMovimiento(db, { turnoCajaId: turno.id, tipo: 'salida_manual', concepto: `Devolución en efectivo - Nota de crédito ${numero}`, monto: -total, documentoOrigenTipo: 'documentos_venta', documentoOrigenId: documentoId, usuarioId });
@@ -254,6 +299,14 @@
     }
     for (const m of db.movimientosCaja.filter((x) => x.documento_origen_tipo === 'documentos_venta' && x.documento_origen_id === documentoId)) {
       cajaInterno.registrarMovimiento(db, { turnoCajaId: m.turno_caja_id, tipo: 'salida_manual', concepto: `Anulación nota de crédito ${nota.numero}`, monto: -m.monto, documentoOrigenTipo: 'documentos_venta_anulacion', documentoOrigenId: documentoId, usuarioId });
+    }
+    const cuentasPorId = Object.fromEntries(db.cuentasContables.map((c) => [c.id, c.codigo]));
+    for (const asiento of db.asientosContables.filter((a) => a.origen_documento_tipo === 'documentos_venta' && a.origen_documento_id === documentoId && a.estado === 'confirmado')) {
+      const det = db.asientosContablesDetalle.filter((d) => d.asiento_id === asiento.id);
+      conta.generarAsiento(db, {
+        fecha: store.ahora(), concepto: `Reversión: ${asiento.concepto}`, origenModulo: 'ventas', origenDocumentoTipo: 'documentos_venta_anulacion', origenDocumentoId: documentoId, usuarioId,
+        lineas: det.map((d) => ({ cuentaCodigo: cuentasPorId[d.cuenta_id], debe: d.haber, haber: d.debe, descripcion: `Reversión: ${d.descripcion || ''}` })),
+      });
     }
     store.guardar();
   }
@@ -285,6 +338,14 @@
       condicion_pago: 'credito', moneda_id: monedaId, tasa_cambio: 1, documento_referencia_id: facturaOrigenId || null, fecha: store.ahora(),
       subtotal: baseImponible, descuento_total: 0, itbis_total: itbisMonto, total, estado: 'facturado', concepto: concepto.trim(), usuario_id: usuarioId,
     });
+    conta.generarAsiento(db, {
+      fecha: store.ahora(), concepto: `Nota de débito ${numero}: ${concepto.trim()}`, origenModulo: 'ventas', origenDocumentoTipo: 'documentos_venta', origenDocumentoId: documentoId, usuarioId,
+      lineas: [
+        { cuentaCodigo: '1400', debe: total, descripcion: 'Cargo adicional a cuenta del cliente' },
+        ...(baseImponible > 0 ? [{ cuentaCodigo: '4100', haber: baseImponible, descripcion: 'Ingreso por cargo adicional' }] : []),
+        ...(itbisMonto > 0 ? [{ cuentaCodigo: '2200', haber: itbisMonto, descripcion: 'ITBIS del cargo adicional' }] : []),
+      ],
+    });
     store.guardar();
     return documentoId;
   }
@@ -296,6 +357,14 @@
     if (nota.estado === 'anulado') throw new Error('La nota de débito ya está anulada');
     if (!motivo || !motivo.trim()) throw new Error('La anulación requiere un motivo');
     nota.estado = 'anulado'; nota.motivo_anulacion = motivo; nota.usuario_anulo_id = usuarioId;
+    const cuentasPorId = Object.fromEntries(db.cuentasContables.map((c) => [c.id, c.codigo]));
+    for (const asiento of db.asientosContables.filter((a) => a.origen_documento_tipo === 'documentos_venta' && a.origen_documento_id === documentoId && a.estado === 'confirmado')) {
+      const det = db.asientosContablesDetalle.filter((d) => d.asiento_id === asiento.id);
+      conta.generarAsiento(db, {
+        fecha: store.ahora(), concepto: `Reversión: ${asiento.concepto}`, origenModulo: 'ventas', origenDocumentoTipo: 'documentos_venta_anulacion', origenDocumentoId: documentoId, usuarioId,
+        lineas: det.map((d) => ({ cuentaCodigo: cuentasPorId[d.cuenta_id], debe: d.haber, haber: d.debe, descripcion: `Reversión: ${d.descripcion || ''}` })),
+      });
+    }
     store.guardar();
   }
 

@@ -2,6 +2,9 @@
 (function () {
   if (window.__PUNTOX_ES_ELECTRON) return;
   const store = window.PuntoXWebStore;
+  const caja = window.puntoXCaja._interno;
+  const conta = window.puntoXContabilidad._interno;
+  const CUENTA_POR_FORMA_PAGO = { efectivo: '1100', tarjeta: '1200', transferencia: '1200', cheque: '1200' };
 
   function saldoPorFactura(db, documentoId) {
     const doc = db.documentosVenta.find((d) => d.id === documentoId);
@@ -133,7 +136,7 @@
       });
     },
 
-    crearRecibo: async ({ clienteId, formaPago, referencia, aplicaciones, usuarioId }) => {
+    crearRecibo: async ({ clienteId, formaPago, referencia, aplicaciones, cajaId, usuarioId }) => {
       const db = store.cargar();
       if (!aplicaciones || aplicaciones.length === 0) throw new Error('El recibo debe aplicarse a al menos una factura');
       const montoTotal = store.redondear(aplicaciones.reduce((acc, a) => acc + a.montoAplicado, 0));
@@ -142,10 +145,22 @@
         const saldo = saldoPorFactura(db, a.documentoVentaId);
         if (a.montoAplicado > saldo + 0.01) throw new Error(`El monto aplicado excede el saldo pendiente (${saldo})`);
       }
+      let turno = null;
+      if (formaPago === 'efectivo') {
+        turno = db.turnosCaja.find((t) => t.caja_id === cajaId && t.estado === 'abierto');
+        if (!turno) throw new Error('Debe abrir un turno de caja antes de recibir cobros en efectivo');
+      }
       const id = store.uuid();
       const numero = store.siguienteNumero('recibos_ingreso');
-      db.recibosIngreso.push({ id, numero, cliente_id: clienteId, fecha: store.ahora(), forma_pago: formaPago, monto_total: montoTotal, referencia: referencia || null, estado: 'confirmado', usuario_id: usuarioId });
+      const fechaIso = store.ahora();
+      db.recibosIngreso.push({ id, numero, cliente_id: clienteId, fecha: fechaIso, forma_pago: formaPago, monto_total: montoTotal, referencia: referencia || null, estado: 'confirmado', usuario_id: usuarioId });
       for (const a of aplicaciones) db.recibosIngresoAplicaciones.push({ id: store.uuid(), recibo_id: id, documento_venta_id: a.documentoVentaId, monto_aplicado: a.montoAplicado });
+
+      if (formaPago === 'efectivo') caja.registrarMovimiento(db, { turnoCajaId: turno.id, tipo: 'cobro_cxc', concepto: `Recibo de ingreso ${numero}`, monto: montoTotal, documentoOrigenTipo: 'recibos_ingreso', documentoOrigenId: id, usuarioId });
+      conta.generarAsiento(db, {
+        fecha: fechaIso, concepto: `Recibo de ingreso ${numero}`, origenModulo: 'cxc', origenDocumentoTipo: 'recibos_ingreso', origenDocumentoId: id, usuarioId,
+        lineas: [{ cuentaCodigo: CUENTA_POR_FORMA_PAGO[formaPago] || '1100', debe: montoTotal, descripcion: 'Cobro recibido' }, { cuentaCodigo: '1400', haber: montoTotal, descripcion: 'Aplicado a cuentas por cobrar' }],
+      });
       store.guardar();
       return { id };
     },
@@ -156,6 +171,17 @@
       if (r.estado === 'anulado') throw new Error('El recibo ya está anulado');
       if (!motivo || !motivo.trim()) throw new Error('La anulación requiere un motivo');
       r.estado = 'anulado'; r.motivo_anulacion = motivo; r.usuario_anulo_id = usuarioId;
+      for (const m of db.movimientosCaja.filter((x) => x.documento_origen_tipo === 'recibos_ingreso' && x.documento_origen_id === reciboId)) {
+        caja.registrarMovimiento(db, { turnoCajaId: m.turno_caja_id, tipo: 'cobro_cxc', concepto: `Anulación recibo ${r.numero}`, monto: -m.monto, documentoOrigenTipo: 'recibos_ingreso_anulacion', documentoOrigenId: reciboId, usuarioId });
+      }
+      const cuentasPorId = Object.fromEntries(db.cuentasContables.map((c) => [c.id, c.codigo]));
+      for (const asiento of db.asientosContables.filter((a) => a.origen_documento_tipo === 'recibos_ingreso' && a.origen_documento_id === reciboId && a.estado === 'confirmado')) {
+        const det = db.asientosContablesDetalle.filter((d) => d.asiento_id === asiento.id);
+        conta.generarAsiento(db, {
+          fecha: store.ahora(), concepto: `Reversión: ${asiento.concepto}`, origenModulo: 'cxc', origenDocumentoTipo: 'recibos_ingreso_anulacion', origenDocumentoId: reciboId, usuarioId,
+          lineas: det.map((d) => ({ cuentaCodigo: cuentasPorId[d.cuenta_id], debe: d.haber, haber: d.debe, descripcion: `Reversión: ${d.descripcion || ''}` })),
+        });
+      }
       store.guardar();
     },
     listarRecibos: async () => {

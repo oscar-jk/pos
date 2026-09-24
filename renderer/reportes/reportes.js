@@ -79,7 +79,15 @@ function leerFiltros(filtros) {
   const valores = {};
   (filtros || []).forEach((f) => {
     const el = document.getElementById(`filtro-${f.clave}`);
-    if (el && el.value) valores[f.clave] = el.value;
+    if (!el || !el.value) return;
+    // Los <input type="date"> devuelven solo "YYYY-MM-DD", pero fecha se guarda como
+    // timestamp ISO completo — comparar el texto tal cual deja "hasta" siempre por debajo
+    // de cualquier fecha con hora, así que se completa al límite del día correspondiente.
+    if (f.tipo === 'fecha') {
+      valores[f.clave] = f.clave === 'hasta' ? `${el.value}T23:59:59.999Z` : `${el.value}T00:00:00.000Z`;
+    } else {
+      valores[f.clave] = el.value;
+    }
   });
   return valores;
 }

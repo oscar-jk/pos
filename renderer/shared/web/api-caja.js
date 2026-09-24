@@ -2,6 +2,7 @@
 (function () {
   if (window.__PUNTOX_ES_ELECTRON) return;
   const store = window.PuntoXWebStore;
+  const conta = window.puntoXContabilidad._interno;
 
   function efectivoEsperado(db, turno) {
     const total = db.movimientosCaja.filter((m) => m.turno_caja_id === turno.id).reduce((acc, m) => acc + m.monto, 0);
@@ -90,8 +91,13 @@
       if (!comprobanteRuta || !comprobanteRuta.trim()) throw new Error('El comprobante del gasto es obligatorio');
       if (!monto || monto <= 0) throw new Error('El monto debe ser mayor a cero');
       const id = store.uuid();
-      db.gastosCajaChica.push({ id, caja_chica_id: cajaChicaId, concepto: concepto.trim(), categoria: categoria || null, monto, comprobante_ruta: comprobanteRuta.trim(), fecha: store.ahora(), usuario_id: usuarioId, estado: 'confirmado' });
+      const fechaIso = store.ahora();
+      db.gastosCajaChica.push({ id, caja_chica_id: cajaChicaId, concepto: concepto.trim(), categoria: categoria || null, monto, comprobante_ruta: comprobanteRuta.trim(), fecha: fechaIso, usuario_id: usuarioId, estado: 'confirmado' });
       if (turnoCajaId) registrarMovimiento(db, { turnoCajaId, tipo: 'gasto_caja_chica', concepto: `Caja chica: ${concepto.trim()}`, monto: -Math.abs(monto), documentoOrigenTipo: 'gastos_caja_chica', documentoOrigenId: id, usuarioId });
+      conta.generarAsiento(db, {
+        fecha: fechaIso, concepto: `Gasto de caja chica: ${concepto.trim()}`, origenModulo: 'caja', origenDocumentoTipo: 'gastos_caja_chica', origenDocumentoId: id, usuarioId,
+        lineas: [{ cuentaCodigo: '6100', debe: monto, descripcion: concepto.trim() }, { cuentaCodigo: '1100', haber: monto, descripcion: 'Salida de caja' }],
+      });
       store.guardar();
       return { id };
     },
@@ -118,9 +124,16 @@
         if (t && efectivoEsperado(db, t) < monto) throw new Error('El efectivo esperado en caja es menor al monto a depositar');
       }
       const id = store.uuid();
+      const fechaIso = store.ahora();
       db.transferenciasBanco = db.transferenciasBanco || [];
-      db.transferenciasBanco.push({ id, caja_id: cajaId, cuenta_bancaria_id: cuentaBancariaId, tipo, monto, fecha: store.ahora(), usuario_id: usuarioId });
+      db.transferenciasBanco.push({ id, caja_id: cajaId, cuenta_bancaria_id: cuentaBancariaId, tipo, monto, fecha: fechaIso, usuario_id: usuarioId });
       if (turnoCajaId) registrarMovimiento(db, { turnoCajaId, tipo: 'transferencia_banco', concepto: `${tipo === 'deposito' ? 'Depósito' : 'Retiro'} a banco`, monto: tipo === 'deposito' ? -Math.abs(monto) : Math.abs(monto), documentoOrigenTipo: 'transferencias_banco', documentoOrigenId: id, usuarioId });
+      conta.generarAsiento(db, {
+        fecha: fechaIso, concepto: `${tipo === 'deposito' ? 'Depósito' : 'Retiro'} a banco`, origenModulo: 'caja', origenDocumentoTipo: 'transferencias_banco', origenDocumentoId: id, usuarioId,
+        lineas: tipo === 'deposito'
+          ? [{ cuentaCodigo: '1200', debe: monto, descripcion: 'Depósito a banco' }, { cuentaCodigo: '1100', haber: monto, descripcion: 'Salida de caja' }]
+          : [{ cuentaCodigo: '1100', debe: monto, descripcion: 'Retiro de banco' }, { cuentaCodigo: '1200', haber: monto, descripcion: 'Salida de banco' }],
+      });
       store.guardar();
       return { id };
     },
