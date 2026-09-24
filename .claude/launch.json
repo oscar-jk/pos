@@ -9,6 +9,14 @@
         "start"
       ],
       "port": 3000
+    },
+    {
+      "name": "web-demo",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "scripts/web-static-server.js"
+      ],
+      "port": 8080
     }
   ]
 }

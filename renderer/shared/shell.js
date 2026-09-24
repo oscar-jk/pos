@@ -15,7 +15,8 @@ async function initPuntoXShell(moduloActivo) {
     window.PuntoXTopbar.renderTopbar(info.usuario);
 
   const permisos = new Set(info.usuario.permisos || []);
-  info.tienePermiso = (codigo) => permisos.has(codigo);
+  // '*' = todo permitido (lo usa la versión web de prueba, que no tiene matriz de roles).
+  info.tienePermiso = (codigo) => permisos.has('*') || permisos.has(codigo);
   activarControlDePermisos(info);
 
   const btnSalir = document.getElementById('topbar-btn-salir');
