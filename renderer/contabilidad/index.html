@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <title>Punto X — Contabilidad</title>
+  <link rel="stylesheet" href="../shared/styles.css" />
+  <link rel="stylesheet" href="./contabilidad.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <div id="sidebar-container"></div>
+    <div class="main-area">
+      <div id="topbar-container"></div>
+
+      <div class="page-header">
+        <div>
+          <h1>Contabilidad</h1>
+          <p>Catálogo de cuentas, libro diario/mayor, estados financieros y cierre de periodo.</p>
+        </div>
+        <div id="acciones-tab"></div>
+      </div>
+
+      <div id="mensaje-error" class="mensaje-error" style="display:none;"></div>
+
+      <div class="tabs">
+        <button class="tab-btn is-active" data-tab="cuentas">Catálogo de cuentas</button>
+        <button class="tab-btn" data-tab="diario">Libro diario</button>
+        <button class="tab-btn" data-tab="mayor">Libro mayor</button>
+        <button class="tab-btn" data-tab="comprobacion">Balance de comprobación</button>
+        <button class="tab-btn" data-tab="financieros">Estados financieros</button>
+        <button class="tab-btn" data-tab="periodos">Periodos</button>
+      </div>
+
+      <div id="tab-cuentas" class="tab-panel">
+        <table class="data-table">
+          <thead><tr><th>Código</th><th>Nombre</th><th>Tipo</th><th>Movimiento</th><th>Estado</th><th></th></tr></thead>
+          <tbody id="cuentas-tbody"></tbody>
+        </table>
+      </div>
+
+      <div id="tab-diario" class="tab-panel" style="display:none;">
+        <div id="diario-lista"></div>
+      </div>
+
+      <div id="tab-mayor" class="tab-panel" style="display:none;">
+        <div class="form-field" style="max-width:360px; margin-bottom:16px;">
+          <label>Cuenta</label>
+          <select id="mayor-cuenta" class="input-normal"></select>
+        </div>
+        <div id="mayor-contenido"></div>
+      </div>
+
+      <div id="tab-comprobacion" class="tab-panel" style="display:none;">
+        <table class="data-table">
+          <thead><tr><th>Código</th><th>Cuenta</th><th>Tipo</th><th>Total debe</th><th>Total haber</th><th>Saldo</th></tr></thead>
+          <tbody id="comprobacion-tbody"></tbody>
+        </table>
+        <div id="comprobacion-totales" style="margin-top:14px; text-align:right; font-weight:800;"></div>
+      </div>
+
+      <div id="tab-financieros" class="tab-panel" style="display:none;">
+        <div class="reporte-seccion">
+          <div class="reporte-seccion__titulo">Estado de Resultados</div>
+          <div id="estado-resultados"></div>
+        </div>
+        <div class="reporte-seccion">
+          <div class="reporte-seccion__titulo">Balance General</div>
+          <div id="balance-general"></div>
+        </div>
+      </div>
+
+      <div id="tab-periodos" class="tab-panel" style="display:none;">
+        <table class="data-table">
+          <thead><tr><th>Periodo</th><th>Desde</th><th>Hasta</th><th>Estado</th><th>Cierre</th><th></th></tr></thead>
+          <tbody id="periodos-tbody"></tbody>
+        </table>
+      </div>
+
+    </div>
+  </div>
+
+  <script src="../shared/sidebar.js"></script>
+  <script src="../shared/topbar.js"></script>
+  <script src="../shared/shell.js"></script>
+  <script src="../shared/modal.js"></script>
+  <script src="./contabilidad.js"></script>
+</body>
+</html>

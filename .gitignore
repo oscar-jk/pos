@@ -1,0 +1,13 @@
+node_modules/
+dist/
+*.log
+
+# Bases de datos locales (cada instalación genera la suya; nunca se versiona)
+*.sqlite
+*.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm
+
+# Basura de sistema operativo
+.DS_Store
+Thumbs.db

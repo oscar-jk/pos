@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <title>Punto X — Caja y Tesorería</title>
+  <link rel="stylesheet" href="../shared/styles.css" />
+  <link rel="stylesheet" href="./caja.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <div id="sidebar-container"></div>
+    <div class="main-area">
+      <div id="topbar-container"></div>
+
+      <div class="page-header">
+        <div>
+          <h1>Caja y Tesorería</h1>
+          <p>Apertura y cierre de turno, movimientos, caja chica y transferencias a banco.</p>
+        </div>
+        <div id="acciones-tab"></div>
+      </div>
+
+      <div id="mensaje-error" class="mensaje-error" style="display:none;"></div>
+
+      <div class="tabs">
+        <button class="tab-btn is-active" data-tab="turno">Turno actual</button>
+        <button class="tab-btn" data-tab="historial">Historial de turnos</button>
+        <button class="tab-btn" data-tab="cajachica">Caja chica</button>
+        <button class="tab-btn" data-tab="banco">Transferencias a banco</button>
+      </div>
+
+      <div id="tab-turno" class="tab-panel"></div>
+
+      <div id="tab-historial" class="tab-panel" style="display:none;">
+        <table class="data-table">
+          <thead><tr><th>Caja</th><th>Apertura</th><th>Cierre</th><th>Fondo inicial</th><th>Esperado</th><th>Contado</th><th>Diferencia</th><th>Estado</th></tr></thead>
+          <tbody id="historial-tbody"></tbody>
+        </table>
+      </div>
+
+      <div id="tab-cajachica" class="tab-panel" style="display:none;">
+        <div class="resumen-turno" style="grid-template-columns: repeat(2, minmax(0,1fr)); margin-bottom:14px;">
+          <div class="resumen-turno__item"><div class="resumen-turno__label">Fondo asignado</div><div class="resumen-turno__valor" id="cc-fondo">RD$ 0.00</div></div>
+          <div class="resumen-turno__item"><div class="resumen-turno__label">Gastado en el periodo</div><div class="resumen-turno__valor" id="cc-gastado">RD$ 0.00</div></div>
+        </div>
+        <table class="data-table">
+          <thead><tr><th>Concepto</th><th>Categoría</th><th>Monto</th><th>Comprobante</th><th>Fecha</th><th>Usuario</th></tr></thead>
+          <tbody id="cajachica-tbody"></tbody>
+        </table>
+        <div id="cajachica-vacio" class="empty-state" style="display:none;">Aún no hay gastos de caja chica registrados.</div>
+      </div>
+
+      <div id="tab-banco" class="tab-panel" style="display:none;">
+        <table class="data-table">
+          <thead><tr><th>Tipo</th><th>Cuenta</th><th>Banco</th><th>Monto</th><th>Fecha</th><th>Usuario</th></tr></thead>
+          <tbody id="banco-tbody"></tbody>
+        </table>
+        <div id="banco-vacio" class="empty-state" style="display:none;">Aún no hay transferencias registradas.</div>
+      </div>
+
+    </div>
+  </div>
+
+  <script src="../shared/sidebar.js"></script>
+  <script src="../shared/topbar.js"></script>
+  <script src="../shared/shell.js"></script>
+  <script src="../shared/modal.js"></script>
+  <script src="./caja.js"></script>
+</body>
+</html>

@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <title>Punto X — Ventas y Facturación</title>
+  <link rel="stylesheet" href="../shared/styles.css" />
+  <link rel="stylesheet" href="./ventas.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <div id="sidebar-container"></div>
+    <div class="main-area">
+      <div id="topbar-container"></div>
+
+      <div class="page-header">
+        <div>
+          <h1>Nueva factura</h1>
+          <p id="subtitulo-venta">Cargando...</p>
+        </div>
+        <div class="modo-venta-toggle" style="width:260px;">
+          <button class="toggle-btn is-active" data-modo="rapida" id="btn-modo-rapida">Venta rápida</button>
+          <button class="toggle-btn" data-modo="completa" id="btn-modo-completa">Venta completa</button>
+        </div>
+      </div>
+
+      <div id="mensaje-error" class="mensaje-error" style="display:none;"></div>
+      <div id="factura-exito" class="factura-exito" style="display:none;"></div>
+
+      <div class="ventas-layout">
+        <div class="ventas-col-izq">
+          <div class="buscador-producto">
+            <span class="buscador-producto__icon">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8A9490" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+            </span>
+            <input id="input-buscar-producto" type="text" placeholder="Buscar por código, código de barras o descripción..." autocomplete="off" />
+            <div id="resultados-producto" class="buscador-resultados" style="display:none;"></div>
+          </div>
+
+          <div class="carrito-card">
+            <div class="card__title" style="margin-bottom:10px;">Carrito</div>
+            <table class="carrito-tabla">
+              <thead>
+                <tr>
+                  <th>Producto</th>
+                  <th style="width:70px; text-align:center;">Cant.</th>
+                  <th style="width:90px; text-align:center;">Desc. %</th>
+                  <th style="width:100px; text-align:right;">Precio</th>
+                  <th style="width:100px; text-align:right;">Subtotal</th>
+                  <th style="width:30px;"></th>
+                </tr>
+              </thead>
+              <tbody id="carrito-tbody"></tbody>
+            </table>
+            <div id="carrito-vacio" class="empty-state">Agrega productos con el buscador de arriba.</div>
+          </div>
+        </div>
+
+        <div class="ventas-col-der">
+          <div id="bloque-cliente">
+            <label class="campo-label">Cliente</label>
+            <div class="buscador-producto">
+              <div class="campo-caja" id="cliente-resumen">
+                <span id="cliente-nombre">Consumidor final</span>
+                <a href="#" id="cliente-cambiar" style="font-size:11px; font-weight:700; color:var(--color-accent);">Buscar</a>
+              </div>
+              <input id="input-buscar-cliente" type="text" placeholder="Nombre o RNC/cédula..." autocomplete="off" style="display:none; margin-top:6px;" class="input-normal" />
+              <div id="resultados-cliente" class="buscador-resultados" style="display:none;"></div>
+            </div>
+          </div>
+
+          <div>
+            <label class="campo-label">Nivel de precio</label>
+            <select id="select-nivel-precio" class="input-normal">
+              <option value="detalle">Detalle</option>
+              <option value="mayorista">Mayorista</option>
+              <option value="distribuidor">Distribuidor</option>
+            </select>
+          </div>
+
+          <div>
+            <label class="campo-label">Comprobante fiscal</label>
+            <select id="select-ncf" class="input-normal">
+              <option value="consumo">B02 — Consumo</option>
+              <option value="credito_fiscal">B01 — Crédito Fiscal</option>
+              <option value="gubernamental">B14 — Gubernamental</option>
+              <option value="regimen_especial">B15 — Régimen Especial</option>
+            </select>
+          </div>
+
+          <div>
+            <label class="campo-label">Descuento global (%)</label>
+            <input id="input-descuento-global" class="input-normal" type="number" min="0" max="100" step="0.01" value="0" />
+          </div>
+
+          <div class="totales">
+            <div class="totales__fila"><span>Subtotal</span><span id="total-subtotal">RD$ 0.00</span></div>
+            <div class="totales__fila"><span>Descuento</span><span id="total-descuento">— RD$ 0.00</span></div>
+            <div class="totales__fila"><span>ITBIS incluido</span><span id="total-itbis">RD$ 0.00</span></div>
+            <div class="totales__fila totales__fila--total"><span>Total</span><span id="total-total">RD$ 0.00</span></div>
+          </div>
+
+          <div>
+            <label class="campo-label">Pago</label>
+            <div class="pagos-grid">
+              <div><label>Efectivo</label><input id="pago-efectivo" type="number" min="0" step="0.01" value="0" /></div>
+              <div><label>Tarjeta</label><input id="pago-tarjeta" type="number" min="0" step="0.01" value="0" /></div>
+              <div><label>Transferencia</label><input id="pago-transferencia" type="number" min="0" step="0.01" value="0" /></div>
+              <div><label>Crédito (resto)</label><input id="pago-credito" type="number" value="0" readonly /></div>
+            </div>
+          </div>
+
+          <button id="btn-cobrar" class="btn-cobrar" data-permiso="ventas.factura.crear" disabled>Cobrar RD$ 0.00</button>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:20px;">
+        <div class="card__header">
+          <span class="card__title">Facturas recientes</span>
+        </div>
+        <table class="data-table">
+          <thead>
+            <tr><th>Número</th><th>NCF</th><th>Cliente</th><th>Fecha</th><th>Total</th><th>Estado</th><th></th></tr>
+          </thead>
+          <tbody id="historial-tbody"></tbody>
+        </table>
+        <div id="historial-vacio" class="empty-state">Aún no hay facturas registradas.</div>
+      </div>
+
+      <div class="card" style="margin-top:20px;">
+        <div class="card__header">
+          <span class="card__title">Notas de crédito y débito</span>
+          <button class="btn btn-secundario btn-chico" id="btn-nueva-nota-debito" data-permiso="ventas.nota_debito.crear">+ Nota de débito</button>
+        </div>
+        <table class="data-table">
+          <thead>
+            <tr><th>Número</th><th>Tipo</th><th>Cliente</th><th>Factura origen</th><th>Concepto</th><th>Fecha</th><th>Total</th><th>Estado</th><th></th></tr>
+          </thead>
+          <tbody id="notas-tbody"></tbody>
+        </table>
+        <div id="notas-vacio" class="empty-state">Aún no hay notas de crédito o débito registradas.</div>
+      </div>
+
+    </div>
+  </div>
+
+  <script src="../shared/sidebar.js"></script>
+  <script src="../shared/topbar.js"></script>
+  <script src="../shared/shell.js"></script>
+  <script src="../shared/modal.js"></script>
+  <script src="./ventas.js"></script>
+</body>
+</html>

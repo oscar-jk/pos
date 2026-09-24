@@ -1,0 +1,128 @@
+.reportes-layout {
+  display: flex;
+  gap: 20px;
+  align-items: flex-start;
+}
+
+.reportes-nav {
+  width: 260px;
+  flex-shrink: 0;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: 14px;
+  max-height: calc(100vh - 160px);
+  overflow-y: auto;
+}
+
+.reportes-nav__grupo {
+  margin-bottom: 14px;
+}
+
+.reportes-nav__grupo:last-child {
+  margin-bottom: 0;
+}
+
+.reportes-nav__titulo {
+  font-family: var(--font-heading);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-text-faint);
+  padding: 4px 8px;
+  margin-bottom: 2px;
+}
+
+.reportes-nav__item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 8px 10px;
+  border-radius: 8px;
+  font-size: 13px;
+  color: var(--color-text);
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.reportes-nav__item:hover {
+  background: var(--color-bg);
+}
+
+.reportes-nav__item.is-active {
+  background: var(--color-accent-soft);
+  color: var(--color-accent);
+  font-weight: 700;
+}
+
+.reportes-panel {
+  flex-grow: 1;
+  min-width: 0;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: 20px;
+}
+
+.reportes-panel__header {
+  margin-bottom: 16px;
+}
+
+.reportes-panel__header h2 {
+  font-family: var(--font-heading);
+  font-size: 17px;
+  margin: 0 0 12px;
+}
+
+.reportes-filtros {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: flex-end;
+}
+
+.reportes-filtros .form-field {
+  margin: 0;
+  min-width: 140px;
+}
+
+.reportes-resumen {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin-bottom: 18px;
+}
+
+.reportes-resumen__tarjeta {
+  background: var(--color-bg);
+  border-radius: var(--radius-md);
+  padding: 14px 16px;
+  min-width: 150px;
+  flex-grow: 1;
+}
+
+.reportes-resumen__tarjeta .label {
+  font-size: 11px;
+  color: var(--color-text-muted);
+  margin-bottom: 4px;
+}
+
+.reportes-resumen__tarjeta .valor {
+  font-family: var(--font-heading);
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.reportes-seccion {
+  margin-top: 18px;
+}
+
+.reportes-seccion__titulo {
+  font-weight: 700;
+  font-size: 13px;
+  margin-bottom: 8px;
+  color: var(--color-text-muted);
+}

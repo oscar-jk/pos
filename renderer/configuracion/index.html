@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <title>Punto X — Configuración</title>
+  <link rel="stylesheet" href="../shared/styles.css" />
+  <link rel="stylesheet" href="./configuracion.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <div id="sidebar-container"></div>
+    <div class="main-area">
+      <div id="topbar-container"></div>
+
+      <div class="page-header">
+        <div>
+          <h1>Configuración</h1>
+          <p>Datos del negocio, usuarios y roles, parámetros fiscales, sucursales y auditoría.</p>
+        </div>
+        <div id="acciones-tab"></div>
+      </div>
+
+      <div id="mensaje-error" class="mensaje-error" style="display:none;"></div>
+      <div id="mensaje-exito" class="factura-exito" style="display:none;"></div>
+
+      <div class="tabs">
+        <button class="tab-btn is-active" data-tab="negocio">Negocio</button>
+        <button class="tab-btn" data-tab="usuarios">Usuarios</button>
+        <button class="tab-btn" data-tab="roles">Roles y permisos</button>
+        <button class="tab-btn" data-tab="fiscal">Parámetros fiscales</button>
+        <button class="tab-btn" data-tab="parametros">Parámetros de negocio</button>
+        <button class="tab-btn" data-tab="sucursales">Sucursales y almacenes</button>
+        <button class="tab-btn" data-tab="bitacora" data-permiso="configuracion.gestionar,configuracion.auditoria.ver">Bitácora de auditoría</button>
+      </div>
+
+      <div id="tab-negocio" class="tab-panel">
+        <div class="form-grid" style="max-width:600px;">
+          <div class="form-field"><label>Nombre del negocio</label><input id="neg-nombre" class="input-normal" /></div>
+          <div class="form-field"><label>Iniciales (distintivo del sidebar)</label><input id="neg-iniciales" class="input-normal" maxlength="3" /></div>
+          <div class="form-field"><label>Color de acento</label><input id="neg-color" class="input-normal" type="color" /></div>
+        </div>
+        <button class="btn btn-primario" id="btn-guardar-negocio" data-permiso="configuracion.gestionar" style="margin-top:16px;">Guardar cambios</button>
+      </div>
+
+      <div id="tab-usuarios" class="tab-panel" style="display:none;">
+        <table class="data-table">
+          <thead><tr><th>Nombre</th><th>Usuario</th><th>Rol</th><th>Comisión</th><th>Estado</th><th></th></tr></thead>
+          <tbody id="usuarios-tbody"></tbody>
+        </table>
+      </div>
+
+      <div id="tab-roles" class="tab-panel" style="display:none;">
+        <div style="display:flex; gap:20px;">
+          <div style="width:280px; flex-shrink:0;">
+            <div id="roles-lista"></div>
+          </div>
+          <div style="flex-grow:1;" id="rol-detalle">
+            <div class="empty-state">Selecciona un rol para ver y editar sus permisos.</div>
+          </div>
+        </div>
+      </div>
+
+      <div id="tab-fiscal" class="tab-panel" style="display:none;">
+        <div class="card__title" style="margin-bottom:10px;">Tasas de ITBIS</div>
+        <table class="data-table" style="margin-bottom:10px;">
+          <thead><tr><th>Nombre</th><th>Porcentaje</th><th>Por defecto</th><th>Estado</th><th></th></tr></thead>
+          <tbody id="tasas-tbody"></tbody>
+        </table>
+        <button class="btn btn-secundario btn-chico" id="btn-nueva-tasa" data-permiso="configuracion.gestionar">+ Nueva tasa de ITBIS</button>
+
+        <div class="form-seccion">
+          <div class="card__title" style="margin-bottom:10px;">Tipos de NCF / e-CF</div>
+          <table class="data-table">
+            <thead><tr><th>Código</th><th>Nombre</th><th>Aplica a</th><th>Numeración</th><th>Estado</th><th></th></tr></thead>
+            <tbody id="ncf-tbody"></tbody>
+          </table>
+          <button class="btn btn-secundario btn-chico" id="btn-nuevo-ncf" data-permiso="configuracion.gestionar" style="margin-top:10px;">+ Nuevo tipo de NCF</button>
+        </div>
+      </div>
+
+      <div id="tab-parametros" class="tab-panel" style="display:none;">
+        <div id="parametros-lista"></div>
+      </div>
+
+      <div id="tab-sucursales" class="tab-panel" style="display:none;">
+        <div class="card__title" style="margin-bottom:10px;">Sucursales</div>
+        <table class="data-table" style="margin-bottom:10px;">
+          <thead><tr><th>Nombre</th><th>Dirección</th><th>Teléfono</th></tr></thead>
+          <tbody id="sucursales-tbody"></tbody>
+        </table>
+        <button class="btn btn-secundario btn-chico" id="btn-nueva-sucursal" data-permiso="configuracion.gestionar">+ Nueva sucursal</button>
+
+        <div class="form-seccion">
+          <div class="card__title" style="margin-bottom:10px;">Almacenes</div>
+          <table class="data-table">
+            <thead><tr><th>Nombre</th><th>Sucursal</th></tr></thead>
+            <tbody id="almacenes-tbody"></tbody>
+          </table>
+          <button class="btn btn-secundario btn-chico" id="btn-nuevo-almacen" data-permiso="configuracion.gestionar" style="margin-top:10px;">+ Nuevo almacén</button>
+        </div>
+      </div>
+
+      <div id="tab-bitacora" class="tab-panel" style="display:none;">
+        <select id="bitacora-filtro-modulo" class="input-normal" style="max-width:240px; margin-bottom:14px;">
+          <option value="">Todos los módulos</option>
+        </select>
+        <table class="data-table">
+          <thead><tr><th>Fecha</th><th>Usuario</th><th>Módulo</th><th>Entidad</th><th>Acción</th><th>Detalle</th></tr></thead>
+          <tbody id="bitacora-tbody"></tbody>
+        </table>
+        <div id="bitacora-vacio" class="empty-state" style="display:none;">Aún no hay actividad registrada en la bitácora.</div>
+      </div>
+
+    </div>
+  </div>
+
+  <script src="../shared/sidebar.js"></script>
+  <script src="../shared/topbar.js"></script>
+  <script src="../shared/shell.js"></script>
+  <script src="../shared/modal.js"></script>
+  <script src="./configuracion.js"></script>
+</body>
+</html>

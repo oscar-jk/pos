@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <title>Punto X — Reportes</title>
+  <link rel="stylesheet" href="../shared/styles.css" />
+  <link rel="stylesheet" href="./reportes.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <div id="sidebar-container"></div>
+    <div class="main-area">
+      <div id="topbar-container"></div>
+
+      <div class="page-header">
+        <div>
+          <h1>Reportes</h1>
+          <p>Todos los reportes de los 7 módulos, en un solo lugar.</p>
+        </div>
+      </div>
+
+      <div id="mensaje-error" class="mensaje-error" style="display:none;"></div>
+
+      <div class="reportes-layout">
+        <nav id="reportes-nav" class="reportes-nav"></nav>
+
+        <div class="reportes-panel">
+          <div id="reportes-vacio" class="empty-state empty-state--panel">
+            Elige un reporte de la lista a la izquierda para verlo aquí.
+          </div>
+          <div id="reportes-contenido" style="display:none;">
+            <div class="reportes-panel__header">
+              <h2 id="reporte-titulo"></h2>
+              <div id="reporte-filtros" class="reportes-filtros"></div>
+            </div>
+            <div id="reporte-resultado"></div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <script src="../shared/sidebar.js"></script>
+  <script src="../shared/topbar.js"></script>
+  <script src="../shared/shell.js"></script>
+  <script src="./reportes.js"></script>
+</body>
+</html>

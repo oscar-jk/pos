@@ -1,0 +1,464 @@
+const crypto = require('node:crypto');
+
+const inventario = require('./inventario');
+const contabilidad = require('./contabilidad');
+const caja = require('./caja');
+const configuracion = require('./configuracion');
+const session = require('../auth/session');
+
+// Módulo 3. Cubre: ficha de proveedor, orden de compra (documento de intención, no mueve
+// inventario), y "factura de compra" — que actúa como la recepción real de mercancía
+// (mueve inventario, actualiza costo) y, si trae NCF/condición de pago, también como la
+// factura que genera el pasivo — fusionando ambos roles en un solo acto, que es como
+// ocurre en la mayoría de compras de un negocio pequeño cuando el proveedor entrega la
+// factura junto con la mercancía. Puede crearse suelta o contra una orden de compra
+// (con recepción parcial). Quedan fuera: presupuesto/cotización de compra como documento
+// separado, liquidación de mercancía importada, y notas de crédito/débito de compra.
+
+function redondear(n) {
+  return Math.round((n + Number.EPSILON) * 100) / 100;
+}
+
+function siguienteNumero(db, tipo) {
+  const row = db.prepare('SELECT MAX(CAST(numero AS INTEGER)) AS maximo FROM documentos_compra WHERE tipo = ?').get(tipo);
+  return String((row.maximo || 0) + 1).padStart(6, '0');
+}
+
+// =========================================================================
+// Proveedores
+// =========================================================================
+
+function saldoPendienteProveedor(db, proveedorId) {
+  const facturado = db
+    .prepare(
+      `SELECT COALESCE(SUM(total), 0) AS total FROM documentos_compra
+       WHERE proveedor_id = ? AND tipo = 'factura_compra' AND condicion_pago = 'credito'
+         AND estado != 'anulado' AND deleted_at IS NULL`
+    )
+    .get(proveedorId).total;
+  const pagado = db
+    .prepare(
+      `SELECT COALESCE(SUM(ppa.monto_aplicado), 0) AS total FROM pagos_proveedor_aplicaciones ppa
+       JOIN pagos_proveedor pp ON pp.id = ppa.pago_id
+       JOIN documentos_compra dc ON dc.id = ppa.documento_compra_id
+       WHERE dc.proveedor_id = ? AND pp.estado != 'anulado'`
+    )
+    .get(proveedorId).total;
+  return redondear(facturado - pagado);
+}
+
+function obtenerProveedor(db, proveedorId) {
+  const proveedor = db.prepare('SELECT * FROM proveedores WHERE id = ? AND deleted_at IS NULL').get(proveedorId);
+  if (!proveedor) return null;
+  return { ...proveedor, saldo_pendiente: saldoPendienteProveedor(db, proveedorId) };
+}
+
+function listarProveedores(db, { texto = '', limite = 100 } = {}) {
+  const like = `%${texto}%`;
+  const proveedores = db
+    .prepare(
+      `SELECT * FROM proveedores WHERE deleted_at IS NULL AND (nombre LIKE ? OR rnc LIKE ?) ORDER BY nombre LIMIT ?`
+    )
+    .all(like, like, limite);
+  return proveedores.map((p) => ({ ...p, saldo_pendiente: saldoPendienteProveedor(db, p.id) }));
+}
+
+function guardarProveedor(db, payload, proveedorIdExistente) {
+  if (!payload.nombre || !payload.nombre.trim()) throw new Error('El nombre del proveedor es obligatorio');
+  const proveedorId = proveedorIdExistente || crypto.randomUUID();
+
+  if (proveedorIdExistente) {
+    db.prepare(
+      `UPDATE proveedores SET nombre = ?, rnc = ?, dias_credito = ?, direccion = ?, telefono = ?, email = ?,
+         activo = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?`
+    ).run(
+      payload.nombre.trim(), payload.rnc || null, payload.diasCredito || 0, payload.direccion || null,
+      payload.telefono || null, payload.email || null, payload.activo === false ? 0 : 1, proveedorId
+    );
+  } else {
+    db.prepare(
+      `INSERT INTO proveedores (id, nombre, rnc, dias_credito, direccion, telefono, email, activo)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 1)`
+    ).run(proveedorId, payload.nombre.trim(), payload.rnc || null, payload.diasCredito || 0, payload.direccion || null, payload.telefono || null, payload.email || null);
+  }
+  return proveedorId;
+}
+
+// =========================================================================
+// Orden de compra (documento de intención — nunca mueve inventario ni costo)
+// =========================================================================
+
+function crearOrdenCompra(db, { proveedorId, lineas, usuarioId }) {
+  session.requerirPermiso('compras.orden.crear');
+  if (!lineas || lineas.length === 0) throw new Error('La orden de compra debe tener al menos una línea');
+  const proveedor = db.prepare('SELECT * FROM proveedores WHERE id = ? AND deleted_at IS NULL').get(proveedorId);
+  if (!proveedor) throw new Error('Proveedor no encontrado');
+
+  const lineasCalc = lineas.map((l) => {
+    const producto = db.prepare('SELECT p.*, t.porcentaje AS tasa_itbis_pct FROM productos p JOIN tasas_itbis t ON t.id = p.tasa_itbis_id WHERE p.id = ?').get(l.productoId);
+    if (!producto) throw new Error(`Producto ${l.productoId} no encontrado`);
+    const baseImponible = redondear(l.costoUnitario * l.cantidad);
+    const itbisMonto = redondear(baseImponible * producto.tasa_itbis_pct);
+    return { producto, cantidad: l.cantidad, costoUnitario: l.costoUnitario, tasaItbis: producto.tasa_itbis_pct, baseImponible, itbisMonto, totalLinea: redondear(baseImponible + itbisMonto) };
+  });
+  const subtotal = redondear(lineasCalc.reduce((acc, l) => acc + l.baseImponible, 0));
+  const itbisTotal = redondear(lineasCalc.reduce((acc, l) => acc + l.itbisMonto, 0));
+  const total = redondear(subtotal + itbisTotal);
+
+  const documentoId = crypto.randomUUID();
+  const numero = siguienteNumero(db, 'orden_compra');
+  db.prepare(
+    `INSERT INTO documentos_compra (id, tipo, numero, proveedor_id, fecha, condicion_pago, subtotal, itbis_total, total, estado, usuario_id)
+     VALUES (?, 'orden_compra', ?, ?, strftime('%Y-%m-%dT%H:%M:%fZ','now'), 'credito', ?, ?, ?, 'abierto', ?)`
+  ).run(documentoId, numero, proveedorId, subtotal, itbisTotal, total, usuarioId);
+
+  const insertDetalle = db.prepare(
+    `INSERT INTO documentos_compra_detalle (id, documento_id, producto_id, cantidad, cantidad_recibida, costo_unitario, tasa_itbis, itbis_monto, total_linea)
+     VALUES (?, ?, ?, ?, 0, ?, ?, ?, ?)`
+  );
+  for (const l of lineasCalc) {
+    insertDetalle.run(crypto.randomUUID(), documentoId, l.producto.id, l.cantidad, l.costoUnitario, l.tasaItbis, l.itbisMonto, l.totalLinea);
+  }
+
+  configuracion.registrarAuditoria(db, { usuarioId, modulo: 'compras', entidad: 'documentos_compra', entidadId: documentoId, accion: 'crear', detalle: { numero, tipo: 'orden_compra' } });
+  return documentoId;
+}
+
+function listarOrdenesCompra(db, { estado, proveedorId, limite = 50 } = {}) {
+  const condiciones = ["tipo = 'orden_compra'"];
+  const params = [];
+  if (estado) { condiciones.push('estado = ?'); params.push(estado); }
+  if (proveedorId) { condiciones.push('proveedor_id = ?'); params.push(proveedorId); }
+  params.push(limite);
+  const ordenes = db
+    .prepare(`SELECT dc.*, p.nombre AS proveedor_nombre FROM documentos_compra dc JOIN proveedores p ON p.id = dc.proveedor_id WHERE ${condiciones.join(' AND ')} ORDER BY dc.fecha DESC LIMIT ?`)
+    .all(...params);
+  return ordenes.map((o) => {
+    const lineas = db.prepare('SELECT cantidad, cantidad_recibida FROM documentos_compra_detalle WHERE documento_id = ?').all(o.id);
+    const totalCantidad = lineas.reduce((acc, l) => acc + l.cantidad, 0);
+    const totalRecibido = lineas.reduce((acc, l) => acc + l.cantidad_recibida, 0);
+    return { ...o, porcentaje_recibido: totalCantidad > 0 ? redondear((totalRecibido / totalCantidad) * 100) : 0 };
+  });
+}
+
+function obtenerOrdenCompra(db, documentoId) {
+  const documento = db
+    .prepare(`SELECT dc.*, p.nombre AS proveedor_nombre FROM documentos_compra dc JOIN proveedores p ON p.id = dc.proveedor_id WHERE dc.id = ?`)
+    .get(documentoId);
+  if (!documento) return null;
+  documento.lineas = db
+    .prepare(`SELECT dcd.*, pr.descripcion AS producto_descripcion, pr.codigo_interno FROM documentos_compra_detalle dcd JOIN productos pr ON pr.id = dcd.producto_id WHERE dcd.documento_id = ?`)
+    .all(documentoId)
+    .map((l) => ({ ...l, pendiente: redondear(l.cantidad - l.cantidad_recibida) }));
+  return documento;
+}
+
+function anularOrdenCompra(db, { documentoId, motivo, usuarioId }) {
+  session.requerirPermiso('compras.orden.crear');
+  const documento = db.prepare('SELECT * FROM documentos_compra WHERE id = ?').get(documentoId);
+  if (!documento) throw new Error('Orden de compra no encontrada');
+  if (documento.estado === 'anulado') throw new Error('La orden ya está anulada');
+  if (documento.estado !== 'abierto') throw new Error('Solo se puede anular una orden que todavía no tiene mercancía recibida');
+  if (!motivo || !motivo.trim()) throw new Error('La anulación requiere un motivo');
+
+  db.prepare(
+    `UPDATE documentos_compra SET estado = 'anulado', motivo_anulacion = ?, usuario_anulo_id = ?,
+       updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?`
+  ).run(motivo, usuarioId, documentoId);
+  configuracion.registrarAuditoria(db, { usuarioId, modulo: 'compras', entidad: 'documentos_compra', entidadId: documentoId, accion: 'anular', detalle: { numero: documento.numero, motivo } });
+}
+
+function actualizarEstadoOrdenCompra(db, ordenId) {
+  const lineas = db.prepare('SELECT cantidad, cantidad_recibida FROM documentos_compra_detalle WHERE documento_id = ?').all(ordenId);
+  const totalCantidad = lineas.reduce((acc, l) => acc + l.cantidad, 0);
+  const totalRecibido = lineas.reduce((acc, l) => acc + l.cantidad_recibida, 0);
+  const estado = totalCantidad > 0 && totalRecibido >= totalCantidad ? 'recibido_total' : (totalRecibido > 0 ? 'recibido_parcial' : 'abierto');
+  db.prepare("UPDATE documentos_compra SET estado = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?").run(estado, ordenId);
+}
+
+// =========================================================================
+// Factura de compra / recepción (mueve inventario, actualiza costo, genera CxP si es a
+// crédito). Si trae ordenCompraId, además registra lo recibido contra esa orden.
+// =========================================================================
+
+function crearFacturaCompra(db, payload) {
+  session.requerirPermiso('compras.factura.crear');
+  const { proveedorId, almacenId, sucursalId, ncfProveedor, condicionPago, diasCredito, lineas, pagos, usuarioId, cajaId, ordenCompraId } = payload;
+  if (!lineas || lineas.length === 0) throw new Error('La factura de compra debe tener al menos una línea');
+
+  const proveedor = db.prepare('SELECT * FROM proveedores WHERE id = ? AND deleted_at IS NULL').get(proveedorId);
+  if (!proveedor) throw new Error('Proveedor no encontrado');
+
+  if (ordenCompraId) {
+    const orden = db.prepare('SELECT * FROM documentos_compra WHERE id = ?').get(ordenCompraId);
+    if (!orden || orden.estado === 'anulado') throw new Error('Orden de compra no encontrada o anulada');
+    for (const l of lineas) {
+      if (!l.ordenDetalleId) continue;
+      const detalleOrden = db.prepare('SELECT * FROM documentos_compra_detalle WHERE id = ?').get(l.ordenDetalleId);
+      const pendiente = redondear(detalleOrden.cantidad - detalleOrden.cantidad_recibida);
+      if (l.cantidad > pendiente + 0.001) {
+        throw new Error(`La cantidad a recibir (${l.cantidad}) excede lo pendiente de la orden (${pendiente})`);
+      }
+    }
+  }
+
+  const lineasCalculadas = lineas.map((l) => {
+    const producto = db.prepare('SELECT p.*, t.porcentaje AS tasa_itbis_pct FROM productos p JOIN tasas_itbis t ON t.id = p.tasa_itbis_id WHERE p.id = ?').get(l.productoId);
+    if (!producto) throw new Error(`Producto ${l.productoId} no encontrado`);
+    const baseImponible = redondear(l.costoUnitario * l.cantidad);
+    const itbisMonto = redondear(baseImponible * producto.tasa_itbis_pct);
+    const totalLinea = redondear(baseImponible + itbisMonto);
+    return { producto, cantidad: l.cantidad, costoUnitario: l.costoUnitario, tasaItbis: producto.tasa_itbis_pct, baseImponible, itbisMonto, totalLinea, ordenDetalleId: l.ordenDetalleId || null };
+  });
+
+  const subtotal = redondear(lineasCalculadas.reduce((acc, l) => acc + l.baseImponible, 0));
+  const itbisTotal = redondear(lineasCalculadas.reduce((acc, l) => acc + l.itbisMonto, 0));
+  const total = redondear(subtotal + itbisTotal);
+
+  const sumaPagos = redondear((pagos || []).reduce((acc, p) => acc + p.monto, 0));
+  const montoCredito = redondear((pagos || []).filter((p) => p.formaPago === 'credito').reduce((acc, p) => acc + p.monto, 0));
+  if (Math.abs(sumaPagos - total) > 0.01) {
+    throw new Error(`Los pagos (${sumaPagos}) no cuadran con el total de la factura (${total})`);
+  }
+
+  const montoEfectivo = redondear((pagos || []).filter((p) => p.formaPago === 'efectivo').reduce((acc, p) => acc + p.monto, 0));
+  let turno = null;
+  if (montoEfectivo > 0) {
+    turno = caja.obtenerTurnoAbierto(db, cajaId);
+    if (!turno) throw new Error('Debe abrir un turno de caja antes de pagar una compra en efectivo');
+  }
+
+  const documentoId = crypto.randomUUID();
+  const numero = siguienteNumero(db, 'factura_compra');
+  const fechaIso = new Date().toISOString();
+  const dias = diasCredito ?? proveedor.dias_credito;
+  const fechaVencimiento = new Date();
+  fechaVencimiento.setDate(fechaVencimiento.getDate() + (montoCredito > 0 ? dias : 0));
+
+  db.prepare(
+    `INSERT INTO documentos_compra
+       (id, tipo, numero, proveedor_id, almacen_id, ncf_proveedor, documento_referencia_id, fecha, condicion_pago,
+        dias_credito, fecha_vencimiento, subtotal, itbis_total, total, estado, usuario_id)
+     VALUES (?, 'factura_compra', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'facturado', ?)`
+  ).run(
+    documentoId, numero, proveedorId, almacenId, ncfProveedor || null, ordenCompraId || null, fechaIso,
+    montoCredito > 0 ? (sumaPagos > montoCredito ? 'mixto' : 'credito') : 'contado', dias,
+    fechaVencimiento.toISOString(), subtotal, itbisTotal, total, usuarioId
+  );
+
+  const insertDetalle = db.prepare(
+    `INSERT INTO documentos_compra_detalle
+       (id, documento_id, producto_id, cantidad, cantidad_recibida, costo_unitario, tasa_itbis, itbis_monto, total_linea)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  );
+  const sumarRecibidoOrden = db.prepare('UPDATE documentos_compra_detalle SET cantidad_recibida = cantidad_recibida + ? WHERE id = ?');
+  for (const l of lineasCalculadas) {
+    insertDetalle.run(crypto.randomUUID(), documentoId, l.producto.id, l.cantidad, l.cantidad, l.costoUnitario, l.tasaItbis, l.itbisMonto, l.totalLinea);
+    inventario.registrarMovimientoInventario(db, {
+      productoId: l.producto.id, almacenId, tipoMovimiento: 'entrada_compra', cantidad: l.cantidad,
+      costoUnitario: l.costoUnitario, documentoOrigenTipo: 'documentos_compra', documentoOrigenId: documentoId, usuarioId,
+    });
+    if (l.ordenDetalleId) sumarRecibidoOrden.run(l.cantidad, l.ordenDetalleId);
+  }
+  if (ordenCompraId) actualizarEstadoOrdenCompra(db, ordenCompraId);
+
+  const CUENTA_POR_FORMA_PAGO = { efectivo: '1100', tarjeta: '1200', transferencia: '1200', cheque: '1200', credito: '2100' };
+  const lineasAsiento = [
+    { cuentaCodigo: '1300', debe: subtotal, descripcion: 'Entrada de inventario' },
+  ];
+  if (itbisTotal > 0) lineasAsiento.push({ cuentaCodigo: '1500', debe: itbisTotal, descripcion: 'ITBIS pagado (crédito fiscal)' });
+  for (const forma of ['efectivo', 'tarjeta', 'transferencia', 'cheque', 'credito']) {
+    const monto = redondear((pagos || []).filter((p) => p.formaPago === forma).reduce((acc, p) => acc + p.monto, 0));
+    if (monto > 0) lineasAsiento.push({ cuentaCodigo: CUENTA_POR_FORMA_PAGO[forma], haber: monto, descripcion: `Compra ${forma}` });
+  }
+  contabilidad.generarAsiento(db, {
+    fecha: fechaIso, concepto: `Factura de compra ${numero}`, origenModulo: 'compras',
+    origenDocumentoTipo: 'documentos_compra', origenDocumentoId: documentoId, usuarioId, lineas: lineasAsiento,
+  });
+
+  // Nota: las formas de pago directas de la compra (no crédito) se registran como movimiento de
+  // caja cuando son en efectivo; documentos_compra no tiene una tabla de pagos_directos propia
+  // como documentos_venta — el asiento contable de arriba ya refleja el resto de formas de pago.
+  for (const p of (pagos || [])) {
+    if (p.formaPago === 'efectivo' && p.monto > 0) {
+      caja.registrarMovimiento(db, {
+        turnoCajaId: turno.id, tipo: 'salida_manual', concepto: `Pago compra ${numero}`, monto: -p.monto,
+        documentoOrigenTipo: 'documentos_compra', documentoOrigenId: documentoId, usuarioId,
+      });
+    }
+  }
+
+  return documentoId;
+}
+
+function anularFacturaCompra(db, { documentoId, motivo, usuarioId }) {
+  session.requerirPermiso('compras.factura.anular');
+  const documento = db.prepare('SELECT * FROM documentos_compra WHERE id = ?').get(documentoId);
+  if (!documento) throw new Error('Factura de compra no encontrada');
+  if (documento.estado === 'anulado') throw new Error('La factura ya está anulada');
+  if (!motivo || !motivo.trim()) throw new Error('La anulación requiere un motivo');
+
+  db.prepare(
+    `UPDATE documentos_compra SET estado = 'anulado', motivo_anulacion = ?, usuario_anulo_id = ?,
+       updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?`
+  ).run(motivo, usuarioId, documentoId);
+
+  const detalle = db.prepare('SELECT * FROM documentos_compra_detalle WHERE documento_id = ?').all(documentoId);
+  for (const l of detalle) {
+    inventario.registrarMovimientoInventario(db, {
+      productoId: l.producto_id, almacenId: documento.almacen_id, tipoMovimiento: 'ajuste_salida',
+      cantidad: -l.cantidad, costoUnitario: l.costo_unitario, documentoOrigenTipo: 'documentos_compra_anulacion',
+      documentoOrigenId: documentoId, usuarioId,
+    });
+    // Si esta factura venía contra una orden de compra, revierte lo recibido en esa línea
+    // (se empareja por producto dentro de la misma orden; no hay una columna que enlace
+    // directamente la línea de la factura con la línea de la orden que originó).
+    if (documento.documento_referencia_id) {
+      const detalleOrden = db
+        .prepare('SELECT * FROM documentos_compra_detalle WHERE documento_id = ? AND producto_id = ?')
+        .get(documento.documento_referencia_id, l.producto_id);
+      if (detalleOrden) {
+        db.prepare('UPDATE documentos_compra_detalle SET cantidad_recibida = MAX(0, cantidad_recibida - ?) WHERE id = ?').run(l.cantidad, detalleOrden.id);
+      }
+    }
+  }
+  if (documento.documento_referencia_id) actualizarEstadoOrdenCompra(db, documento.documento_referencia_id);
+
+  const asientos = db
+    .prepare("SELECT * FROM asientos_contables WHERE origen_documento_tipo = 'documentos_compra' AND origen_documento_id = ? AND estado = 'confirmado'")
+    .all(documentoId);
+  const cuentas = db.prepare('SELECT id, codigo FROM cuentas_contables').all();
+  const codigoPorId = Object.fromEntries(cuentas.map((c) => [c.id, c.codigo]));
+  for (const asiento of asientos) {
+    const det = db.prepare('SELECT * FROM asientos_contables_detalle WHERE asiento_id = ?').all(asiento.id);
+    contabilidad.generarAsiento(db, {
+      fecha: new Date().toISOString(), concepto: `Reversión: ${asiento.concepto}`, origenModulo: 'compras',
+      origenDocumentoTipo: 'documentos_compra_anulacion', origenDocumentoId: documentoId, usuarioId,
+      lineas: det.map((d) => ({ cuentaCodigo: codigoPorId[d.cuenta_id], debe: d.haber, haber: d.debe, descripcion: `Reversión: ${d.descripcion || ''}` })),
+    });
+  }
+
+  configuracion.registrarAuditoria(db, {
+    usuarioId, modulo: 'compras', entidad: 'documentos_compra', entidadId: documentoId, accion: 'anular', detalle: { numero: documento.numero, motivo },
+  });
+}
+
+function listarFacturasCompra(db, { proveedorId, limite = 50 } = {}) {
+  const condiciones = ["tipo = 'factura_compra'"];
+  const params = [];
+  if (proveedorId) { condiciones.push('proveedor_id = ?'); params.push(proveedorId); }
+  params.push(limite);
+  return db
+    .prepare(
+      `SELECT dc.*, p.nombre AS proveedor_nombre FROM documentos_compra dc JOIN proveedores p ON p.id = dc.proveedor_id
+       WHERE ${condiciones.join(' AND ')} ORDER BY dc.fecha DESC LIMIT ?`
+    )
+    .all(...params);
+}
+
+function obtenerFacturaCompra(db, documentoId) {
+  const documento = db
+    .prepare(`SELECT dc.*, p.nombre AS proveedor_nombre FROM documentos_compra dc JOIN proveedores p ON p.id = dc.proveedor_id WHERE dc.id = ?`)
+    .get(documentoId);
+  if (!documento) return null;
+  documento.lineas = db
+    .prepare(`SELECT dcd.*, p.descripcion AS producto_descripcion FROM documentos_compra_detalle dcd JOIN productos p ON p.id = dcd.producto_id WHERE dcd.documento_id = ?`)
+    .all(documentoId);
+  return documento;
+}
+
+// =========================================================================
+// Reportes
+// =========================================================================
+
+// Comparación de mejor costo: todas las compras históricas de un producto, ordenadas por
+// costo, para negociar con proveedores o decidir a quién comprarle.
+function comparacionMejorCosto(db, { productoId }) {
+  return db
+    .prepare(
+      `SELECT dc.fecha, dc.numero, p.nombre AS proveedor_nombre, dcd.costo_unitario, dcd.cantidad
+       FROM documentos_compra_detalle dcd
+       JOIN documentos_compra dc ON dc.id = dcd.documento_id
+       JOIN proveedores p ON p.id = dc.proveedor_id
+       WHERE dcd.producto_id = ? AND dc.tipo = 'factura_compra' AND dc.estado != 'anulado'
+       ORDER BY dcd.costo_unitario ASC`
+    )
+    .all(productoId);
+}
+
+function comprasPorProducto(db, { desde, hasta } = {}) {
+  const condiciones = ["dc.tipo = 'factura_compra'", "dc.estado != 'anulado'"];
+  const params = [];
+  if (desde) { condiciones.push('dc.fecha >= ?'); params.push(desde); }
+  if (hasta) { condiciones.push('dc.fecha <= ?'); params.push(hasta); }
+  return db
+    .prepare(
+      `SELECT p.id AS producto_id, p.codigo_interno, p.descripcion, SUM(dcd.cantidad) AS cantidad_total, SUM(dcd.total_linea) AS costo_total
+       FROM documentos_compra_detalle dcd
+       JOIN documentos_compra dc ON dc.id = dcd.documento_id
+       JOIN productos p ON p.id = dcd.producto_id
+       WHERE ${condiciones.join(' AND ')}
+       GROUP BY p.id ORDER BY costo_total DESC`
+    )
+    .all(...params);
+}
+
+// =========================================================================
+// IPC
+// =========================================================================
+
+function register(ipcMain, getDb) {
+  ipcMain.handle('proveedores:buscar', (event, { texto, limite = 20 }) => {
+    const db = getDb();
+    const like = `%${texto || ''}%`;
+    return db.prepare(`SELECT id, nombre, rnc, dias_credito FROM proveedores WHERE deleted_at IS NULL AND activo = 1 AND (nombre LIKE ? OR rnc LIKE ?) ORDER BY nombre LIMIT ?`).all(like, like, limite);
+  });
+  ipcMain.handle('proveedores:obtener', (event, { proveedorId }) => obtenerProveedor(getDb(), proveedorId));
+  ipcMain.handle('proveedores:listar', (event, filtros) => listarProveedores(getDb(), filtros || {}));
+  ipcMain.handle('proveedores:crear', (event, payload) => {
+    const db = getDb();
+    const id = db.transaction(() => guardarProveedor(db, payload))();
+    return obtenerProveedor(db, id);
+  });
+  ipcMain.handle('proveedores:guardar', (event, { proveedorId, payload }) => {
+    const db = getDb();
+    const id = db.transaction(() => guardarProveedor(db, payload, proveedorId))();
+    return obtenerProveedor(db, id);
+  });
+
+  ipcMain.handle('compras:crearFacturaCompra', (event, payload) => {
+    const db = getDb();
+    const id = db.transaction(() => crearFacturaCompra(db, payload))();
+    return obtenerFacturaCompra(db, id);
+  });
+  ipcMain.handle('compras:anularFacturaCompra', (event, payload) => {
+    const db = getDb();
+    db.transaction(() => anularFacturaCompra(db, payload))();
+    return obtenerFacturaCompra(db, payload.documentoId);
+  });
+  ipcMain.handle('compras:listarFacturas', (event, filtros) => listarFacturasCompra(getDb(), filtros || {}));
+  ipcMain.handle('compras:obtenerFactura', (event, { documentoId }) => obtenerFacturaCompra(getDb(), documentoId));
+
+  ipcMain.handle('compras:crearOrden', (event, payload) => {
+    const db = getDb();
+    const id = db.transaction(() => crearOrdenCompra(db, payload))();
+    return obtenerOrdenCompra(db, id);
+  });
+  ipcMain.handle('compras:listarOrdenes', (event, filtros) => listarOrdenesCompra(getDb(), filtros || {}));
+  ipcMain.handle('compras:obtenerOrden', (event, { documentoId }) => obtenerOrdenCompra(getDb(), documentoId));
+  ipcMain.handle('compras:anularOrden', (event, payload) => {
+    const db = getDb();
+    db.transaction(() => anularOrdenCompra(db, payload))();
+    return obtenerOrdenCompra(db, payload.documentoId);
+  });
+
+  ipcMain.handle('compras:comparacionMejorCosto', (event, { productoId }) => comparacionMejorCosto(getDb(), { productoId }));
+  ipcMain.handle('compras:comprasPorProducto', (event, filtros) => comprasPorProducto(getDb(), filtros || {}));
+}
+
+module.exports = {
+  register, obtenerProveedor, listarProveedores, guardarProveedor, saldoPendienteProveedor,
+  crearFacturaCompra, anularFacturaCompra, listarFacturasCompra, obtenerFacturaCompra,
+  crearOrdenCompra, listarOrdenesCompra, obtenerOrdenCompra, anularOrdenCompra,
+  comparacionMejorCosto, comprasPorProducto,
+};

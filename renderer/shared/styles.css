@@ -1,0 +1,748 @@
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 400 800;
+  font-display: swap;
+  src: url('../../assets/fonts/Manrope-Variable-latin.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Sora';
+  font-style: normal;
+  font-weight: 400 800;
+  font-display: swap;
+  src: url('../../assets/fonts/Sora-Variable-latin.woff2') format('woff2');
+}
+
+:root {
+  --color-bg: #f4f5f1;
+  --color-surface: #ffffff;
+  --color-text: #1e2624;
+  --color-text-muted: #6b7674;
+  --color-text-faint: #8a9490;
+  --color-border: #e7ebe6;
+  --color-border-input: #dce2dc;
+
+  --color-sidebar-bg: #0f3d34;
+  --color-sidebar-text: #e9f3ef;
+  --color-sidebar-text-muted: #b9cfc7;
+  --color-sidebar-subtitle: #7fa79c;
+  --color-sidebar-border: #1e5a4e;
+  --color-sidebar-footer: #5e8a7e;
+
+  --color-accent: #146356;
+  --color-accent-soft: #e9f3ef;
+  --color-danger: #dc2626;
+  --color-success: #2f9e44;
+  --color-info: #2563eb;
+  --color-warning: #d97706;
+
+  --font-body: 'Manrope', system-ui, sans-serif;
+  --font-heading: 'Sora', system-ui, sans-serif;
+
+  --sidebar-width: 264px;
+  --radius-lg: 16px;
+  --radius-md: 12px;
+  --radius-sm: 10px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+}
+
+body {
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-body);
+  font-size: 14px;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+a:hover {
+  opacity: 0.85;
+}
+
+::placeholder {
+  color: var(--color-text-faint);
+}
+
+table {
+  border-collapse: collapse;
+}
+
+h1, h2, h3, h4 {
+  font-family: var(--font-heading);
+  margin: 0;
+}
+
+/* --- Layout --- */
+
+/* El shell ocupa exactamente el alto de la ventana y no se desplaza como bloque; el sidebar
+   y el área principal se desplazan cada uno por su cuenta (si el contenido de la pantalla es
+   más alto que la ventana, se ve la barra de scroll del área principal, no la de la ventana
+   completa — así el sidebar/topbar quedan siempre visibles). */
+.app-shell {
+  display: flex;
+  height: 100vh;
+  background: var(--color-bg);
+  overflow: hidden;
+}
+
+.main-area {
+  flex-grow: 1;
+  min-width: 0;
+  height: 100%;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  padding: 24px 28px;
+  gap: 20px;
+}
+
+/* --- Sidebar --- */
+
+.sidebar {
+  width: var(--sidebar-width);
+  flex-shrink: 0;
+  height: 100%;
+  overflow-y: auto;
+  background: var(--color-sidebar-bg);
+  color: var(--color-sidebar-text);
+  display: flex;
+  flex-direction: column;
+  padding: 28px 20px;
+}
+
+/* Scrollbar delgada y visible, a tono con el diseño (los scrollbars por defecto de Chromium
+   son difíciles de ver sobre el fondo claro de la app). */
+.main-area, .sidebar {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border-input) transparent;
+}
+.main-area::-webkit-scrollbar, .sidebar::-webkit-scrollbar {
+  width: 10px;
+}
+.main-area::-webkit-scrollbar-track, .sidebar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.main-area::-webkit-scrollbar-thumb {
+  background-color: var(--color-border-input);
+  border-radius: 8px;
+  border: 2px solid var(--color-bg);
+}
+.sidebar::-webkit-scrollbar-thumb {
+  background-color: var(--color-sidebar-border);
+  border-radius: 8px;
+  border: 2px solid var(--color-sidebar-bg);
+}
+.main-area::-webkit-scrollbar-thumb:hover {
+  background-color: var(--color-text-faint);
+}
+
+.sidebar__brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 8px 24px;
+}
+
+.sidebar__badge {
+  width: 38px;
+  height: 38px;
+  border-radius: var(--radius-sm);
+  background: var(--color-accent);
+  color: var(--color-sidebar-bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  font-family: var(--font-heading);
+  font-weight: 800;
+  font-size: 14px;
+}
+
+.sidebar__brand-name {
+  font-family: var(--font-heading);
+  font-weight: 700;
+  font-size: 15px;
+  line-height: 1.2;
+}
+
+.sidebar__brand-subtitle {
+  font-size: 10px;
+  color: var(--color-sidebar-subtitle);
+  letter-spacing: 0.3px;
+  margin-top: 1px;
+}
+
+.sidebar__nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sidebar__nav-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 12px;
+  border-radius: var(--radius-sm);
+  color: var(--color-sidebar-text-muted);
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.sidebar__nav-item svg {
+  flex-shrink: 0;
+}
+
+.sidebar__nav-item.is-active {
+  background: var(--color-accent);
+  color: #ffffff;
+  font-weight: 700;
+}
+
+.sidebar__footer {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border-top: 1px solid var(--color-sidebar-border);
+  padding-top: 12px;
+}
+
+.sidebar__footer-text {
+  padding: 10px 12px 0;
+  font-size: 10px;
+  color: var(--color-sidebar-footer);
+  letter-spacing: 0.2px;
+  line-height: 1.5;
+}
+
+/* --- Topbar --- */
+
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.topbar__search {
+  flex-grow: 1;
+  position: relative;
+}
+
+.topbar__search input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 11px 14px 11px 40px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border-input);
+  background: var(--color-surface);
+  font-family: inherit;
+  font-size: 14px;
+  color: var(--color-text);
+}
+
+.topbar__search-icon {
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.topbar__bell {
+  position: relative;
+  width: 42px;
+  height: 42px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border-input);
+  background: var(--color-surface);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.topbar__bell-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  background: var(--color-danger);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 800;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.topbar__user {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-left: 8px;
+  border-left: 1px solid var(--color-border-input);
+  flex-shrink: 0;
+}
+
+.topbar__user-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--color-accent);
+  color: #fff;
+  font-weight: 800;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.topbar__user-name {
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.topbar__user-role {
+  font-size: 11px;
+  color: var(--color-text-muted);
+  line-height: 1.2;
+}
+
+/* --- Encabezado de contenido --- */
+
+.page-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+}
+
+.page-header h1 {
+  font-size: 22px;
+  font-weight: 700;
+}
+
+.page-header p {
+  font-size: 13px;
+  color: var(--color-text-muted);
+  margin-top: 2px;
+}
+
+/* --- Tarjetas --- */
+
+.card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: 18px 20px;
+}
+
+.card__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.card__title {
+  font-family: var(--font-heading);
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.card__link {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--color-accent);
+}
+
+/* --- Tarjetas de indicadores (KPI) --- */
+
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.kpi-card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: 18px;
+}
+
+.kpi-card__label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.kpi-card__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+.kpi-card__label span {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--color-text-muted);
+}
+
+.kpi-card__value {
+  font-family: var(--font-heading);
+  font-size: 24px;
+  font-weight: 700;
+}
+
+.kpi-card__sub {
+  font-size: 12px;
+  color: var(--color-text-faint);
+  margin-top: 4px;
+}
+
+/* --- Centro de alertas --- */
+
+.alert-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.alert-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 8px;
+  border-radius: var(--radius-sm);
+}
+
+.alert-item__bar {
+  width: 4px;
+  height: 32px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.alert-item__tag {
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  width: 130px;
+  flex-shrink: 0;
+}
+
+.alert-item__text {
+  font-size: 13px;
+  color: var(--color-text);
+  flex-grow: 1;
+}
+
+/* --- Grid de módulos --- */
+
+.module-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 14px;
+}
+
+.module-card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 14px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.module-card__icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  background: var(--color-accent-soft);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-accent);
+}
+
+.module-card__title {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.module-card__sub {
+  font-size: 11px;
+  color: var(--color-text-faint);
+}
+
+/* --- Tablas de datos --- */
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.data-table th {
+  text-align: left;
+  padding: 8px;
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--color-text-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  border-bottom: 1px solid #eef1ec;
+}
+
+.data-table td {
+  padding: 11px 8px;
+  font-size: 13px;
+  border-bottom: 1px solid #f3f5f1;
+}
+
+.status-pill {
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 9px;
+  border-radius: 20px;
+}
+
+/* --- Panel oscuro (resumen) --- */
+
+.panel-dark {
+  background: var(--color-sidebar-bg);
+  border-radius: var(--radius-lg);
+  padding: 20px;
+  color: var(--color-sidebar-text);
+}
+
+.panel-dark .card__title {
+  color: #ffffff;
+  margin-bottom: 14px;
+}
+
+.panel-dark__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.panel-dark__row span:first-child {
+  font-size: 12px;
+  color: var(--color-sidebar-text-muted);
+}
+
+.panel-dark__row span:last-child {
+  font-weight: 800;
+  font-size: 14px;
+}
+
+/* --- Botón primario --- */
+
+.btn-primary {
+  display: block;
+  text-align: center;
+  width: 100%;
+  padding: 11px;
+  border-radius: var(--radius-sm);
+  background: var(--color-accent);
+  color: #fff;
+  font-family: inherit;
+  font-weight: 700;
+  font-size: 13px;
+  border: none;
+  cursor: pointer;
+  box-sizing: border-box;
+}
+
+/* --- Estado vacío --- */
+
+.empty-state {
+  padding: 24px 8px;
+  text-align: center;
+  color: var(--color-text-faint);
+  font-size: 13px;
+}
+
+.empty-state--panel {
+  padding: 40px 24px;
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-lg);
+}
+
+/* --- Pestañas --- */
+
+.tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--color-border);
+  margin-bottom: 16px;
+}
+
+.tab-btn {
+  padding: 10px 16px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--color-text-muted);
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.tab-btn.is-active {
+  color: var(--color-accent);
+  border-bottom-color: var(--color-accent);
+}
+
+/* --- Formularios --- */
+
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 14px;
+}
+
+.form-field label {
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--color-text-muted);
+  margin-bottom: 6px;
+}
+
+.form-field input, .form-field select, .form-field textarea {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 10px 12px;
+  border: 1px solid var(--color-border-input);
+  border-radius: var(--radius-sm);
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--color-text);
+  background: var(--color-surface);
+}
+
+.form-field--checkbox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.form-field--checkbox input { width: auto; }
+
+.form-field--checkbox label { margin-bottom: 0; }
+
+.btn {
+  padding: 10px 18px;
+  border-radius: var(--radius-sm);
+  font-family: inherit;
+  font-weight: 700;
+  font-size: 13px;
+  cursor: pointer;
+  border: none;
+}
+
+.btn-primario {
+  background: var(--color-accent);
+  color: #fff;
+}
+
+.btn-secundario {
+  background: #fff;
+  border: 1px solid var(--color-border-input);
+  color: var(--color-text);
+}
+
+.btn-peligro {
+  background: #fff;
+  border: 1px solid var(--color-danger);
+  color: var(--color-danger);
+}
+
+.btn-chico {
+  padding: 6px 12px;
+  font-size: 12px;
+}
+
+/* --- Modal --- */
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 61, 52, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+
+.modal-box {
+  background: var(--color-surface);
+  border-radius: var(--radius-lg);
+  padding: 24px;
+  width: 640px;
+  max-width: calc(100vw - 80px);
+  max-height: calc(100vh - 80px);
+  overflow-y: auto;
+}
+
+.modal-box__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 18px;
+}
+
+.modal-box__header h2 {
+  font-size: 18px;
+}
+
+.modal-cerrar {
+  cursor: pointer;
+  color: var(--color-text-faint);
+  font-size: 20px;
+  line-height: 1;
+  background: none;
+  border: none;
+}
+
+.linea-dinamica {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.linea-dinamica input, .linea-dinamica select {
+  padding: 8px 10px;
+  border: 1px solid var(--color-border-input);
+  border-radius: 8px;
+  font-family: inherit;
+  font-size: 12px;
+}

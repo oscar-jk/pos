@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <title>Punto X — Cuentas por Cobrar</title>
+  <link rel="stylesheet" href="../shared/styles.css" />
+  <link rel="stylesheet" href="./cxc.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <div id="sidebar-container"></div>
+    <div class="main-area">
+      <div id="topbar-container"></div>
+
+      <div class="page-header">
+        <div>
+          <h1>Cuentas por Cobrar</h1>
+          <p>Clientes, cobros aplicados a facturas, antigüedad de saldos y gestión de cobranza.</p>
+        </div>
+        <div id="acciones-tab"></div>
+      </div>
+
+      <div id="mensaje-error" class="mensaje-error" style="display:none;"></div>
+
+      <div class="tabs">
+        <button class="tab-btn is-active" data-tab="clientes">Clientes</button>
+        <button class="tab-btn" data-tab="cobrar">Cobrar</button>
+        <button class="tab-btn" data-tab="antiguedad">Antigüedad de saldos</button>
+        <button class="tab-btn" data-tab="vencidas">Facturas vencidas</button>
+        <button class="tab-btn" data-tab="gestion">Gestión de cobros</button>
+        <button class="tab-btn" data-tab="empleados">CxC empleados</button>
+      </div>
+
+      <div id="tab-clientes" class="tab-panel">
+        <input id="buscar-clientes" class="input-normal" type="text" placeholder="Buscar por nombre o RNC/cédula..." style="max-width:320px; margin-bottom:14px;" />
+        <table class="data-table">
+          <thead><tr><th>Nombre</th><th>Categoría</th><th>Límite de crédito</th><th>Saldo pendiente</th><th>Estado</th><th></th></tr></thead>
+          <tbody id="clientes-tbody"></tbody>
+        </table>
+        <div id="clientes-vacio" class="empty-state" style="display:none;">No hay clientes registrados. Crea el primero con "+ Nuevo cliente".</div>
+      </div>
+
+      <div id="tab-cobrar" class="tab-panel" style="display:none;">
+        <div class="form-field" style="max-width:420px;">
+          <label>Cliente</label>
+          <div class="buscador-producto" style="position:relative;">
+            <input id="cobrar-buscar-cliente" class="input-normal" type="text" placeholder="Buscar cliente..." autocomplete="off" />
+            <div id="cobrar-resultados-cliente" class="buscador-resultados" style="display:none;"></div>
+          </div>
+        </div>
+        <div id="cobrar-contenido" style="margin-top:16px;"></div>
+
+        <div class="form-seccion">
+          <div class="card__title" style="margin-bottom:10px;">Recibos recientes</div>
+          <table class="data-table">
+            <thead><tr><th>Número</th><th>Cliente</th><th>Forma de pago</th><th>Monto</th><th>Fecha</th><th>Estado</th><th></th></tr></thead>
+            <tbody id="recibos-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div id="tab-antiguedad" class="tab-panel" style="display:none;">
+        <table class="data-table">
+          <thead><tr><th>Cliente</th><th>Corriente</th><th>0-30 días</th><th>31-60 días</th><th>61-90 días</th><th>+90 días</th><th>Total</th></tr></thead>
+          <tbody id="antiguedad-tbody"></tbody>
+        </table>
+        <div id="antiguedad-vacio" class="empty-state" style="display:none;">No hay saldos pendientes.</div>
+      </div>
+
+      <div id="tab-vencidas" class="tab-panel" style="display:none;">
+        <table class="data-table">
+          <thead><tr><th>Cliente</th><th>Teléfono</th><th>Factura</th><th>Fecha</th><th>Saldo</th><th>Días de mora</th></tr></thead>
+          <tbody id="vencidas-tbody"></tbody>
+        </table>
+        <div id="vencidas-vacio" class="empty-state" style="display:none;">No hay facturas vencidas.</div>
+      </div>
+
+      <div id="tab-gestion" class="tab-panel" style="display:none;">
+        <table class="data-table">
+          <thead><tr><th>Cliente</th><th>Tipo</th><th>Notas</th><th>Resultado</th><th>Próximo contacto</th><th>Fecha</th></tr></thead>
+          <tbody id="gestion-tbody"></tbody>
+        </table>
+        <div id="gestion-vacio" class="empty-state" style="display:none;">Aún no hay gestiones de cobro registradas.</div>
+      </div>
+
+      <div id="tab-empleados" class="tab-panel" style="display:none;">
+        <table class="data-table">
+          <thead><tr><th>Empleado</th><th>Tipo</th><th>Monto</th><th>Saldo pendiente</th><th>Estado</th><th>Fecha</th><th></th></tr></thead>
+          <tbody id="empleados-tbody"></tbody>
+        </table>
+        <div id="empleados-vacio" class="empty-state" style="display:none;">No hay préstamos ni anticipos registrados.</div>
+      </div>
+
+    </div>
+  </div>
+
+  <script src="../shared/sidebar.js"></script>
+  <script src="../shared/topbar.js"></script>
+  <script src="../shared/shell.js"></script>
+  <script src="../shared/modal.js"></script>
+  <script src="./cxc.js"></script>
+</body>
+</html>

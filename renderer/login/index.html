@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <title>Punto X — Iniciar sesión</title>
+  <link rel="stylesheet" href="../shared/styles.css" />
+  <link rel="stylesheet" href="./login.css" />
+</head>
+<body>
+  <div>
+    <div class="login-card">
+      <div class="login-card__badge" id="login-badge">PX</div>
+      <div class="login-card__titulo" id="login-nombre-negocio">Punto X</div>
+      <div class="login-card__subtitulo">Inicia sesión para continuar</div>
+
+      <div id="login-error" class="login-error"></div>
+
+      <form class="login-form" id="login-form">
+        <div class="form-field">
+          <label>Usuario</label>
+          <input id="login-usuario" class="input-normal" type="text" autocomplete="username" autofocus />
+        </div>
+        <div class="form-field">
+          <label>Contraseña</label>
+          <input id="login-password" class="input-normal" type="password" autocomplete="current-password" />
+        </div>
+        <button type="submit" class="login-btn" id="login-btn">Iniciar sesión</button>
+      </form>
+    </div>
+    <div class="login-footer">Punto X · Sistema de Facturación · Creado por ODTeam X</div>
+  </div>
+
+  <script src="./login.js"></script>
+</body>
+</html>

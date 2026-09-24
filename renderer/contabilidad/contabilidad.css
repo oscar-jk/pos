@@ -1,0 +1,55 @@
+.tab-panel {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: 18px 20px;
+}
+
+.pill-estado {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 9px;
+  border-radius: 20px;
+  color: #fff;
+}
+
+.form-seccion {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--color-border);
+}
+
+.linea-dinamica {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.linea-dinamica input, .linea-dinamica select {
+  padding: 8px 10px;
+  border: 1px solid var(--color-border-input);
+  border-radius: 8px;
+  font-family: inherit;
+  font-size: 12px;
+}
+
+.cuenta-nivel-1 { font-weight: 800; }
+.cuenta-nivel-2 { padding-left: 20px; }
+
+.reporte-seccion {
+  margin-bottom: 20px;
+}
+
+.reporte-seccion__titulo {
+  font-family: var(--font-heading);
+  font-size: 14px;
+  font-weight: 700;
+  margin-bottom: 8px;
+  color: var(--color-accent);
+}
+
+.reporte-total-row td {
+  font-weight: 800;
+  border-top: 2px solid var(--color-border) !important;
+}

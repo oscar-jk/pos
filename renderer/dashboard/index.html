@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <title>Punto X — Dashboard</title>
+  <link rel="stylesheet" href="../shared/styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <div id="sidebar-container"></div>
+    <div class="main-area">
+      <div id="topbar-container"></div>
+
+      <div class="page-header">
+        <div>
+          <h1 id="saludo">Hola</h1>
+          <p id="fecha-turno">Cargando...</p>
+        </div>
+      </div>
+
+      <div class="kpi-grid">
+        <div class="kpi-card">
+          <div class="kpi-card__label"><span class="kpi-card__dot" style="background:var(--color-accent)"></span><span>Ventas de hoy</span></div>
+          <div class="kpi-card__value" id="kpi-ventas-hoy">RD$ 0</div>
+          <div class="kpi-card__sub" id="kpi-ventas-hoy-sub">Sin ventas registradas</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-card__label"><span class="kpi-card__dot" style="background:var(--color-info)"></span><span>Caja actual</span></div>
+          <div class="kpi-card__value" id="kpi-caja-actual">RD$ 0</div>
+          <div class="kpi-card__sub" id="kpi-caja-actual-sub">Sin turno abierto</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-card__label"><span class="kpi-card__dot" style="background:var(--color-warning)"></span><span>CxC pendiente</span></div>
+          <div class="kpi-card__value" id="kpi-cxc-pendiente">RD$ 0</div>
+          <div class="kpi-card__sub" id="kpi-cxc-pendiente-sub">0 facturas abiertas</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-card__label"><span class="kpi-card__dot" style="background:var(--color-danger)"></span><span>CxP pendiente</span></div>
+          <div class="kpi-card__value" id="kpi-cxp-pendiente">RD$ 0</div>
+          <div class="kpi-card__sub" id="kpi-cxp-pendiente-sub">0 facturas por pagar</div>
+        </div>
+      </div>
+
+      <div style="display:flex; gap:20px; align-items:flex-start;">
+        <div style="flex-grow:1; min-width:0; display:flex; flex-direction:column; gap:20px;">
+
+          <div class="card">
+            <div class="card__header">
+              <span class="card__title">Centro de alertas</span>
+            </div>
+            <div id="lista-alertas">
+              <div class="empty-state">Cargando alertas...</div>
+            </div>
+          </div>
+
+          <div>
+            <div class="card__title" style="margin-bottom:12px;">Ir al módulo</div>
+            <div class="module-grid" id="module-grid"></div>
+          </div>
+
+          <div class="card">
+            <div class="card__header">
+              <span class="card__title">Facturas recientes</span>
+              <a class="card__link" href="../ventas/index.html">Ver historial →</a>
+            </div>
+            <div id="facturas-recientes"><div class="empty-state">Aún no hay facturas registradas.</div></div>
+          </div>
+
+        </div>
+
+        <div style="width:300px; flex-shrink:0; display:flex; flex-direction:column; gap:18px;">
+          <div class="card">
+            <div class="card__title">Caja del día</div>
+            <p style="font-size:12px; color:var(--color-text-muted); margin: 4px 0 16px;">Total vendido hoy</p>
+            <div style="font-family:var(--font-heading); font-size:28px; font-weight:700; margin-bottom:14px;" id="caja-dia-total">RD$ 0</div>
+            <div id="caja-dia-estado" class="empty-state" style="padding: 8px 0 16px;">Sin turno de caja abierto.</div>
+            <a class="btn-primary" href="../caja/index.html">Ir a Caja y Tesorería</a>
+          </div>
+
+          <div class="panel-dark">
+            <div class="card__title">Resumen de alertas</div>
+            <div style="display:flex; flex-direction:column; gap:12px;">
+              <div class="panel-dark__row"><span>Productos por vencer</span><span id="resumen-vencer">0</span></div>
+              <div class="panel-dark__row"><span>Productos bajo stock mínimo</span><span id="resumen-stock-bajo">0</span></div>
+              <div class="panel-dark__row"><span>Clientes con pago atrasado</span><span id="resumen-clientes-atrasados">0</span></div>
+              <div class="panel-dark__row"><span>Facturas por pagar próximas</span><span id="resumen-facturas-pagar">0</span></div>
+              <div class="panel-dark__row"><span>Empleados con deuda pendiente</span><span id="resumen-empleados-deuda">0</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <script src="../shared/sidebar.js"></script>
+  <script src="../shared/topbar.js"></script>
+  <script src="../shared/shell.js"></script>
+  <script src="./dashboard.js"></script>
+</body>
+</html>

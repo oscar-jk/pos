@@ -1,0 +1,469 @@
+<!DOCTYPE html>
+<html lang="es"><head>
+<meta charset="utf-8">
+<title>Punto X — Ventas y Facturación</title>
+<script src="bd4cf270-c434-45b0-a449-4b71900949a4"></script>
+<style>/* cyrillic-ext */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("8c2b71f7-30ec-44b1-9999-f68ae4c137c4") format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("bab87aba-32a7-4954-b0b8-db3f647e6ac0") format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* greek */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("c09af9ad-7f27-4201-9c07-f11f9526255b") format('woff2');
+  unicode-range: U+0370-0377, U+037A-037F, U+0384-038A, U+038C, U+038E-03A1, U+03A3-03FF;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("c287e1cd-8fa3-46da-8f79-4aab9ac8d406") format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("c57cc8fb-8cb6-4044-9f2d-b5592e9b223f") format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("11e6c081-f5c6-40d9-a4e5-429514f5f66a") format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* cyrillic-ext */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("8c2b71f7-30ec-44b1-9999-f68ae4c137c4") format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("bab87aba-32a7-4954-b0b8-db3f647e6ac0") format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* greek */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("c09af9ad-7f27-4201-9c07-f11f9526255b") format('woff2');
+  unicode-range: U+0370-0377, U+037A-037F, U+0384-038A, U+038C, U+038E-03A1, U+03A3-03FF;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("c287e1cd-8fa3-46da-8f79-4aab9ac8d406") format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("c57cc8fb-8cb6-4044-9f2d-b5592e9b223f") format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("11e6c081-f5c6-40d9-a4e5-429514f5f66a") format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* cyrillic-ext */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("8c2b71f7-30ec-44b1-9999-f68ae4c137c4") format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("bab87aba-32a7-4954-b0b8-db3f647e6ac0") format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* greek */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("c09af9ad-7f27-4201-9c07-f11f9526255b") format('woff2');
+  unicode-range: U+0370-0377, U+037A-037F, U+0384-038A, U+038C, U+038E-03A1, U+03A3-03FF;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("c287e1cd-8fa3-46da-8f79-4aab9ac8d406") format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("c57cc8fb-8cb6-4044-9f2d-b5592e9b223f") format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("11e6c081-f5c6-40d9-a4e5-429514f5f66a") format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* cyrillic-ext */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 800;
+  font-display: swap;
+  src: url("8c2b71f7-30ec-44b1-9999-f68ae4c137c4") format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 800;
+  font-display: swap;
+  src: url("bab87aba-32a7-4954-b0b8-db3f647e6ac0") format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* greek */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 800;
+  font-display: swap;
+  src: url("c09af9ad-7f27-4201-9c07-f11f9526255b") format('woff2');
+  unicode-range: U+0370-0377, U+037A-037F, U+0384-038A, U+038C, U+038E-03A1, U+03A3-03FF;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 800;
+  font-display: swap;
+  src: url("c287e1cd-8fa3-46da-8f79-4aab9ac8d406") format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 800;
+  font-display: swap;
+  src: url("c57cc8fb-8cb6-4044-9f2d-b5592e9b223f") format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 800;
+  font-display: swap;
+  src: url("11e6c081-f5c6-40d9-a4e5-429514f5f66a") format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'Sora';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("abbe36f0-1e5a-4ee3-915f-fd1961569441") format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'Sora';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("26b4d085-d54b-4da4-b31d-e2c153aa958e") format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'Sora';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("abbe36f0-1e5a-4ee3-915f-fd1961569441") format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'Sora';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("26b4d085-d54b-4da4-b31d-e2c153aa958e") format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+</style>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+  body{margin:0;font-family:'Manrope',system-ui,sans-serif;background:#F4F5F1;color:#1E2624}
+  a{color:inherit;text-decoration:none}
+  a:hover{opacity:0.85}
+  ::placeholder{color:#8A9490}
+  table{border-collapse:collapse}
+</style>
+</helmet>
+
+<div style="width: 1440px; height: 1040px; box-sizing: border-box; display: flex; background: #F4F5F1; overflow: hidden;">
+  <div style="width: 264px; flex-shrink: 0; background: #0F3D34; color: #E9F3EF; display: flex; flex-direction: column; padding: 28px 20px; box-sizing: border-box;">
+
+    <div style="display: flex; align-items: center; gap: 10px; padding: 0 8px 24px 8px;">
+      <div style="width: 38px; height: 38px; border-radius: 10px; background: {{accent}}; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-family:'Sora',sans-serif; font-weight: 800; font-size: 14px; color: #0F3D34;">{{businessInitials}}</div>
+      <div>
+        <div style="font-family:'Sora',sans-serif; font-weight: 700; font-size: 15px; line-height: 1.2;">{{businessName}}</div>
+        <div style="font-size: 10px; color: #7FA79C; letter-spacing: 0.3px; margin-top:1px;">Punto de venta</div>
+      </div>
+    </div>
+
+    <nav style="display: flex; flex-direction: column; gap: 2px;">
+      <a href="Main.dc.html" style="display:flex; align-items:center; gap:12px; padding:11px 12px; border-radius:10px; color:#B9CFC7; font-weight:600; font-size:14px;">
+        <svg width="18" height="18" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5"></path><path d="M5 9.5V20a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1V9.5"></path></svg>
+        Dashboard
+      </a>
+      <a href="Ventas.dc.html" aria-current="page" style="display:flex; align-items:center; gap:12px; padding:11px 12px; border-radius:10px; background:{{accent}}; color:#ffffff; font-weight:700; font-size:14px;">
+        <svg width="18" height="18" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h12v18l-2.5-1.6L13 21l-2.5-1.6L8 21l-2-1.4V3z"></path></svg>
+        Ventas y Facturación
+      </a>
+      <a href="Inventario.dc.html" style="display:flex; align-items:center; gap:12px; padding:11px 12px; border-radius:10px; color:#B9CFC7; font-weight:600; font-size:14px;">
+        <svg width="18" height="18" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"></path><path d="M12 12v9M4 7.5l8 4.5 8-4.5"></path></svg>
+        Inventario
+      </a>
+      <a href="Compras.dc.html" style="display:flex; align-items:center; gap:12px; padding:11px 12px; border-radius:10px; color:#B9CFC7; font-weight:600; font-size:14px;">
+        <svg width="18" height="18" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4h2l2.2 11.6a2 2 0 0 0 2 1.6h7.6a2 2 0 0 0 2-1.6L20 8H6"></path><circle cx="9" cy="20" r="1.4" fill="currentColor" stroke="none"></circle><circle cx="17" cy="20" r="1.4" fill="currentColor" stroke="none"></circle></svg>
+        Compras y Proveedores
+      </a>
+      <a href="CuentasPorCobrar.dc.html" style="display:flex; align-items:center; gap:12px; padding:11px 12px; border-radius:10px; color:#B9CFC7; font-weight:600; font-size:14px;">
+        <svg width="18" height="18" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="7" r="3.2"></circle><path d="M2.5 20c0-3.6 2.9-6 6.5-6s6.5 2.4 6.5 6"></path><circle cx="18" cy="16.5" r="3" fill="currentColor" stroke="none" opacity="0.35"></circle></svg>
+        Cuentas por Cobrar
+      </a>
+      <a href="CuentasPorPagar.dc.html" style="display:flex; align-items:center; gap:12px; padding:11px 12px; border-radius:10px; color:#B9CFC7; font-weight:600; font-size:14px;">
+        <svg width="18" height="18" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3h10l4 4v14H5z"></path><path d="M9 12h6M9 16h4" opacity="0.5"></path></svg>
+        Cuentas por Pagar
+      </a>
+      <a href="Caja.dc.html" style="display:flex; align-items:center; gap:12px; padding:11px 12px; border-radius:10px; color:#B9CFC7; font-weight:600; font-size:14px;">
+        <svg width="18" height="18" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="18" height="13" rx="2"></rect><path d="M3 10h18"></path><circle cx="16" cy="14" r="1.3" fill="currentColor" stroke="none"></circle></svg>
+        Caja y Tesorería
+      </a>
+      <a href="Contabilidad.dc.html" style="display:flex; align-items:center; gap:12px; padding:11px 12px; border-radius:10px; color:#B9CFC7; font-weight:600; font-size:14px;">
+        <svg width="18" height="18" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h9l3 3v15H6z"></path><path d="M9 8h6M9 12h6M9 16h4" opacity="0.5"></path></svg>
+        Contabilidad
+      </a>
+      <a href="Reportes.dc.html" style="display:flex; align-items:center; gap:12px; padding:11px 12px; border-radius:10px; color:#B9CFC7; font-weight:600; font-size:14px;">
+        <svg width="18" height="18" sc-camel-view-box="0 0 24 24" fill="currentColor" stroke="none"><rect x="4" y="13" width="4" height="7" rx="1" opacity="0.4"></rect><rect x="10" y="8" width="4" height="12" rx="1"></rect><rect x="16" y="4" width="4" height="16" rx="1" opacity="0.65"></rect></svg>
+        Reportes
+      </a>
+    </nav>
+
+    <div style="margin-top: auto; display: flex; flex-direction: column; gap: 2px; border-top: 1px solid #1E5A4E; padding-top: 12px;">
+      <a href="Configuracion.dc.html" style="display:flex; align-items:center; gap:12px; padding:11px 12px; border-radius:10px; color:#B9CFC7; font-weight:600; font-size:14px;">
+        <svg width="18" height="18" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 13.5c.1-.5.1-1 0-1.5l1.6-1.3-1.6-2.8-1.9.6a7 7 0 0 0-1.3-.8l-.3-2h-3.2l-.3 2c-.5.2-.9.5-1.3.8l-1.9-.6-1.6 2.8 1.6 1.3c-.1.5-.1 1 0 1.5l-1.6 1.3 1.6 2.8 1.9-.6c.4.3.8.6 1.3.8l.3 2h3.2l.3-2c.5-.2.9-.5 1.3-.8l1.9.6 1.6-2.8z"></path></svg>
+        Configuración
+      </a>
+      <div style="padding:10px 12px 0 12px; font-size:10px; color:#5E8A7E; letter-spacing:0.2px; line-height:1.5;">Punto X · Sistema de Facturación<br>Creado por ODTeam X</div>
+    </div>
+  </div>
+  <div style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; padding: 24px 28px; box-sizing: border-box; gap: 20px; overflow: hidden;">
+
+    <div style="display: flex; align-items: center; gap: 16px;">
+      <div style="flex-grow: 1; position: relative;">
+        <label for="search" style="position:absolute; left:14px; top:50%; transform:translateY(-50%);">
+          <svg width="16" height="16" sc-camel-view-box="0 0 24 24" fill="none" stroke="#8A9490" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><path d="M21 21l-4.3-4.3"></path></svg>
+        </label>
+        <input id="search" type="text" placeholder="Buscar cliente, producto o factura…" style="width:100%; box-sizing:border-box; padding:11px 14px 11px 40px; border-radius:12px; border:1px solid #DCE2DC; background:#ffffff; font-family:inherit; font-size:14px; color:#1E2624;">
+      </div>
+      <button aria-label="Notificaciones" style="position:relative; width:42px; height:42px; border-radius:12px; border:1px solid #DCE2DC; background:#ffffff; display:flex; align-items:center; justify-content:center; cursor:pointer;">
+        <svg width="19" height="19" sc-camel-view-box="0 0 24 24" fill="none" stroke="#1E2624" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 3 1 5 2 6H4c1-1 2-3 2-6z"></path><path d="M9.5 18a2.5 2.5 0 0 0 5 0"></path></svg>
+        <span style="position:absolute; top:-4px; right:-4px; background:#DC2626; color:#fff; font-size:10px; font-weight:800; width:18px; height:18px; border-radius:50%; display:flex; align-items:center; justify-content:center;">5</span>
+      </button>
+      <div style="display:flex; align-items:center; gap:10px; padding-left:8px; border-left:1px solid #DCE2DC;">
+        <div style="width:40px; height:40px; border-radius:50%; background:{{accent}}; color:#fff; font-weight:800; font-size:14px; display:flex; align-items:center; justify-content:center;">OD</div>
+        <div>
+          <div style="font-size:13px; font-weight:700; line-height:1.2;">Oscar Núñez</div>
+          <div style="font-size:11px; color:#6B7674; line-height:1.2;">Administrador</div>
+        </div>
+      </div>
+    </div>
+
+    <div style="display:flex; align-items:flex-end; justify-content:space-between;">
+      <div>
+        <div style="font-family:'Sora',sans-serif; font-size:22px; font-weight:700;">Nueva factura</div>
+        <div style="font-size:13px; color:#6B7674; margin-top:2px;">Turno abierto — vendedor: Katherine Ventura</div>
+      </div>
+
+      <a href="#" style="padding:10px 18px; border-radius:10px; background:{{accent}}; color:#fff; font-family:inherit; font-weight:700; font-size:13px;">+ Nueva factura</a>
+    </div>
+
+    <div style="display:flex; gap:20px; flex-grow:1; min-height:0;">
+
+      <div style="flex-grow:1; min-width:0; display:flex; flex-direction:column; gap:16px;">
+
+        <div style="display:flex; gap:8px;">
+          <div style="padding:8px 16px; border-radius:20px; background:{{accent}}; color:#fff; font-size:12px; font-weight:700;">Todos</div>
+          <div style="padding:8px 16px; border-radius:20px; background:#ffffff; border:1px solid #E7EBE6; color:#6B7674; font-size:12px; font-weight:700;">Bebidas</div>
+          <div style="padding:8px 16px; border-radius:20px; background:#ffffff; border:1px solid #E7EBE6; color:#6B7674; font-size:12px; font-weight:700;">Comida</div>
+          <div style="padding:8px 16px; border-radius:20px; background:#ffffff; border:1px solid #E7EBE6; color:#6B7674; font-size:12px; font-weight:700;">Limpieza</div>
+          <div style="padding:8px 16px; border-radius:20px; background:#ffffff; border:1px solid #E7EBE6; color:#6B7674; font-size:12px; font-weight:700;">Abarrotes</div>
+        </div>
+
+        <div style="display:grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap:12px;">
+          <sc-for list="{{productos}}" as="p" hint-placeholder-count="8">
+            <a href="#" style="background:#ffffff; border:1px solid #E7EBE6; border-radius:14px; padding:14px; display:flex; flex-direction:column; gap:6px;">
+              <div style="width:100%; height:64px; border-radius:10px; background:#F0F3EF; display:flex; align-items:center; justify-content:center; font-size:11px; color:#8A9490; font-weight:700;">{{p.codigo}}</div>
+              <div style="font-size:12px; font-weight:700; line-height:1.3;">{{p.nombre}}</div>
+              <div style="font-size:12px; font-weight:800; color:{{accent}};">{{p.precio}}</div>
+            </a>
+          </sc-for>
+        </div>
+
+        <div style="background:#ffffff; border-radius:16px; padding:16px 20px; border:1px solid #E7EBE6; flex-grow:1; overflow-y:auto;">
+          <div style="font-family:'Sora',sans-serif; font-size:14px; font-weight:700; margin-bottom:10px;">Carrito</div>
+          <div style="display:flex; padding:6px 6px; font-size:11px; font-weight:800; color:#8A9490; text-transform:uppercase; border-bottom:1px solid #EEF1EC;">
+            <span style="flex-grow:1;">Producto</span><span style="width:70px; text-align:center;">Cant.</span><span style="width:100px; text-align:right;">Precio</span><span style="width:100px; text-align:right;">Subtotal</span><span style="width:30px;"></span>
+          </div>
+          <sc-for list="{{carrito}}" as="c" hint-placeholder-count="3">
+            <div style="display:flex; align-items:center; padding:10px 6px; font-size:13px; border-bottom:1px solid #F3F5F1;">
+              <span style="flex-grow:1; font-weight:600;">{{c.nombre}}</span>
+              <span style="width:70px; text-align:center;">{{c.cant}}</span>
+              <span style="width:100px; text-align:right;">{{c.precio}}</span>
+              <span style="width:100px; text-align:right; font-weight:700;">{{c.subtotal}}</span>
+              <span style="width:30px; text-align:center; color:#DC2626;">✕</span>
+            </div>
+          </sc-for>
+        </div>
+
+      </div>
+
+      <div style="width: 320px; flex-shrink: 0; background:#ffffff; border-radius:16px; padding:20px; border:1px solid #E7EBE6; display:flex; flex-direction:column; gap:16px;">
+
+        <div>
+          <label style="display:block; font-size:11px; font-weight:700; color:#6B7674; margin-bottom:6px;">Cliente</label>
+          <div style="display:flex; align-items:center; justify-content:space-between; padding:10px 12px; border:1px solid #DCE2DC; border-radius:10px;">
+            <span style="font-size:13px; font-weight:600;">Consumidor final</span>
+            <a href="CuentasPorCobrar.dc.html" style="font-size:11px; font-weight:700; color:{{accent}};">Cambiar</a>
+          </div>
+        </div>
+
+        <div>
+          <label style="display:block; font-size:11px; font-weight:700; color:#6B7674; margin-bottom:6px;">Comprobante fiscal</label>
+          <div style="padding:10px 12px; border:1px solid #DCE2DC; border-radius:10px; font-size:13px; font-weight:600;">B02 — Consumo</div>
+        </div>
+
+        <div style="display:flex; gap:8px;">
+          <div style="flex-grow:1; text-align:center; padding:9px; border-radius:10px; background:{{accent}}; color:#fff; font-size:12px; font-weight:700;">Contado</div>
+          <div style="flex-grow:1; text-align:center; padding:9px; border-radius:10px; background:#F0F3EF; color:#6B7674; font-size:12px; font-weight:700;">Crédito</div>
+        </div>
+
+        <div style="border-top:1px solid #EEF1EC; padding-top:14px; display:flex; flex-direction:column; gap:8px;">
+          <div style="display:flex; justify-content:space-between; font-size:13px;"><span style="color:#6B7674;">Subtotal</span><span>RD$ 1,610.17</span></div>
+          <div style="display:flex; justify-content:space-between; font-size:13px;"><span style="color:#6B7674;">Descuento</span><span>— RD$ 0.00</span></div>
+          <div style="display:flex; justify-content:space-between; font-size:13px;"><span style="color:#6B7674;">ITBIS incluido</span><span>RD$ 289.83</span></div>
+          <div style="display:flex; justify-content:space-between; font-size:19px; font-weight:800; margin-top:4px;"><span>Total</span><span>RD$ 1,900.00</span></div>
+        </div>
+
+        <div style="display:grid; grid-template-columns:repeat(2,1fr); gap:8px;">
+          <div style="text-align:center; padding:10px; border-radius:10px; border:1px solid #DCE2DC; font-size:12px; font-weight:700;">Efectivo</div>
+          <div style="text-align:center; padding:10px; border-radius:10px; border:1px solid #DCE2DC; font-size:12px; font-weight:700;">Tarjeta</div>
+          <div style="text-align:center; padding:10px; border-radius:10px; border:1px solid #DCE2DC; font-size:12px; font-weight:700;">Transferencia</div>
+          <div style="text-align:center; padding:10px; border-radius:10px; border:1px solid #DCE2DC; font-size:12px; font-weight:700;">Mixto</div>
+        </div>
+
+        <button style="margin-top:auto; padding:13px; border-radius:10px; border:none; background:{{accent}}; color:#fff; font-family:inherit; font-weight:800; font-size:14px; cursor:pointer;">Cobrar RD$ 1,900.00</button>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script="" data-props="{&quot;accent&quot;:{&quot;editor&quot;:&quot;color&quot;,&quot;default&quot;:&quot;#146356&quot;,&quot;options&quot;:[&quot;#146356&quot;,&quot;#0F3D34&quot;,&quot;#2563EB&quot;,&quot;#8A3324&quot;]},&quot;businessName&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;Tu Negocio S.R.L.&quot;},&quot;businessInitials&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;TN&quot;},&quot;$preview&quot;:{&quot;width&quot;:1440,&quot;height&quot;:1040}}">
+class Component extends DCLogic {
+  renderVals() {
+    return {
+      accent: this.props.accent ?? '#146356',
+      businessName: this.props.businessName ?? 'Tu Negocio S.R.L.',
+      businessInitials: this.props.businessInitials ?? 'TN',
+      productos: [
+        { codigo: 'PRD-001', nombre: 'Coca-Cola 1.5L', precio: 'RD$ 120' },
+        { codigo: 'PRD-014', nombre: 'Pan de agua (6)', precio: 'RD$ 60' },
+        { codigo: 'PRD-027', nombre: 'Detergente 1L', precio: 'RD$ 185' },
+        { codigo: 'PRD-033', nombre: 'Leche entera 1L', precio: 'RD$ 95' },
+        { codigo: 'PRD-041', nombre: 'Arroz 5lb', precio: 'RD$ 210' },
+        { codigo: 'PRD-052', nombre: 'Huevos (12)', precio: 'RD$ 175' },
+        { codigo: 'PRD-063', nombre: 'Café molido 1lb', precio: 'RD$ 240' },
+        { codigo: 'PRD-078', nombre: 'Jabón de baño', precio: 'RD$ 55' }
+      ],
+      carrito: [
+        { nombre: 'Coca-Cola 1.5L', cant: '2', precio: 'RD$ 120', subtotal: 'RD$ 240' },
+        { nombre: 'Pan de agua (6)', cant: '1', precio: 'RD$ 60', subtotal: 'RD$ 60' },
+        { nombre: 'Detergente 1L', cant: '3', precio: 'RD$ 185', subtotal: 'RD$ 555' }
+      ]
+    };
+  }
+}
+</script>
+
+
+</body></html>

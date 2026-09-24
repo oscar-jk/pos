@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <title>Punto X — Inventario</title>
+  <link rel="stylesheet" href="../shared/styles.css" />
+  <link rel="stylesheet" href="./inventario.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <div id="sidebar-container"></div>
+    <div class="main-area">
+      <div id="topbar-container"></div>
+
+      <div class="page-header">
+        <div>
+          <h1>Inventario</h1>
+          <p>Productos, existencias, ajustes, mermas y transferencias entre almacenes.</p>
+        </div>
+        <div id="acciones-tab"></div>
+      </div>
+
+      <div id="mensaje-error" class="mensaje-error" style="display:none;"></div>
+
+      <div class="tabs">
+        <button class="tab-btn is-active" data-tab="productos">Productos</button>
+        <button class="tab-btn" data-tab="existencias">Existencias</button>
+        <button class="tab-btn" data-tab="ajustes">Ajustes</button>
+        <button class="tab-btn" data-tab="mermas">Mermas y averías</button>
+        <button class="tab-btn" data-tab="transferencias">Transferencias</button>
+        <button class="tab-btn" data-tab="vencimientos">Vencimientos</button>
+      </div>
+
+      <div id="tab-productos" class="tab-panel">
+        <input id="buscar-productos" class="input-normal" type="text" placeholder="Buscar por código o descripción..." style="max-width:320px; margin-bottom:14px;" />
+        <table class="data-table">
+          <thead>
+            <tr><th>Código</th><th>Descripción</th><th>Categoría</th><th>Precio detalle</th><th>Costo</th><th>Existencia</th><th></th></tr>
+          </thead>
+          <tbody id="productos-tbody"></tbody>
+        </table>
+        <div id="productos-vacio" class="empty-state" style="display:none;">No hay productos registrados. Crea el primero con "+ Nuevo producto".</div>
+      </div>
+
+      <div id="tab-existencias" class="tab-panel" style="display:none;">
+        <table class="data-table">
+          <thead>
+            <tr><th>Código</th><th>Descripción</th><th>Existencia</th><th>Comprometida</th><th>Stock mínimo</th><th>Estado</th></tr>
+          </thead>
+          <tbody id="existencias-tbody"></tbody>
+        </table>
+      </div>
+
+      <div id="tab-ajustes" class="tab-panel" style="display:none;">
+        <table class="data-table">
+          <thead>
+            <tr><th>Número</th><th>Tipo</th><th>Almacén</th><th>Motivo</th><th>Fecha</th><th>Usuario</th></tr>
+          </thead>
+          <tbody id="ajustes-tbody"></tbody>
+        </table>
+        <div id="ajustes-vacio" class="empty-state" style="display:none;">Aún no hay ajustes registrados.</div>
+      </div>
+
+      <div id="tab-mermas" class="tab-panel" style="display:none;">
+        <table class="data-table">
+          <thead>
+            <tr><th>Número</th><th>Producto</th><th>Almacén</th><th>Cantidad</th><th>Motivo</th><th>Fecha</th></tr>
+          </thead>
+          <tbody id="mermas-tbody"></tbody>
+        </table>
+        <div id="mermas-vacio" class="empty-state" style="display:none;">Aún no hay mermas registradas.</div>
+      </div>
+
+      <div id="tab-transferencias" class="tab-panel" style="display:none;">
+        <table class="data-table">
+          <thead>
+            <tr><th>Número</th><th>Origen</th><th>Destino</th><th>Fecha</th><th>Usuario</th></tr>
+          </thead>
+          <tbody id="transferencias-tbody"></tbody>
+        </table>
+        <div id="transferencias-vacio" class="empty-state" style="display:none;">Aún no hay transferencias registradas.</div>
+      </div>
+
+      <div id="tab-vencimientos" class="tab-panel" style="display:none;">
+        <table class="data-table">
+          <thead>
+            <tr><th>Producto</th><th>Lote</th><th>Almacén</th><th>Cantidad</th><th>Vence</th><th>Días restantes</th></tr>
+          </thead>
+          <tbody id="vencimientos-tbody"></tbody>
+        </table>
+        <div id="vencimientos-vacio" class="empty-state" style="display:none;">No hay productos próximos a vencer.</div>
+      </div>
+
+    </div>
+  </div>
+
+  <script src="../shared/sidebar.js"></script>
+  <script src="../shared/topbar.js"></script>
+  <script src="../shared/shell.js"></script>
+  <script src="../shared/modal.js"></script>
+  <script src="./inventario.js"></script>
+</body>
+</html>

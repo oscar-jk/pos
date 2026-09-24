@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <title>Punto X — Compras y Proveedores</title>
+  <link rel="stylesheet" href="../shared/styles.css" />
+  <link rel="stylesheet" href="./compras.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <div id="sidebar-container"></div>
+    <div class="main-area">
+      <div id="topbar-container"></div>
+
+      <div class="page-header">
+        <div>
+          <h1>Compras y Proveedores</h1>
+          <p>Proveedores, órdenes de compra, recepción de mercancía y análisis de costos.</p>
+        </div>
+        <div id="acciones-tab"></div>
+      </div>
+
+      <div id="mensaje-error" class="mensaje-error" style="display:none;"></div>
+
+      <div class="tabs">
+        <button class="tab-btn is-active" data-tab="proveedores">Proveedores</button>
+        <button class="tab-btn" data-tab="ordenes">Órdenes de compra</button>
+        <button class="tab-btn" data-tab="facturas">Facturas de compra</button>
+        <button class="tab-btn" data-tab="comparacion">Comparación de costos</button>
+        <button class="tab-btn" data-tab="porProducto">Compras por producto</button>
+      </div>
+
+      <div id="tab-proveedores" class="tab-panel">
+        <input id="buscar-proveedores" class="input-normal" type="text" placeholder="Buscar por nombre o RNC..." style="max-width:320px; margin-bottom:14px;" />
+        <table class="data-table">
+          <thead><tr><th>Nombre</th><th>RNC</th><th>Días de crédito</th><th>Saldo pendiente</th><th></th></tr></thead>
+          <tbody id="proveedores-tbody"></tbody>
+        </table>
+        <div id="proveedores-vacio" class="empty-state" style="display:none;">No hay proveedores registrados. Crea el primero con "+ Nuevo proveedor".</div>
+      </div>
+
+      <div id="tab-ordenes" class="tab-panel" style="display:none;">
+        <table class="data-table">
+          <thead><tr><th>Número</th><th>Proveedor</th><th>Fecha</th><th>% Recibido</th><th>Estado</th><th></th></tr></thead>
+          <tbody id="ordenes-tbody"></tbody>
+        </table>
+        <div id="ordenes-vacio" class="empty-state" style="display:none;">Aún no hay órdenes de compra registradas.</div>
+      </div>
+
+      <div id="tab-facturas" class="tab-panel" style="display:none;">
+        <table class="data-table">
+          <thead><tr><th>Número</th><th>Proveedor</th><th>Fecha</th><th>Condición</th><th>Origen</th><th>Total</th><th>Estado</th><th></th></tr></thead>
+          <tbody id="facturas-tbody"></tbody>
+        </table>
+        <div id="facturas-vacio" class="empty-state" style="display:none;">Aún no hay facturas de compra registradas.</div>
+      </div>
+
+      <div id="tab-comparacion" class="tab-panel" style="display:none;">
+        <div class="form-field" style="max-width:420px; margin-bottom:14px;">
+          <label>Producto</label>
+          <div class="buscador-producto" style="position:relative;">
+            <input id="cmp-buscar-producto" class="input-normal" type="text" placeholder="Buscar producto..." autocomplete="off" />
+            <div id="cmp-resultados-producto" class="buscador-resultados" style="display:none;"></div>
+          </div>
+        </div>
+        <div id="cmp-producto-sel" style="font-weight:700; margin-bottom:10px;"></div>
+        <table class="data-table">
+          <thead><tr><th>Fecha</th><th>Factura</th><th>Proveedor</th><th>Costo unitario</th><th>Cantidad</th></tr></thead>
+          <tbody id="comparacion-tbody"></tbody>
+        </table>
+        <div id="comparacion-vacio" class="empty-state">Busca un producto para ver el historial de costos por proveedor.</div>
+      </div>
+
+      <div id="tab-porProducto" class="tab-panel" style="display:none;">
+        <div class="form-grid" style="max-width:420px; margin-bottom:14px;">
+          <div class="form-field"><label>Desde</label><input id="pp-desde" type="date" class="input-normal" /></div>
+          <div class="form-field"><label>Hasta</label><input id="pp-hasta" type="date" class="input-normal" /></div>
+        </div>
+        <table class="data-table">
+          <thead><tr><th>Código</th><th>Producto</th><th>Cantidad comprada</th><th>Costo total</th></tr></thead>
+          <tbody id="porProducto-tbody"></tbody>
+        </table>
+        <div id="porProducto-vacio" class="empty-state" style="display:none;">No hay compras registradas en el rango seleccionado.</div>
+      </div>
+
+    </div>
+  </div>
+
+  <script src="../shared/sidebar.js"></script>
+  <script src="../shared/topbar.js"></script>
+  <script src="../shared/shell.js"></script>
+  <script src="../shared/modal.js"></script>
+  <script src="./compras.js"></script>
+</body>
+</html>
