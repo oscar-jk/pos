@@ -81,10 +81,11 @@ function crearFactura(db, payload) {
   const {
     modoVenta, sucursalId, almacenId, cajaId, clienteId, vendedorId, usuarioId,
     condicionPago, tipoNcfCodigo, nivelPrecio, monedaId, tasaCambio,
-    lineas, descuentoGlobalPct, pagos, esDelivery, direccionEntrega, repartidorId,
+    lineas, descuentoGlobalPct, pagos, esDelivery, direccionEntrega, repartidorId, cuentaAbiertaId,
   } = payload;
 
   if (!lineas || lineas.length === 0) throw new Error('La factura debe tener al menos una línea');
+  const cuentaAbierta = cuentaAbiertaId ? validarCobroCuentaAbierta(db, cuentaAbiertaId, lineas) : null;
 
   const limiteRol = obtenerLimiteDescuentoRol(db, usuarioId);
   const puedeExceder = Boolean(limiteRol.puede_exceder);
@@ -268,7 +269,167 @@ function crearFactura(db, payload) {
     usuarioId, modulo: 'ventas', entidad: 'documentos_venta', entidadId: documentoId, accion: 'crear', detalle: { numero, total },
   });
 
+  if (cuentaAbierta) {
+    db.prepare(
+      `UPDATE cuentas_abiertas SET estado = 'facturada', documento_venta_id = ?, fecha_cierre = strftime('%Y-%m-%dT%H:%M:%fZ','now'),
+         updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?`
+    ).run(documentoId, cuentaAbierta.id);
+    configuracion.registrarAuditoria(db, {
+      usuarioId, modulo: 'ventas', entidad: 'cuentas_abiertas', entidadId: cuentaAbierta.id, accion: 'cobrar', detalle: { numero: cuentaAbierta.numero, factura: numero, total },
+    });
+  }
+
   return documentoId;
+}
+
+// =========================================================================
+// Cuentas abiertas (módulo opcional, tipo bar/mesa)
+// =========================================================================
+//
+// Una cuenta abierta no es un documento fiscal ni mueve inventario: es una lista de productos
+// que se van pidiendo. Al cobrarla se crea una factura normal (crearFactura con
+// cuentaAbiertaId) y ahí se valida existencia, NCF, pagos y asientos como cualquier venta.
+
+function exigirCuentasAbiertas(db) {
+  configuracion.exigirModulo(db, 'cuentas_abiertas');
+}
+
+function obtenerCuentaAbiertaFila(db, cuentaId) {
+  const cuenta = db.prepare('SELECT * FROM cuentas_abiertas WHERE id = ? AND deleted_at IS NULL').get(cuentaId);
+  if (!cuenta) throw new Error('Cuenta no encontrada');
+  return cuenta;
+}
+
+function exigirCuentaAbierta(cuenta) {
+  if (cuenta.estado !== 'abierta') throw new Error(`La cuenta "${cuenta.nombre}" ya está ${cuenta.estado === 'facturada' ? 'cobrada' : 'anulada'}`);
+}
+
+function lineasCuenta(db, cuentaId) {
+  return db
+    .prepare(
+      `SELECT d.*, u.nombre_completo AS usuario_nombre FROM cuentas_abiertas_detalle d
+       LEFT JOIN usuarios u ON u.id = d.usuario_id
+       WHERE d.cuenta_id = ? AND d.deleted_at IS NULL ORDER BY d.created_at ASC`
+    )
+    .all(cuentaId);
+}
+
+function cantidadesPorProducto(lineas, campoProducto, campoCantidad) {
+  const mapa = new Map();
+  for (const l of lineas) mapa.set(l[campoProducto], redondear((mapa.get(l[campoProducto]) || 0) + Number(l[campoCantidad])));
+  return mapa;
+}
+
+// Lo que se factura tiene que ser exactamente lo que tiene la cuenta (mismos productos y
+// cantidades): si no, quitar algo al cobrar evitaría el permiso y el registro de "quitar línea".
+function validarCobroCuentaAbierta(db, cuentaId, lineasFactura) {
+  exigirCuentasAbiertas(db);
+  const cuenta = obtenerCuentaAbiertaFila(db, cuentaId);
+  exigirCuentaAbierta(cuenta);
+  const enCuenta = cantidadesPorProducto(lineasCuenta(db, cuentaId), 'producto_id', 'cantidad');
+  const enFactura = cantidadesPorProducto(lineasFactura, 'productoId', 'cantidad');
+  const iguales = enCuenta.size === enFactura.size
+    && [...enCuenta].every(([productoId, cantidad]) => Math.abs((enFactura.get(productoId) || 0) - cantidad) < 0.001);
+  if (!iguales) throw new Error('Los productos a cobrar no coinciden con los de la cuenta. Haz los cambios en la cuenta abierta antes de cobrar.');
+  return cuenta;
+}
+
+function obtenerCuentaAbierta(db, cuentaId) {
+  const cuenta = db
+    .prepare(
+      `SELECT c.*, u.nombre_completo AS usuario_nombre, dv.numero AS factura_numero, dv.ncf AS factura_ncf
+       FROM cuentas_abiertas c LEFT JOIN usuarios u ON u.id = c.usuario_id
+       LEFT JOIN documentos_venta dv ON dv.id = c.documento_venta_id
+       WHERE c.id = ? AND c.deleted_at IS NULL`
+    )
+    .get(cuentaId);
+  if (!cuenta) return null;
+  cuenta.lineas = lineasCuenta(db, cuentaId).map((l) => {
+    const producto = inventario.obtenerProducto(db, l.producto_id, cuenta.almacen_id);
+    return { ...l, producto, precio_unitario: producto.precio_detalle, subtotal: redondear(producto.precio_detalle * l.cantidad) };
+  });
+  cuenta.total = redondear(cuenta.lineas.reduce((a, l) => a + l.subtotal, 0));
+  return cuenta;
+}
+
+function listarCuentasAbiertas(db, { estado = 'abierta', limite = 100 } = {}) {
+  exigirCuentasAbiertas(db);
+  return db
+    .prepare('SELECT id FROM cuentas_abiertas WHERE estado = ? AND deleted_at IS NULL ORDER BY created_at ASC LIMIT ?')
+    .all(estado, limite)
+    .map(({ id }) => {
+      const c = obtenerCuentaAbierta(db, id);
+      return { ...c, cantidad_productos: redondear(c.lineas.reduce((a, l) => a + l.cantidad, 0)) };
+    });
+}
+
+function abrirCuenta(db, { nombre, sucursalId, almacenId, usuarioId }) {
+  exigirCuentasAbiertas(db);
+  session.requerirPermiso('ventas.cuenta_abierta.gestionar');
+  const nombreLimpio = (nombre || '').trim();
+  if (!nombreLimpio) throw new Error('Indica la mesa o el nombre de la cuenta');
+  const repetida = db.prepare("SELECT 1 FROM cuentas_abiertas WHERE estado = 'abierta' AND deleted_at IS NULL AND lower(nombre) = lower(?)").get(nombreLimpio);
+  if (repetida) throw new Error(`Ya hay una cuenta abierta con el nombre "${nombreLimpio}"`);
+  const { maximo } = db.prepare('SELECT MAX(CAST(numero AS INTEGER)) AS maximo FROM cuentas_abiertas').get();
+  const id = crypto.randomUUID();
+  const numero = String((maximo || 0) + 1).padStart(6, '0');
+  db.prepare('INSERT INTO cuentas_abiertas (id, numero, nombre, sucursal_id, almacen_id, usuario_id) VALUES (?, ?, ?, ?, ?, ?)')
+    .run(id, numero, nombreLimpio, sucursalId || null, almacenId, usuarioId);
+  configuracion.registrarAuditoria(db, { usuarioId, modulo: 'ventas', entidad: 'cuentas_abiertas', entidadId: id, accion: 'crear', detalle: { numero, nombre: nombreLimpio } });
+  return id;
+}
+
+function agregarProductoCuenta(db, { cuentaId, productoId, cantidad, nota, usuarioId }) {
+  exigirCuentasAbiertas(db);
+  session.requerirPermiso('ventas.cuenta_abierta.gestionar');
+  const cuenta = obtenerCuentaAbiertaFila(db, cuentaId);
+  exigirCuentaAbierta(cuenta);
+  const cant = redondear(Number(cantidad) || 0);
+  if (cant <= 0) throw new Error('La cantidad debe ser mayor a cero');
+  const producto = inventario.obtenerProducto(db, productoId, cuenta.almacen_id);
+  if (!producto) throw new Error('Producto no encontrado');
+  if (!producto.permite_venta_negativo) {
+    const disponible = inventario.existenciaDisponibleParaVenta(db, producto, cuenta.almacen_id);
+    const yaEnCuenta = cantidadesPorProducto(lineasCuenta(db, cuentaId), 'producto_id', 'cantidad').get(productoId) || 0;
+    if (yaEnCuenta + cant > disponible + 0.001) {
+      throw new Error(`Existencia insuficiente de "${producto.descripcion}" (disponible: ${disponible}${yaEnCuenta ? `, ya en la cuenta: ${yaEnCuenta}` : ''})`);
+    }
+  }
+  const id = crypto.randomUUID();
+  db.prepare('INSERT INTO cuentas_abiertas_detalle (id, cuenta_id, producto_id, cantidad, nota, usuario_id) VALUES (?, ?, ?, ?, ?, ?)')
+    .run(id, cuentaId, productoId, cant, (nota || '').trim() || null, usuarioId);
+  db.prepare("UPDATE cuentas_abiertas SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?").run(cuentaId);
+  return id;
+}
+
+function quitarLineaCuenta(db, { lineaId, motivo, usuarioId }) {
+  exigirCuentasAbiertas(db);
+  session.requerirPermiso('ventas.cuenta_abierta.anular');
+  const linea = db.prepare('SELECT * FROM cuentas_abiertas_detalle WHERE id = ? AND deleted_at IS NULL').get(lineaId);
+  if (!linea) throw new Error('Línea no encontrada');
+  exigirCuentaAbierta(obtenerCuentaAbiertaFila(db, linea.cuenta_id));
+  if (!motivo || !motivo.trim()) throw new Error('Quitar un producto de la cuenta requiere un motivo');
+  db.prepare(
+    `UPDATE cuentas_abiertas_detalle SET deleted_at = strftime('%Y-%m-%dT%H:%M:%fZ','now'), motivo_eliminacion = ?, usuario_elimino_id = ?,
+       updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?`
+  ).run(motivo.trim(), usuarioId, lineaId);
+  configuracion.registrarAuditoria(db, {
+    usuarioId, modulo: 'ventas', entidad: 'cuentas_abiertas_detalle', entidadId: lineaId, accion: 'quitar',
+    detalle: { cuentaId: linea.cuenta_id, productoId: linea.producto_id, cantidad: linea.cantidad, motivo: motivo.trim() },
+  });
+}
+
+function anularCuentaAbierta(db, { cuentaId, motivo, usuarioId }) {
+  exigirCuentasAbiertas(db);
+  session.requerirPermiso('ventas.cuenta_abierta.anular');
+  const cuenta = obtenerCuentaAbiertaFila(db, cuentaId);
+  exigirCuentaAbierta(cuenta);
+  if (!motivo || !motivo.trim()) throw new Error('Anular una cuenta requiere un motivo');
+  db.prepare(
+    `UPDATE cuentas_abiertas SET estado = 'anulada', motivo_anulacion = ?, usuario_anulo_id = ?, fecha_cierre = strftime('%Y-%m-%dT%H:%M:%fZ','now'),
+       updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?`
+  ).run(motivo.trim(), usuarioId, cuentaId);
+  configuracion.registrarAuditoria(db, { usuarioId, modulo: 'ventas', entidad: 'cuentas_abiertas', entidadId: cuentaId, accion: 'anular', detalle: { numero: cuenta.numero, motivo: motivo.trim() } });
 }
 
 function anularFactura(db, { documentoId, motivo, usuarioId }) {
@@ -841,6 +1002,23 @@ function obtenerFactura(db, documentoId) {
 }
 
 function register(ipcMain, getDb) {
+  ipcMain.handle('cuentas:listar', (event, filtros) => listarCuentasAbiertas(getDb(), filtros || {}));
+  ipcMain.handle('cuentas:obtener', (event, { cuentaId }) => { const db = getDb(); exigirCuentasAbiertas(db); return obtenerCuentaAbierta(db, cuentaId); });
+  ipcMain.handle('cuentas:abrir', (event, payload) => {
+    const db = getDb();
+    const id = db.transaction(() => abrirCuenta(db, payload))();
+    return obtenerCuentaAbierta(db, id);
+  });
+  const escrituraCuenta = (canal, fn, cuentaIdDe) => ipcMain.handle(canal, (event, payload) => {
+    const db = getDb();
+    db.transaction(() => fn(db, payload))();
+    const cuentaId = cuentaIdDe(db, payload);
+    return cuentaId ? obtenerCuentaAbierta(db, cuentaId) : null;
+  });
+  escrituraCuenta('cuentas:agregarProducto', agregarProductoCuenta, (db, p) => p.cuentaId);
+  escrituraCuenta('cuentas:quitarLinea', quitarLineaCuenta, (db, p) => (db.prepare('SELECT cuenta_id FROM cuentas_abiertas_detalle WHERE id = ?').get(p.lineaId) || {}).cuenta_id);
+  escrituraCuenta('cuentas:anular', anularCuentaAbierta, (db, p) => p.cuentaId);
+
   ipcMain.handle('ventas:crearFactura', (event, payload) => {
     const db = getDb();
     const transaccion = db.transaction(() => crearFactura(db, payload));
@@ -921,6 +1099,7 @@ function register(ipcMain, getDb) {
 
 module.exports = {
   register, calcularLinea, crearFactura, anularFactura, listarFacturas, obtenerFactura,
+  abrirCuenta, agregarProductoCuenta, quitarLineaCuenta, anularCuentaAbierta, obtenerCuentaAbierta, listarCuentasAbiertas,
   crearNotaCredito, anularNotaCredito, crearNotaDebito, anularNotaDebito, listarNotas,
   ventasPorPeriodo, ventasPorVendedor, ventasPorArticulo, comisionesPorVendedor,
   marcarComisionPagada, margenPorFactura, resumenCobrosDelDia, itbisGeneradoVentas,

@@ -50,6 +50,7 @@ function cambiarTab(tab) {
   if (tab === 'parametros') cargarParametros();
   if (tab === 'sucursales') cargarSucursales();
   if (tab === 'impresoras') cargarImpresoras();
+  if (tab === 'modulos') cargarModulos();
   if (tab === 'bitacora') cargarBitacora();
 }
 
@@ -498,6 +499,32 @@ async function abrirFormularioImpresora(impresoraId) {
 
 document.getElementById('btn-nueva-impresora').addEventListener('click', () => abrirFormularioImpresora());
 
+// --- Módulos opcionales ---
+
+async function cargarModulos() {
+  const modulos = await window.puntoXConfig.listarModulos();
+  document.getElementById('modulos-lista').innerHTML = modulos.map((m) => `
+    <div style="display:flex; justify-content:space-between; align-items:center; gap:16px; padding:14px 16px; border:1px solid var(--color-border); border-radius:var(--radius-md); margin-bottom:10px; max-width:760px;">
+      <div>
+        <div style="font-weight:700; font-size:14px;">${escaparHtml(m.nombre)}</div>
+        <div style="font-size:12px; color:var(--color-text-muted); margin-top:2px;">${escaparHtml(m.descripcion)}</div>
+      </div>
+      <label style="display:flex; align-items:center; gap:8px; font-size:13px; font-weight:600; white-space:nowrap; cursor:pointer;">
+        <input type="checkbox" data-modulo="${m.clave}" ${m.activo ? 'checked' : ''} style="width:18px; height:18px;" />
+        ${m.activo ? 'Activado' : 'Desactivado'}
+      </label>
+    </div>
+  `).join('');
+  document.querySelectorAll('[data-modulo]').forEach((chk) => chk.addEventListener('change', async () => {
+    try {
+      await window.puntoXConfig.actualizarModulo({ clave: chk.dataset.modulo, activo: chk.checked, usuarioId: state.info.usuario.id });
+      // Recarga para que el menú lateral refleje el cambio, volviendo a esta pestaña.
+      window.location.hash = 'modulos';
+      window.location.reload();
+    } catch (err) { mostrarError(err.message); chk.checked = !chk.checked; }
+  }));
+}
+
 // --- Bitácora de auditoría ---
 
 async function cargarBitacora() {
@@ -523,8 +550,11 @@ async function init() {
   state.info = await window.PuntoXShell.initPuntoXShell('configuracion');
   // La impresión solo existe en la app de escritorio; la versión web de prueba no la expone.
   if (!window.puntoXImpresion) document.querySelector('.tab-btn[data-tab="impresoras"]').remove();
+  if (!window.puntoXConfig.listarModulos) document.querySelector('.tab-btn[data-tab="modulos"]').remove();
   state.roles = await window.puntoXConfig.listarRoles();
-  cambiarTab('negocio');
+  const tabInicial = window.location.hash.slice(1);
+  const existe = [...document.querySelectorAll('.tab-btn')].some((b) => b.dataset.tab === tabInicial);
+  cambiarTab(existe ? tabInicial : 'negocio');
 }
 
 init();

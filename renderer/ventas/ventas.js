@@ -113,11 +113,11 @@ function renderCarrito() {
     return `
       <tr data-index="${i}">
         <td>${linea.producto.descripcion}</td>
-        <td style="text-align:center;"><input type="number" min="0.01" step="0.01" value="${linea.cantidad}" class="cant-input" /></td>
+        <td style="text-align:center;"><input type="number" min="0.01" step="0.01" value="${linea.cantidad}" class="cant-input" ${state.cuentaAbierta ? 'disabled' : ''} /></td>
         <td style="text-align:center;"><input type="number" min="0" max="100" step="0.01" value="${linea.descuentoPct}" class="desc-input" /></td>
         <td style="text-align:right;">${fmt(precioUnitario)}</td>
         <td style="text-align:right; font-weight:700;">${fmt(calc.totalLinea)}</td>
-        <td class="carrito-quitar">✕</td>
+        <td class="carrito-quitar" style="${state.cuentaAbierta ? 'visibility:hidden;' : ''}">✕</td>
       </tr>
     `;
   }).join('');
@@ -135,6 +135,7 @@ function renderCarrito() {
       renderCarrito();
     });
     tr.querySelector('.carrito-quitar').addEventListener('click', () => {
+      if (state.cuentaAbierta) return;
       state.carrito.splice(i, 1);
       renderCarrito();
     });
@@ -331,6 +332,7 @@ document.getElementById('btn-cobrar').addEventListener('click', async () => {
       { formaPago: 'transferencia', monto: transferencia },
       { formaPago: 'credito', monto: credito },
     ].filter((p) => p.monto > 0),
+    cuentaAbiertaId: state.cuentaAbierta ? state.cuentaAbierta.id : null,
   };
 
   try {
@@ -347,6 +349,7 @@ document.getElementById('btn-cobrar').addEventListener('click', async () => {
     exito.querySelectorAll('[data-imprimir]').forEach((b) => {
       b.addEventListener('click', () => imprimirFactura(factura.id, b.dataset.imprimir));
     });
+    if (state.cuentaAbierta) terminarCobroCuenta();
     state.carrito = [];
     state.cliente = null;
     document.getElementById('cliente-nombre').textContent = 'Consumidor final';
@@ -618,6 +621,37 @@ async function cargarNotas() {
 
 // --- Inicialización ---
 
+// --- Cobro de una cuenta abierta (ventas/index.html?cuenta=<id>) ---
+// El carrito se llena con lo de la cuenta y queda bloqueado: los cambios se hacen en la cuenta
+// (donde quitar un producto pide permiso y motivo). El servidor también verifica que coincidan.
+
+async function cargarCuentaParaCobro(cuentaId) {
+  let cuenta;
+  try { cuenta = await window.puntoXCuentas.obtener({ cuentaId }); } catch (err) { mostrarError(err.message.replace(/^Error invoking remote method '.*?': Error: /, '')); return; }
+  if (!cuenta || cuenta.estado !== 'abierta') { mostrarError('La cuenta ya no está abierta.'); return; }
+  const porProducto = new Map();
+  for (const l of cuenta.lineas) {
+    const actual = porProducto.get(l.producto_id);
+    if (actual) actual.cantidad = redondear(actual.cantidad + l.cantidad);
+    else porProducto.set(l.producto_id, { producto: l.producto, cantidad: l.cantidad, descuentoPct: 0 });
+  }
+  state.cuentaAbierta = cuenta;
+  state.carrito = [...porProducto.values()];
+  document.getElementById('input-buscar-producto').disabled = true;
+  const aviso = document.getElementById('aviso-cuenta');
+  const nombre = cuenta.nombre.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  aviso.innerHTML = `Cobrando la cuenta <strong>${nombre}</strong> (${cuenta.lineas.length} línea(s)). Los productos se cambian en la cuenta. <a href="./cuentas-abiertas.html?cuenta=${encodeURIComponent(cuenta.id)}" style="font-weight:700; color:var(--color-accent);">Volver a la cuenta</a>`;
+  aviso.style.display = 'block';
+  renderCarrito();
+}
+
+function terminarCobroCuenta() {
+  state.cuentaAbierta = null;
+  document.getElementById('input-buscar-producto').disabled = false;
+  document.getElementById('aviso-cuenta').style.display = 'none';
+  window.history.replaceState(null, '', window.location.pathname);
+}
+
 async function init() {
   state.info = await window.PuntoXShell.initPuntoXShell('ventas');
   state.categorias = await window.puntoXCxc.listarCategorias();
@@ -625,6 +659,8 @@ async function init() {
   renderCarrito();
   cargarHistorial();
   cargarNotas();
+  const cuentaId = new URLSearchParams(window.location.search).get('cuenta');
+  if (cuentaId && window.puntoXCuentas) cargarCuentaParaCobro(cuentaId);
 }
 
 init();

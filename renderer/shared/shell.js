@@ -9,8 +9,9 @@ async function initPuntoXShell(moduloActivo) {
     return null;
   }
 
+  info.modulos = info.modulos || {};
   document.getElementById('sidebar-container').innerHTML =
-    window.PuntoXSidebar.renderSidebar(moduloActivo, info.negocio);
+    window.PuntoXSidebar.renderSidebar(moduloActivo, info.negocio, info.modulos);
   document.getElementById('topbar-container').innerHTML =
     window.PuntoXTopbar.renderTopbar(info.usuario);
 

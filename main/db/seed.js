@@ -19,6 +19,8 @@ const PERMISOS = [
   ['ventas', 'ventas.reportes_financieros.ver', 'Ver reportes financieros de ventas (márgenes, utilidad)'],
   ['ventas', 'ventas.comision.ver', 'Ver comisiones propias'],
   ['ventas', 'ventas.factura.imprimir', 'Imprimir factura o tique de venta'],
+  ['ventas', 'ventas.cuenta_abierta.gestionar', 'Abrir cuentas abiertas y agregarles productos'],
+  ['ventas', 'ventas.cuenta_abierta.anular', 'Quitar productos de una cuenta abierta o anularla'],
   // Inventario
   ['inventario', 'inventario.ver', 'Consultar inventario (solo lectura)'],
   ['inventario', 'inventario.costos.ver', 'Ver costo de producto en inventario'],
@@ -83,7 +85,7 @@ const ROLES = [
     permisos: [
       'ventas.factura.crear', 'ventas.cotizacion.crear', 'ventas.pedido.crear',
       'ventas.conduce.crear', 'ventas.devolucion.crear', 'ventas.descuento.aplicar',
-      'ventas.comision.ver', 'ventas.factura.imprimir', 'inventario.ver', 'caja.apertura', 'caja.cierre',
+      'ventas.comision.ver', 'ventas.factura.imprimir', 'ventas.cuenta_abierta.gestionar', 'inventario.ver', 'caja.apertura', 'caja.cierre',
       'caja.movimiento.crear', 'caja.tique.imprimir', 'cxc.recibo.crear',
     ],
   },
@@ -130,6 +132,7 @@ const PARAMETROS_NEGOCIO_NUEVOS = [
   ['negocio_rnc', '', 'RNC del negocio, impreso en el encabezado de factura'],
   ['negocio_direccion', '', 'Dirección del negocio, impresa en el encabezado de factura'],
   ['negocio_telefono', '', 'Teléfono del negocio, impreso en el encabezado de factura'],
+  ['modulo_cuentas_abiertas', '0', 'Módulo opcional: cuentas abiertas tipo bar/mesa (1 = activo)'],
 ];
 
 // Catálogo de cuentas contables mínimas exigido por el Módulo 7.

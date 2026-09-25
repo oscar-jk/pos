@@ -10,6 +10,11 @@ const MODULOS = [
     icono: '<path d="M6 3h12v18l-2.5-1.6L13 21l-2.5-1.6L8 21l-2-1.4V3z"/>',
   },
   {
+    // Módulo opcional: solo aparece si está activado en Configuración → Módulos.
+    clave: 'cuentas_abiertas', etiqueta: 'Cuentas abiertas', ruta: '../ventas/cuentas-abiertas.html', moduloOpcional: 'cuentas_abiertas',
+    icono: '<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/>',
+  },
+  {
     clave: 'inventario', etiqueta: 'Inventario', ruta: '../inventario/index.html',
     icono: '<path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M12 12v9M4 7.5l8 4.5 8-4.5"/>',
   },
@@ -54,11 +59,15 @@ function navItem({ clave, etiqueta, ruta, icono }, activo) {
   `;
 }
 
-function renderSidebar(moduloActivo, negocio) {
+function modulosVisibles(modulosActivos) {
+  return MODULOS.filter((m) => !m.moduloOpcional || (modulosActivos && modulosActivos[m.moduloOpcional]));
+}
+
+function renderSidebar(moduloActivo, negocio, modulosActivos) {
   const nombre = (negocio && negocio.nombre) || 'Mi Negocio';
   const iniciales = (negocio && negocio.iniciales) || 'MN';
 
-  const items = MODULOS.map((m) => navItem(m, moduloActivo)).join('');
+  const items = modulosVisibles(modulosActivos).map((m) => navItem(m, moduloActivo)).join('');
 
   return `
     <nav class="sidebar">
@@ -83,4 +92,4 @@ function renderSidebar(moduloActivo, negocio) {
   `;
 }
 
-window.PuntoXSidebar = { renderSidebar, MODULOS, CONFIGURACION };
+window.PuntoXSidebar = { renderSidebar, modulosVisibles, MODULOS, CONFIGURACION };

@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <title>Punto X — Cuentas abiertas</title>
+  <link rel="stylesheet" href="../shared/styles.css" />
+  <link rel="stylesheet" href="./ventas.css" />
+  <link rel="stylesheet" href="./cuentas-abiertas.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <div id="sidebar-container"></div>
+    <div class="main-area">
+      <div id="topbar-container"></div>
+
+      <div class="page-header">
+        <div>
+          <h1>Cuentas abiertas</h1>
+          <p>Mesas o clientes con consumo pendiente. Se cobran como una factura normal.</p>
+        </div>
+        <div id="acciones-pagina"></div>
+      </div>
+
+      <div id="mensaje-error" class="mensaje-error" style="display:none;"></div>
+
+      <div id="contenido"></div>
+    </div>
+  </div>
+
+  <script src="../shared/web/store.js"></script>
+  <script src="../shared/web/api-auth-app.js"></script>
+  <script src="../shared/web/api-contabilidad.js"></script>
+  <script src="../shared/web/api-inventario.js"></script>
+  <script src="../shared/web/api-caja.js"></script>
+  <script src="../shared/web/api-cxc.js"></script>
+  <script src="../shared/web/api-compras.js"></script>
+  <script src="../shared/web/api-cxp.js"></script>
+  <script src="../shared/web/api-ventas.js"></script>
+  <script src="../shared/web/api-config.js"></script>
+  <script src="../shared/web/web-banner.js"></script>
+  <script src="../shared/sidebar.js"></script>
+  <script src="../shared/topbar.js"></script>
+  <script src="../shared/shell.js"></script>
+  <script src="../shared/modal.js"></script>
+  <script src="./cuentas-abiertas.js"></script>
+</body>
+</html>

@@ -17,11 +17,11 @@ function primerNombre(nombreCompleto) {
   return nombreCompleto.trim().split(/\s+/)[0];
 }
 
-const MODULOS_CONSTRUIDOS = new Set(['ventas', 'inventario', 'caja', 'cxc', 'cxp', 'compras', 'contabilidad', 'configuracion', 'reportes']);
+const MODULOS_CONSTRUIDOS = new Set(['ventas', 'cuentas_abiertas', 'inventario', 'caja', 'cxc', 'cxp', 'compras', 'contabilidad', 'configuracion', 'reportes']);
 
-function renderModuleGrid() {
+function renderModuleGrid(modulosActivos) {
   const contenedor = document.getElementById('module-grid');
-  const modulos = window.PuntoXSidebar.MODULOS.filter((m) => m.clave !== 'dashboard');
+  const modulos = window.PuntoXSidebar.modulosVisibles(modulosActivos).filter((m) => m.clave !== 'dashboard');
 
   contenedor.innerHTML = modulos.map(({ clave, etiqueta, ruta, icono }) => `
     <a class="module-card" href="${ruta}">
@@ -148,7 +148,7 @@ async function init() {
   const sucursal = info.sucursal ? ` · ${info.sucursal}` : '';
   document.getElementById('fecha-turno').textContent = `${fechaLarga()}${sucursal}`;
 
-  renderModuleGrid();
+  renderModuleGrid(info.modulos);
   cargarAlertas();
   cargarVentasYCaja();
 }

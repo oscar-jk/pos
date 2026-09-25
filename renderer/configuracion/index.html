@@ -31,6 +31,7 @@
         <button class="tab-btn" data-tab="parametros">Parámetros de negocio</button>
         <button class="tab-btn" data-tab="sucursales">Sucursales y almacenes</button>
         <button class="tab-btn" data-tab="impresoras" data-permiso="configuracion.impresoras.gestionar">Impresoras</button>
+        <button class="tab-btn" data-tab="modulos" data-permiso="configuracion.gestionar">Módulos</button>
         <button class="tab-btn" data-tab="bitacora" data-permiso="configuracion.gestionar,configuracion.auditoria.ver">Bitácora de auditoría</button>
       </div>
 
@@ -115,6 +116,14 @@
         </table>
         <div id="impresoras-vacio" class="empty-state" style="display:none;">Aún no hay impresoras configuradas. Se usará la impresora predeterminada de Windows.</div>
         <button class="btn btn-secundario btn-chico" id="btn-nueva-impresora">+ Nueva impresora</button>
+      </div>
+
+      <div id="tab-modulos" class="tab-panel" style="display:none;">
+        <p style="font-size:13px; color:var(--color-text-muted); margin:0 0 14px; max-width:640px;">
+          Funciones opcionales que cada negocio decide si usa. Al activar un módulo aparece en el menú lateral;
+          al desactivarlo se oculta, pero su información se conserva.
+        </p>
+        <div id="modulos-lista"></div>
       </div>
 
       <div id="tab-bitacora" class="tab-panel" style="display:none;">

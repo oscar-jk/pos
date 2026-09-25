@@ -49,6 +49,7 @@ function registerCoreIpc() {
       monedaId: monedaLocal ? monedaLocal.id : null,
       negocio,
       usuario,
+      modulos: configuracionIpc.modulosActivos(db),
     };
   });
 

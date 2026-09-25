@@ -5,7 +5,7 @@ const session = require('../auth/session');
 const ventas = require('../ipc/ventas');
 const caja = require('../ipc/caja');
 const configuracion = require('../ipc/configuracion');
-const { plantillaFactura, plantillaTique, plantillaArqueoTurno } = require('./plantillas');
+const { plantillaFactura, plantillaTique, plantillaArqueoTurno, plantillaPrecuenta } = require('./plantillas');
 
 const TIPOS_IMPRESORA = ['factura', 'tique', 'etiqueta'];
 
@@ -112,6 +112,14 @@ function htmlArqueo(db, turnoId) {
   return plantillaArqueoTurno(turno, movimientos, datosNegocio(db));
 }
 
+function htmlPrecuenta(db, cuentaId) {
+  configuracion.exigirModulo(db, 'cuentas_abiertas');
+  const cuenta = ventas.obtenerCuentaAbierta(db, cuentaId);
+  if (!cuenta) throw new Error('Cuenta no encontrada');
+  if (cuenta.lineas.length === 0) throw new Error('La cuenta no tiene productos');
+  return plantillaPrecuenta(cuenta, datosNegocio(db));
+}
+
 // =========================================================================
 // IPC
 // =========================================================================
@@ -140,6 +148,12 @@ function register(ipcMain, getDb) {
     return imprimirHtml(htmlFactura(db, documentoId, tipo), impresoraPorTipo(db, tipo));
   });
 
+  ipcMain.handle('impresion:imprimirPrecuenta', async (event, { cuentaId }) => {
+    session.requerirAlgunPermiso('ventas.cuenta_abierta.gestionar', 'ventas.factura.imprimir');
+    const db = getDb();
+    return imprimirHtml(htmlPrecuenta(db, cuentaId), impresoraPorTipo(db, 'tique'));
+  });
+
   ipcMain.handle('impresion:imprimirArqueo', async (event, { turnoId }) => {
     session.requerirPermiso('caja.tique.imprimir');
     const db = getDb();
@@ -147,4 +161,4 @@ function register(ipcMain, getDb) {
   });
 }
 
-module.exports = { register, listarImpresoras, guardarImpresora, eliminarImpresora, htmlFactura, htmlArqueo };
+module.exports = { register, listarImpresoras, guardarImpresora, eliminarImpresora, htmlFactura, htmlArqueo, htmlPrecuenta };

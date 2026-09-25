@@ -1,0 +1,73 @@
+.cuentas-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
+  gap: 20px;
+  align-items: start;
+}
+
+.cuentas-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: 12px;
+}
+
+.cuenta-card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: 14px 16px;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.cuenta-card:hover { border-color: var(--color-accent); }
+.cuenta-card.is-active { border-color: var(--color-accent); box-shadow: 0 0 0 2px var(--color-accent-soft); }
+
+.cuenta-card__nombre { font-family: var(--font-heading); font-size: 16px; font-weight: 800; }
+.cuenta-card__meta { font-size: 11px; color: var(--color-text-muted); margin-top: 2px; }
+.cuenta-card__total { font-size: 15px; font-weight: 800; color: var(--color-accent); margin-top: 10px; }
+
+.cuenta-detalle {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: 18px 20px;
+}
+
+.cuenta-detalle__encabezado {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.cuenta-detalle__titulo { font-family: var(--font-heading); font-size: 20px; font-weight: 800; }
+.cuenta-detalle__sub { font-size: 12px; color: var(--color-text-muted); margin-top: 2px; }
+
+.cuenta-agregar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 80px minmax(0, 0.8fr);
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.cuenta-total {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 18px;
+  font-weight: 800;
+  padding-top: 12px;
+  margin-top: 6px;
+  border-top: 1px solid var(--color-border);
+}
+
+.cuenta-acciones { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+
+@media (max-width: 1100px) {
+  .cuentas-layout { grid-template-columns: minmax(0, 1fr); }
+}

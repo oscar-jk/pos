@@ -170,6 +170,43 @@ function plantillaTique(factura, negocio) {
   </body></html>`;
 }
 
+// Precuenta de una cuenta abierta: lo que lleva consumido, para mostrárselo al cliente antes de
+// cobrar. No es comprobante fiscal (no tiene NCF) y lo dice claramente.
+function plantillaPrecuenta(cuenta, negocio) {
+  return `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8" />
+    <title>Precuenta ${escapar(cuenta.nombre)}</title>
+    <style>
+      ${ESTILO_BASE}
+      @page { margin: 3mm; }
+      body { font-size: 11px; width: 74mm; }
+      .centro { text-align: center; }
+      hr { border: none; border-top: 1px dashed #111; margin: 6px 0; }
+      table td { padding: 1px 0; font-size: 11px; vertical-align: top; }
+      td.num { text-align: right; }
+      .total-final td { font-weight: 800; font-size: 13px; }
+      .aviso { margin-top: 8px; font-size: 10px; text-align: center; font-weight: 700; }
+    </style>
+  </head><body>
+    <div class="centro">
+      <div style="font-size:14px; font-weight:800;">${escapar(negocio.nombre || 'Mi Negocio')}</div>
+      <div style="font-weight:700; margin-top:2px;">PRECUENTA — ${escapar(cuenta.nombre)}</div>
+    </div>
+    <hr />
+    <div>Cuenta ${escapar(cuenta.numero)} · abierta ${fmtFecha(cuenta.created_at)}</div>
+    <div>Impresa ${fmtFecha(new Date().toISOString())}</div>
+    <hr />
+    <table>
+      ${cuenta.lineas.map((l) => `
+        <tr><td colspan="2" style="font-weight:600;">${escapar(l.producto.descripcion)}${l.nota ? ` <span style="font-weight:400;">(${escapar(l.nota)})</span>` : ''}</td></tr>
+        <tr><td>${l.cantidad} x ${fmtMoneda(l.precio_unitario)}</td><td class="num">${fmtMoneda(l.subtotal)}</td></tr>
+      `).join('')}
+    </table>
+    <hr />
+    <table><tr class="total-final"><td>TOTAL</td><td class="num">RD$ ${fmtMoneda(cuenta.total)}</td></tr></table>
+    <div class="aviso">NO ES COMPROBANTE FISCAL</div>
+  </body></html>`;
+}
+
 const TIPO_MOVIMIENTO_LABEL = {
   venta_efectivo: 'Venta en efectivo', cobro_cxc: 'Cobro CxC', entrada_manual: 'Entrada manual',
   salida_manual: 'Salida manual', gasto_caja_chica: 'Gasto caja chica', transferencia_banco: 'Transferencia a banco',
@@ -221,4 +258,4 @@ function plantillaArqueoTurno(turno, movimientos, negocio) {
   </body></html>`;
 }
 
-module.exports = { plantillaFactura, plantillaTique, plantillaArqueoTurno };
+module.exports = { plantillaFactura, plantillaTique, plantillaArqueoTurno, plantillaPrecuenta };

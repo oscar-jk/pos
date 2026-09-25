@@ -42,11 +42,8 @@ function getDb() {
   }
   aplicarMigraciones(db);
 
-  if (!seedIsApplied(db)) {
-    seed(db);
-  } else {
-    sincronizarPermisosFaltantes(db);
-  }
+  if (!seedIsApplied(db)) seed(db);
+  sincronizarPermisosFaltantes(db);
 
   return db;
 }

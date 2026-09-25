@@ -58,7 +58,50 @@ function actualizarDatosNegocio(db, { nombre, iniciales, colorAcento, rnc, direc
 // =========================================================================
 
 function listarParametrosNegocio(db) {
-  return db.prepare("SELECT * FROM parametros_negocio WHERE clave NOT LIKE 'negocio_%' ORDER BY clave").all();
+  return db.prepare("SELECT * FROM parametros_negocio WHERE clave NOT LIKE 'negocio_%' AND clave NOT LIKE 'modulo_%' ORDER BY clave").all();
+}
+
+// =========================================================================
+// Módulos opcionales: el negocio decide si los usa. Se guardan en parametros_negocio como
+// modulo_<clave> = '1' | '0', y cada módulo verifica en el proceso principal que esté activo.
+// =========================================================================
+
+const MODULOS_OPCIONALES = [
+  {
+    clave: 'cuentas_abiertas', nombre: 'Cuentas abiertas',
+    descripcion: 'Cuentas tipo bar o mesa: se abren con un nombre o número de mesa, se les van agregando productos y al final se cobran como una factura.',
+  },
+];
+
+function moduloActivo(db, clave) {
+  const fila = db.prepare('SELECT valor FROM parametros_negocio WHERE clave = ?').get(`modulo_${clave}`);
+  return Boolean(fila && fila.valor === '1');
+}
+
+function exigirModulo(db, clave) {
+  if (!moduloActivo(db, clave)) {
+    const modulo = MODULOS_OPCIONALES.find((m) => m.clave === clave);
+    throw new Error(`El módulo "${modulo ? modulo.nombre : clave}" no está activado. Actívalo en Configuración → Módulos.`);
+  }
+}
+
+function listarModulos(db) {
+  return MODULOS_OPCIONALES.map((m) => ({ ...m, activo: moduloActivo(db, m.clave) }));
+}
+
+function modulosActivos(db) {
+  return Object.fromEntries(MODULOS_OPCIONALES.map((m) => [m.clave, moduloActivo(db, m.clave)]));
+}
+
+function actualizarModulo(db, { clave, activo, usuarioId }) {
+  session.requerirPermiso('configuracion.gestionar');
+  const modulo = MODULOS_OPCIONALES.find((m) => m.clave === clave);
+  if (!modulo) throw new Error('Módulo desconocido');
+  db.prepare(
+    `INSERT INTO parametros_negocio (clave, valor, descripcion, updated_at) VALUES (?, ?, ?, strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+     ON CONFLICT(clave) DO UPDATE SET valor = excluded.valor, updated_at = excluded.updated_at`
+  ).run(`modulo_${clave}`, activo ? '1' : '0', `Módulo opcional: ${modulo.nombre}`);
+  registrarAuditoria(db, { usuarioId, modulo: 'configuracion', entidad: 'parametros_negocio', entidadId: `modulo_${clave}`, accion: activo ? 'activar_modulo' : 'desactivar_modulo' });
 }
 
 function actualizarParametroNegocio(db, clave, valor, usuarioId) {
@@ -317,6 +360,13 @@ function register(ipcMain, getDb) {
   });
 
   ipcMain.handle('config:listarBitacora', (event, filtros) => listarBitacora(getDb(), filtros || {}));
+
+  ipcMain.handle('config:listarModulos', () => listarModulos(getDb()));
+  ipcMain.handle('config:actualizarModulo', (event, payload) => {
+    const db = getDb();
+    db.transaction(() => actualizarModulo(db, payload))();
+    return listarModulos(db);
+  });
 }
 
 module.exports = {
@@ -325,4 +375,5 @@ module.exports = {
   listarRoles, listarPermisos, permisosDeRol, actualizarPermisosRol, actualizarLimiteDescuentoRol,
   listarTasasItbis, crearTasaItbis, actualizarTasaItbis, listarTiposNcf, crearTipoNcf, ampliarRangoNcf,
   actualizarEstadoTipoNcf, listarSucursales, crearSucursal,
+  listarModulos, modulosActivos, moduloActivo, exigirModulo, actualizarModulo,
 };

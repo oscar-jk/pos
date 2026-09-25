@@ -192,6 +192,9 @@ contextBridge.exposeInMainWorld('puntoXConfig', {
   crearSucursal: invoke('config:crearSucursal'),
 
   listarBitacora: invoke('config:listarBitacora'),
+
+  listarModulos: invoke('config:listarModulos'),
+  actualizarModulo: invoke('config:actualizarModulo'),
 });
 
 contextBridge.exposeInMainWorld('puntoXImpresion', {
@@ -201,6 +204,16 @@ contextBridge.exposeInMainWorld('puntoXImpresion', {
   listarDispositivos: invoke('impresion:listarDispositivos'),
   imprimirFactura: invoke('impresion:imprimirFactura'),
   imprimirArqueo: invoke('impresion:imprimirArqueo'),
+  imprimirPrecuenta: invoke('impresion:imprimirPrecuenta'),
+});
+
+contextBridge.exposeInMainWorld('puntoXCuentas', {
+  listar: invoke('cuentas:listar'),
+  obtener: invoke('cuentas:obtener'),
+  abrir: invoke('cuentas:abrir'),
+  agregarProducto: invoke('cuentas:agregarProducto'),
+  quitarLinea: invoke('cuentas:quitarLinea'),
+  anular: invoke('cuentas:anular'),
 });
 
 contextBridge.exposeInMainWorld('puntoXVentas', {

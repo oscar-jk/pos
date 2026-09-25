@@ -596,6 +596,41 @@ CREATE TABLE pagos_venta (
 );
 CREATE INDEX idx_pagos_venta_documento ON pagos_venta(documento_id);
 
+-- Cuentas abiertas (módulo opcional, tipo bar/mesa): se van agregando productos y al cobrarse
+-- se convierten en una factura. Quitar una línea es borrado lógico con motivo.
+CREATE TABLE cuentas_abiertas (
+  id                  TEXT PRIMARY KEY,
+  numero              TEXT NOT NULL UNIQUE,
+  nombre              TEXT NOT NULL,        -- mesa o nombre del cliente
+  sucursal_id         TEXT REFERENCES sucursales(id),
+  almacen_id          TEXT REFERENCES almacenes(id),
+  estado              TEXT NOT NULL DEFAULT 'abierta', -- abierta | facturada | anulada
+  documento_venta_id  TEXT REFERENCES documentos_venta(id),
+  fecha_cierre        TEXT,
+  motivo_anulacion    TEXT,
+  usuario_anulo_id    TEXT REFERENCES usuarios(id),
+  usuario_id          TEXT NOT NULL REFERENCES usuarios(id),
+  created_at          TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  updated_at          TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  deleted_at          TEXT
+);
+CREATE INDEX idx_cuentas_abiertas_estado ON cuentas_abiertas(estado);
+
+CREATE TABLE cuentas_abiertas_detalle (
+  id                  TEXT PRIMARY KEY,
+  cuenta_id           TEXT NOT NULL REFERENCES cuentas_abiertas(id),
+  producto_id         TEXT NOT NULL REFERENCES productos(id),
+  cantidad            REAL NOT NULL,
+  nota                TEXT,
+  usuario_id          TEXT NOT NULL REFERENCES usuarios(id), -- quién lo agregó
+  motivo_eliminacion  TEXT,
+  usuario_elimino_id  TEXT REFERENCES usuarios(id),
+  created_at          TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  updated_at          TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  deleted_at          TEXT
+);
+CREATE INDEX idx_cuentas_abiertas_detalle_cuenta ON cuentas_abiertas_detalle(cuenta_id);
+
 CREATE TABLE comisiones_vendedor (
   id                TEXT PRIMARY KEY,
   vendedor_id       TEXT NOT NULL REFERENCES usuarios(id),
