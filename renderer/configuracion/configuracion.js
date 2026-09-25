@@ -49,6 +49,7 @@ function cambiarTab(tab) {
   if (tab === 'fiscal') cargarFiscal();
   if (tab === 'parametros') cargarParametros();
   if (tab === 'sucursales') cargarSucursales();
+  if (tab === 'impresoras') cargarImpresoras();
   if (tab === 'bitacora') cargarBitacora();
 }
 
@@ -61,6 +62,9 @@ async function cargarNegocio() {
   document.getElementById('neg-nombre').value = datos.negocio_nombre || '';
   document.getElementById('neg-iniciales').value = datos.negocio_iniciales || '';
   document.getElementById('neg-color').value = datos.negocio_color_acento || '#146356';
+  document.getElementById('neg-rnc').value = datos.negocio_rnc || '';
+  document.getElementById('neg-direccion').value = datos.negocio_direccion || '';
+  document.getElementById('neg-telefono').value = datos.negocio_telefono || '';
 }
 
 document.getElementById('btn-guardar-negocio').addEventListener('click', async () => {
@@ -69,6 +73,9 @@ document.getElementById('btn-guardar-negocio').addEventListener('click', async (
       payload: {
         nombre: document.getElementById('neg-nombre').value, iniciales: document.getElementById('neg-iniciales').value,
         colorAcento: document.getElementById('neg-color').value,
+        rnc: document.getElementById('neg-rnc').value.trim(),
+        direccion: document.getElementById('neg-direccion').value.trim(),
+        telefono: document.getElementById('neg-telefono').value.trim(),
       },
       usuarioId: state.info.usuario.id,
     });
@@ -407,6 +414,90 @@ document.getElementById('btn-nuevo-almacen').addEventListener('click', async () 
   });
 });
 
+// --- Impresoras ---
+
+const TIPO_IMPRESORA_ETIQUETA = { factura: 'Factura (carta)', tique: 'Tique (80mm)', etiqueta: 'Etiqueta' };
+
+function escaparHtml(texto) {
+  return String(texto ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+async function cargarImpresoras() {
+  const impresoras = await window.puntoXImpresion.listarImpresoras();
+  state.impresoras = impresoras;
+  document.getElementById('impresoras-vacio').style.display = impresoras.length === 0 ? 'block' : 'none';
+  document.getElementById('impresoras-tbody').innerHTML = impresoras.map((i) => `
+    <tr>
+      <td>${escaparHtml(i.nombre)}</td>
+      <td>${TIPO_IMPRESORA_ETIQUETA[i.tipo] || i.tipo}</td>
+      <td>${escaparHtml(i.deviceName) || '<span style="color:var(--color-text-faint);">Predeterminada de Windows</span>'}</td>
+      <td>${i.copias}</td>
+      <td>${i.activo ? '<span class="pill-estado" style="background:var(--color-success);">Activa</span>' : '<span class="pill-estado" style="background:var(--color-text-faint);">Inactiva</span>'}</td>
+      <td>
+        <span class="enlace-accion" data-editar-impresora="${i.id}">Editar</span> ·
+        <span class="enlace-accion" data-eliminar-impresora="${i.id}" style="color:var(--color-danger);">Quitar</span>
+      </td>
+    </tr>
+  `).join('');
+  document.querySelectorAll('[data-editar-impresora]').forEach((el) => el.addEventListener('click', () => abrirFormularioImpresora(el.dataset.editarImpresora)));
+  document.querySelectorAll('[data-eliminar-impresora]').forEach((el) => el.addEventListener('click', async () => {
+    if (!confirm('¿Quitar esta impresora de la configuración?')) return;
+    try {
+      await window.puntoXImpresion.eliminarImpresora({ impresoraId: el.dataset.eliminarImpresora, usuarioId: state.info.usuario.id });
+      cargarImpresoras();
+    } catch (err) { mostrarError(err.message); }
+  }));
+}
+
+async function abrirFormularioImpresora(impresoraId) {
+  const impresora = impresoraId ? (state.impresoras || []).find((i) => i.id === impresoraId) : null;
+  let dispositivos = [];
+  try { dispositivos = await window.puntoXImpresion.listarDispositivos(); } catch (err) { mostrarError(err.message); }
+
+  const opcionesDispositivo = [
+    `<option value="">Predeterminada de Windows</option>`,
+    ...dispositivos.map((d) => `<option value="${escaparHtml(d.nombre)}" ${impresora && impresora.deviceName === d.nombre ? 'selected' : ''}>${escaparHtml(d.nombreVisible)}${d.esPredeterminada ? ' (predeterminada)' : ''}</option>`),
+  ].join('');
+  const opcionesTipo = Object.entries(TIPO_IMPRESORA_ETIQUETA)
+    .map(([v, e]) => `<option value="${v}" ${impresora && impresora.tipo === v ? 'selected' : ''}>${e}</option>`).join('');
+
+  window.PuntoXModal.abrirModal(impresora ? 'Editar impresora' : 'Nueva impresora', `
+    <div class="form-grid">
+      <div class="form-field"><label>Nombre *</label><input id="imp-nombre" value="${impresora ? escaparHtml(impresora.nombre) : ''}" placeholder="Ej: Caja 1 — tiquera" /></div>
+      <div class="form-field"><label>Tipo *</label><select id="imp-tipo">${opcionesTipo}</select></div>
+      <div class="form-field" style="grid-column: span 2;"><label>Dispositivo</label><select id="imp-dispositivo">${opcionesDispositivo}</select></div>
+      <div class="form-field"><label>Copias</label><input id="imp-copias" type="number" min="1" value="${impresora ? impresora.copias : 1}" /></div>
+      ${impresora ? `<div class="form-field form-field--checkbox"><input id="imp-activo" type="checkbox" ${impresora.activo ? 'checked' : ''} /><label>Activa</label></div>` : ''}
+    </div>
+    ${dispositivos.length === 0 ? '<p style="font-size:12px; color:var(--color-text-muted); margin-top:10px;">No se detectaron impresoras instaladas en este equipo.</p>' : ''}
+    <div class="form-seccion" style="display:flex; justify-content:flex-end; gap:8px;">
+      <button type="button" class="btn btn-secundario" id="imp-cancelar">Cancelar</button>
+      <button type="button" class="btn btn-primario" id="imp-guardar">${impresora ? 'Guardar cambios' : 'Agregar impresora'}</button>
+    </div>
+  `);
+  document.getElementById('imp-cancelar').addEventListener('click', window.PuntoXModal.cerrarModal);
+  document.getElementById('imp-guardar').addEventListener('click', async () => {
+    try {
+      await window.puntoXImpresion.guardarImpresora({
+        usuarioId: state.info.usuario.id,
+        payload: {
+          impresoraId: impresora ? impresora.id : null,
+          sucursalId: state.info.sucursalId,
+          nombre: document.getElementById('imp-nombre').value,
+          tipo: document.getElementById('imp-tipo').value,
+          deviceName: document.getElementById('imp-dispositivo').value || null,
+          copias: parseInt(document.getElementById('imp-copias').value, 10) || 1,
+          activo: impresora ? document.getElementById('imp-activo').checked : true,
+        },
+      });
+      window.PuntoXModal.cerrarModal();
+      cargarImpresoras();
+    } catch (err) { mostrarError(err.message); }
+  });
+}
+
+document.getElementById('btn-nueva-impresora').addEventListener('click', () => abrirFormularioImpresora());
+
 // --- Bitácora de auditoría ---
 
 async function cargarBitacora() {
@@ -430,6 +521,8 @@ async function cargarBitacora() {
 
 async function init() {
   state.info = await window.PuntoXShell.initPuntoXShell('configuracion');
+  // La impresión solo existe en la app de escritorio; la versión web de prueba no la expone.
+  if (!window.puntoXImpresion) document.querySelector('.tab-btn[data-tab="impresoras"]').remove();
   state.roles = await window.puntoXConfig.listarRoles();
   cambiarTab('negocio');
 }

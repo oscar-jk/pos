@@ -18,6 +18,7 @@ const PERMISOS = [
   ['ventas', 'ventas.costos.ver', 'Ver costo de producto en ventas'],
   ['ventas', 'ventas.reportes_financieros.ver', 'Ver reportes financieros de ventas (márgenes, utilidad)'],
   ['ventas', 'ventas.comision.ver', 'Ver comisiones propias'],
+  ['ventas', 'ventas.factura.imprimir', 'Imprimir factura o tique de venta'],
   // Inventario
   ['inventario', 'inventario.ver', 'Consultar inventario (solo lectura)'],
   ['inventario', 'inventario.costos.ver', 'Ver costo de producto en inventario'],
@@ -41,6 +42,8 @@ const PERMISOS = [
   ['cxc', 'cxc.gestion_cobro.crear', 'Registrar gestión de cobro'],
   ['cxc', 'cxc.cliente.editar', 'Crear/editar ficha de cliente'],
   ['cxc', 'cxc.reportes.ver', 'Ver reportes de cuentas por cobrar'],
+  ['cxc', 'cxc.empleados.crear', 'Registrar préstamo/anticipo/consumo de empleado'],
+  ['cxc', 'cxc.empleados.pagar', 'Registrar pago de préstamo/anticipo/consumo de empleado'],
   // Cuentas por Pagar
   ['cxp', 'cxp.pago.crear', 'Registrar pago a proveedor'],
   ['cxp', 'cxp.pago.anular', 'Anular pago a proveedor'],
@@ -50,6 +53,7 @@ const PERMISOS = [
   ['caja', 'caja.cierre', 'Cerrar turno de caja'],
   ['caja', 'caja.movimiento.crear', 'Registrar movimiento manual de caja'],
   ['caja', 'caja.conciliacion.gestionar', 'Gestionar conciliación bancaria'],
+  ['caja', 'caja.tique.imprimir', 'Imprimir tique de arqueo de caja'],
   // Contabilidad
   ['contabilidad', 'contabilidad.ver', 'Ver libro diario, libro mayor y estados financieros'],
   ['contabilidad', 'contabilidad.asiento_manual.crear', 'Registrar asiento contable manual'],
@@ -58,6 +62,7 @@ const PERMISOS = [
   // Configuración
   ['configuracion', 'configuracion.gestionar', 'Gestionar usuarios, roles y parámetros del sistema'],
   ['configuracion', 'configuracion.auditoria.ver', 'Ver bitácora de auditoría'],
+  ['configuracion', 'configuracion.impresoras.gestionar', 'Configurar impresoras de factura, tique y etiqueta'],
 ];
 
 // Matriz rol -> permisos, según los 6 roles propuestos en el documento fuente.
@@ -76,8 +81,8 @@ const ROLES = [
     permisos: [
       'ventas.factura.crear', 'ventas.cotizacion.crear', 'ventas.pedido.crear',
       'ventas.conduce.crear', 'ventas.devolucion.crear', 'ventas.descuento.aplicar',
-      'ventas.comision.ver', 'inventario.ver', 'caja.apertura', 'caja.cierre',
-      'caja.movimiento.crear', 'cxc.recibo.crear',
+      'ventas.comision.ver', 'ventas.factura.imprimir', 'inventario.ver', 'caja.apertura', 'caja.cierre',
+      'caja.movimiento.crear', 'caja.tique.imprimir', 'cxc.recibo.crear',
     ],
   },
   {
@@ -116,6 +121,13 @@ const ROLES = [
     limite_descuento_pct: 0,
     permisos: ['cxc.recibo.crear', 'cxc.gestion_cobro.crear', 'cxc.reportes.ver'],
   },
+];
+
+// Parámetros de negocio agregados después del seed inicial — ver sincronizarPermisosFaltantes.
+const PARAMETROS_NEGOCIO_NUEVOS = [
+  ['negocio_rnc', '', 'RNC del negocio, impreso en el encabezado de factura'],
+  ['negocio_direccion', '', 'Dirección del negocio, impresa en el encabezado de factura'],
+  ['negocio_telefono', '', 'Teléfono del negocio, impreso en el encabezado de factura'],
 ];
 
 // Catálogo de cuentas contables mínimas exigido por el Módulo 7.
@@ -270,9 +282,60 @@ function seed(db) {
     insertParametro.run('negocio_nombre', 'Mi Negocio', 'Nombre del negocio mostrado en el sidebar', timestamp);
     insertParametro.run('negocio_iniciales', 'MN', 'Iniciales del negocio para el distintivo del sidebar', timestamp);
     insertParametro.run('negocio_color_acento', '#146356', 'Color de acento de la interfaz', timestamp);
+    insertParametro.run('negocio_rnc', '', 'RNC del negocio, impreso en el encabezado de factura', timestamp);
+    insertParametro.run('negocio_direccion', '', 'Dirección del negocio, impresa en el encabezado de factura', timestamp);
+    insertParametro.run('negocio_telefono', '', 'Teléfono del negocio, impreso en el encabezado de factura', timestamp);
   });
 
   insertMany();
 }
 
-module.exports = { seed };
+// Se ejecuta en cada arranque (además de `seed`, que solo corre en una base de datos nueva):
+// inserta en el catálogo cualquier código de PERMISOS que no exista todavía, y luego reconcilia
+// cada rol del sistema (ROLES) contra su lista de permisos esperada, agregando los enlaces
+// roles_permisos que falten — así una base de datos ya sembrada en una versión anterior de la
+// app recibe los permisos nuevos (y su asignación a los roles correctos) sin necesitar un
+// sistema de migraciones completo.
+function sincronizarPermisosFaltantes(db) {
+  const uuid = () => crypto.randomUUID();
+
+  const existentes = new Set(db.prepare('SELECT codigo FROM permisos').all().map((p) => p.codigo));
+  const faltantes = PERMISOS.filter(([, codigo]) => !existentes.has(codigo));
+  const insertPermiso = db.prepare('INSERT INTO permisos (id, modulo, codigo, descripcion) VALUES (?, ?, ?, ?)');
+
+  db.transaction(() => {
+    for (const [modulo, codigo, descripcion] of faltantes) {
+      insertPermiso.run(uuid(), modulo, codigo, descripcion);
+    }
+
+    const permisoIdByCodigo = new Map(db.prepare('SELECT id, codigo FROM permisos').all().map((p) => [p.codigo, p.id]));
+    const insertRolPermiso = db.prepare('INSERT INTO roles_permisos (id, rol_id, permiso_id) VALUES (?, ?, ?)');
+
+    for (const rol of ROLES) {
+      const rolRow = db.prepare('SELECT id FROM roles WHERE nombre = ? AND es_rol_sistema = 1').get(rol.nombre);
+      if (!rolRow) continue; // rol de sistema renombrado/eliminado por el usuario: no se reconcilia
+      const codigosEsperados = rol.permisos === 'ALL' ? PERMISOS.map((p) => p[1]) : rol.permisos;
+      const yaAsignados = new Set(
+        db.prepare('SELECT permiso_id FROM roles_permisos WHERE rol_id = ? AND deleted_at IS NULL').all(rolRow.id).map((r) => r.permiso_id)
+      );
+      for (const codigo of codigosEsperados) {
+        const permisoId = permisoIdByCodigo.get(codigo);
+        if (permisoId && !yaAsignados.has(permisoId)) insertRolPermiso.run(uuid(), rolRow.id, permisoId);
+      }
+    }
+
+    // Mismo problema con parámetros de negocio agregados en una versión posterior (ej. RNC,
+    // dirección y teléfono del negocio, necesarios para el encabezado de factura impresa):
+    // se insertan con valor vacío si la clave no existe todavía, sin tocar las que ya tienen valor.
+    const parametrosExistentes = new Set(db.prepare('SELECT clave FROM parametros_negocio').all().map((p) => p.clave));
+    const insertParametroFaltante = db.prepare(
+      'INSERT INTO parametros_negocio (clave, valor, descripcion, updated_at) VALUES (?, ?, ?, ?)'
+    );
+    const ahora = new Date().toISOString();
+    for (const [clave, valorDefault, descripcion] of PARAMETROS_NEGOCIO_NUEVOS) {
+      if (!parametrosExistentes.has(clave)) insertParametroFaltante.run(clave, valorDefault, descripcion, ahora);
+    }
+  })();
+}
+
+module.exports = { seed, sincronizarPermisosFaltantes };

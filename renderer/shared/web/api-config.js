@@ -23,13 +23,20 @@
   window.puntoXConfig = {
     obtenerDatosNegocio: async () => {
       const db = store.cargar();
-      return { negocio_nombre: db.parametrosNegocio.negocio_nombre, negocio_iniciales: db.parametrosNegocio.negocio_iniciales, negocio_color_acento: db.parametrosNegocio.negocio_color_acento || '#146356' };
+      const p = db.parametrosNegocio;
+      return {
+        negocio_nombre: p.negocio_nombre, negocio_iniciales: p.negocio_iniciales, negocio_color_acento: p.negocio_color_acento || '#146356',
+        negocio_rnc: p.negocio_rnc || '', negocio_direccion: p.negocio_direccion || '', negocio_telefono: p.negocio_telefono || '',
+      };
     },
     actualizarDatosNegocio: async ({ payload, usuarioId }) => {
       const db = store.cargar();
       db.parametrosNegocio.negocio_nombre = payload.nombre;
       db.parametrosNegocio.negocio_iniciales = payload.iniciales;
       db.parametrosNegocio.negocio_color_acento = payload.colorAcento;
+      db.parametrosNegocio.negocio_rnc = payload.rnc || '';
+      db.parametrosNegocio.negocio_direccion = payload.direccion || '';
+      db.parametrosNegocio.negocio_telefono = payload.telefono || '';
       bitacora(db, { usuarioId, modulo: 'configuracion', entidad: 'parametros_negocio', entidadId: 'negocio', accion: 'editar' });
       store.guardar();
       return window.puntoXConfig.obtenerDatosNegocio();

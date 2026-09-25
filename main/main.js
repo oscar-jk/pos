@@ -12,6 +12,7 @@ const ventasIpc = require('./ipc/ventas');
 const comprasIpc = require('./ipc/compras');
 const cxpIpc = require('./ipc/cxp');
 const configuracionIpc = require('./ipc/configuracion');
+const impresion = require('./printing');
 
 let mainWindow = null;
 
@@ -60,6 +61,7 @@ function registerCoreIpc() {
   comprasIpc.register(ipcMain, getDb);
   cxpIpc.register(ipcMain, getDb);
   configuracionIpc.register(ipcMain, getDb);
+  impresion.register(ipcMain, getDb);
 }
 
 function createMainWindow() {

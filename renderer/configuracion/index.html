@@ -30,6 +30,7 @@
         <button class="tab-btn" data-tab="fiscal">Parámetros fiscales</button>
         <button class="tab-btn" data-tab="parametros">Parámetros de negocio</button>
         <button class="tab-btn" data-tab="sucursales">Sucursales y almacenes</button>
+        <button class="tab-btn" data-tab="impresoras" data-permiso="configuracion.impresoras.gestionar">Impresoras</button>
         <button class="tab-btn" data-tab="bitacora" data-permiso="configuracion.gestionar,configuracion.auditoria.ver">Bitácora de auditoría</button>
       </div>
 
@@ -38,6 +39,9 @@
           <div class="form-field"><label>Nombre del negocio</label><input id="neg-nombre" class="input-normal" /></div>
           <div class="form-field"><label>Iniciales (distintivo del sidebar)</label><input id="neg-iniciales" class="input-normal" maxlength="3" /></div>
           <div class="form-field"><label>Color de acento</label><input id="neg-color" class="input-normal" type="color" /></div>
+          <div class="form-field"><label>RNC del negocio</label><input id="neg-rnc" class="input-normal" placeholder="Se imprime en el encabezado de la factura" /></div>
+          <div class="form-field"><label>Teléfono</label><input id="neg-telefono" class="input-normal" /></div>
+          <div class="form-field" style="grid-column: span 2;"><label>Dirección</label><input id="neg-direccion" class="input-normal" /></div>
         </div>
         <button class="btn btn-primario" id="btn-guardar-negocio" data-permiso="configuracion.gestionar" style="margin-top:16px;">Guardar cambios</button>
       </div>
@@ -98,6 +102,19 @@
           </table>
           <button class="btn btn-secundario btn-chico" id="btn-nuevo-almacen" data-permiso="configuracion.gestionar" style="margin-top:10px;">+ Nuevo almacén</button>
         </div>
+      </div>
+
+      <div id="tab-impresoras" class="tab-panel" style="display:none;">
+        <p style="font-size:13px; color:var(--color-text-muted); margin:0 0 14px; max-width:640px;">
+          La impresora que configures para cada tipo se preselecciona en el diálogo de impresión de Windows.
+          Siempre puedes cambiarla ahí mismo o elegir "Guardar como PDF".
+        </p>
+        <table class="data-table" style="margin-bottom:10px;">
+          <thead><tr><th>Nombre</th><th>Tipo</th><th>Dispositivo</th><th>Copias</th><th>Estado</th><th></th></tr></thead>
+          <tbody id="impresoras-tbody"></tbody>
+        </table>
+        <div id="impresoras-vacio" class="empty-state" style="display:none;">Aún no hay impresoras configuradas. Se usará la impresora predeterminada de Windows.</div>
+        <button class="btn btn-secundario btn-chico" id="btn-nueva-impresora">+ Nueva impresora</button>
       </div>
 
       <div id="tab-bitacora" class="tab-panel" style="display:none;">

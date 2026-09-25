@@ -108,6 +108,10 @@ function crearPago(db, { proveedorId, fecha, formaPago, numeroCheque, bancoChequ
     ],
   });
 
+  configuracion.registrarAuditoria(db, {
+    usuarioId, modulo: 'cxp', entidad: 'pagos_proveedor', entidadId: pagoId, accion: 'crear', detalle: { numero, montoTotal, formaPago },
+  });
+
   return pagoId;
 }
 

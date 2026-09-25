@@ -291,6 +291,10 @@ function crearRecibo(db, { clienteId, fecha, formaPago, referencia, aplicaciones
     ],
   });
 
+  configuracion.registrarAuditoria(db, {
+    usuarioId, modulo: 'cxc', entidad: 'recibos_ingreso', entidadId: reciboId, accion: 'crear', detalle: { numero, montoTotal, formaPago },
+  });
+
   return reciboId;
 }
 
@@ -403,6 +407,11 @@ function crearGestionCobro(db, { clienteId, fechaContacto, tipoContacto, notas, 
     `INSERT INTO gestion_cobros (id, cliente_id, fecha_contacto, tipo_contacto, notas, resultado, proxima_fecha_contacto, usuario_id)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
   ).run(id, clienteId, fechaContacto || new Date().toISOString(), tipoContacto, notas || null, resultado || null, proximaFechaContacto || null, usuarioId);
+
+  configuracion.registrarAuditoria(db, {
+    usuarioId, modulo: 'cxc', entidad: 'gestion_cobros', entidadId: id, accion: 'crear', detalle: { clienteId, tipoContacto },
+  });
+
   return id;
 }
 
@@ -426,6 +435,7 @@ function listarGestionCobros(db, { clienteId, limite = 50 } = {}) {
 // =========================================================================
 
 function crearCxcEmpleado(db, { usuarioId, tipo, monto, descuentoSugeridoNomina, fecha, notas, usuarioRegistroId }) {
+  session.requerirPermiso('cxc.empleados.crear');
   if (!monto || monto <= 0) throw new Error('El monto debe ser mayor a cero');
   const id = crypto.randomUUID();
   db.prepare(
@@ -433,10 +443,16 @@ function crearCxcEmpleado(db, { usuarioId, tipo, monto, descuentoSugeridoNomina,
        (id, usuario_id, tipo, monto, saldo_pendiente, descuento_sugerido_nomina, fecha, notas, usuario_registro_id)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).run(id, usuarioId, tipo, monto, monto, descuentoSugeridoNomina || 0, fecha || new Date().toISOString(), notas || null, usuarioRegistroId);
+
+  configuracion.registrarAuditoria(db, {
+    usuarioId: usuarioRegistroId, modulo: 'cxc', entidad: 'cxc_empleados', entidadId: id, accion: 'crear', detalle: { usuarioId, tipo, monto },
+  });
+
   return id;
 }
 
 function registrarPagoCxcEmpleado(db, { cxcEmpleadoId, monto, usuarioId }) {
+  session.requerirPermiso('cxc.empleados.pagar');
   const cxc = db.prepare('SELECT * FROM cxc_empleados WHERE id = ?').get(cxcEmpleadoId);
   if (!cxc) throw new Error('Registro no encontrado');
   if (monto > cxc.saldo_pendiente + 0.01) throw new Error('El monto excede el saldo pendiente');
@@ -448,6 +464,10 @@ function registrarPagoCxcEmpleado(db, { cxcEmpleadoId, monto, usuarioId }) {
   db.prepare(
     `UPDATE cxc_empleados SET saldo_pendiente = ?, estado = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?`
   ).run(nuevoSaldo, nuevoSaldo <= 0.01 ? 'pagado' : 'pendiente', cxcEmpleadoId);
+
+  configuracion.registrarAuditoria(db, {
+    usuarioId, modulo: 'cxc', entidad: 'cxc_empleados', entidadId: cxcEmpleadoId, accion: 'crear', detalle: { monto, nuevoSaldo },
+  });
 }
 
 function listarCxcEmpleados(db, { usuarioId, limite = 50 } = {}) {

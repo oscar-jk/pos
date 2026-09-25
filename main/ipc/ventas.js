@@ -264,6 +264,10 @@ function crearFactura(db, payload) {
     }
   }
 
+  configuracion.registrarAuditoria(db, {
+    usuarioId, modulo: 'ventas', entidad: 'documentos_venta', entidadId: documentoId, accion: 'crear', detalle: { numero, total },
+  });
+
   return documentoId;
 }
 

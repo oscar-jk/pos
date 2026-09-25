@@ -1,5 +1,6 @@
 const crypto = require('node:crypto');
 const contabilidad = require('./contabilidad');
+const configuracion = require('./configuracion');
 const session = require('../auth/session');
 
 function redondear(n) {
@@ -63,6 +64,11 @@ function abrirTurno(db, { cajaId, fondoInicial, usuarioId }) {
     `INSERT INTO turnos_caja (id, caja_id, usuario_id, fondo_inicial, fecha_apertura, estado)
      VALUES (?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%fZ','now'), 'abierto')`
   ).run(id, cajaId, usuarioId, fondoInicial || 0);
+
+  configuracion.registrarAuditoria(db, {
+    usuarioId, modulo: 'caja', entidad: 'turnos_caja', entidadId: id, accion: 'crear', detalle: { cajaId, fondoInicial: fondoInicial || 0 },
+  });
+
   return obtenerTurnoAbierto(db, cajaId);
 }
 
@@ -80,6 +86,10 @@ function cerrarTurno(db, { turnoId, efectivoContado }) {
        efectivo_contado = ?, diferencia = ?, estado = 'cerrado', updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
      WHERE id = ?`
   ).run(esperado, efectivoContado, diferencia, turnoId);
+
+  configuracion.registrarAuditoria(db, {
+    usuarioId: session.usuarioActualId(), modulo: 'caja', entidad: 'turnos_caja', entidadId: turnoId, accion: 'cerrar', detalle: { esperado, efectivoContado, diferencia },
+  });
 
   return db.prepare('SELECT * FROM turnos_caja WHERE id = ?').get(turnoId);
 }
@@ -191,6 +201,10 @@ function crearGastoCajaChica(db, { cajaChicaId, turnoCajaId, concepto, categoria
     ],
   });
 
+  configuracion.registrarAuditoria(db, {
+    usuarioId, modulo: 'caja', entidad: 'gastos_caja_chica', entidadId: gastoId, accion: 'crear', detalle: { concepto: concepto.trim(), monto },
+  });
+
   return gastoId;
 }
 
@@ -256,6 +270,10 @@ function crearTransferenciaCajaBanco(db, { cajaId, turnoCajaId, cuentaBancariaId
     lineas: tipo === 'deposito'
       ? [{ cuentaCodigo: '1200', debe: monto, descripcion: 'Depósito a banco' }, { cuentaCodigo: '1100', haber: monto, descripcion: 'Salida de caja' }]
       : [{ cuentaCodigo: '1100', debe: monto, descripcion: 'Retiro de banco' }, { cuentaCodigo: '1200', haber: monto, descripcion: 'Salida de banco' }],
+  });
+
+  configuracion.registrarAuditoria(db, {
+    usuarioId, modulo: 'caja', entidad: 'transferencias_caja_banco', entidadId: id, accion: 'crear', detalle: { tipo, monto },
   });
 
   return id;

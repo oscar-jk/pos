@@ -58,8 +58,14 @@ async function renderTurno() {
           <input id="fondo-inicial" class="input-normal" type="number" step="0.01" value="0" />
         </div>
         <button class="btn btn-primario" id="btn-abrir-turno" data-permiso="caja.apertura">Abrir turno</button>
+        ${state.ultimoTurnoCerradoId && window.puntoXImpresion ? `
+          <p style="margin-top:18px; font-size:13px;">Turno cerrado correctamente.
+            <button class="btn btn-secundario btn-chico" id="btn-imprimir-ultimo-arqueo" data-permiso="caja.tique.imprimir">Imprimir arqueo</button>
+          </p>` : ''}
       </div>
     `;
+    const btnArqueo = document.getElementById('btn-imprimir-ultimo-arqueo');
+    if (btnArqueo) btnArqueo.addEventListener('click', () => imprimirArqueo(state.ultimoTurnoCerradoId));
     document.getElementById('btn-abrir-turno').addEventListener('click', async () => {
       try {
         await window.puntoXCaja.abrirTurno({
@@ -161,9 +167,10 @@ function abrirFormularioCierre(esperado) {
   document.getElementById('cierre-cancelar').addEventListener('click', window.PuntoXModal.cerrarModal);
   document.getElementById('cierre-confirmar').addEventListener('click', async () => {
     try {
-      await window.puntoXCaja.cerrarTurno({
+      const cerrado = await window.puntoXCaja.cerrarTurno({
         turnoId: state.turnoActual.id, efectivoContado: parseFloat(inputContado.value) || 0,
       });
+      state.ultimoTurnoCerradoId = cerrado.id;
       window.PuntoXModal.cerrarModal();
       renderTurno();
     } catch (err) { mostrarError(err.message); }
@@ -186,9 +193,20 @@ async function cargarHistorial() {
         <td>${t.efectivo_contado !== null ? fmt(t.efectivo_contado) : '—'}</td>
         <td style="color:${diffColor};">${t.diferencia !== null ? fmt(t.diferencia) : '—'}</td>
         <td><span class="pill-estado" style="background:${t.estado === 'abierto' ? 'var(--color-success)' : 'var(--color-text-faint)'};">${t.estado}</span></td>
+        <td>${t.estado === 'cerrado' && window.puntoXImpresion ? `<a href="#" class="btn-imprimir-arqueo" data-permiso="caja.tique.imprimir" data-id="${t.id}" style="color:var(--color-accent); font-size:12px; font-weight:700;">Imprimir arqueo</a>` : ''}</td>
       </tr>
     `;
   }).join('');
+
+  document.querySelectorAll('#historial-tbody .btn-imprimir-arqueo').forEach((a) => {
+    a.addEventListener('click', (e) => { e.preventDefault(); imprimirArqueo(a.dataset.id); });
+  });
+}
+
+async function imprimirArqueo(turnoId) {
+  try {
+    await window.puntoXImpresion.imprimirArqueo({ turnoId });
+  } catch (err) { mostrarError(err.message); }
 }
 
 // --- Caja chica ---

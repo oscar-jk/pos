@@ -3,7 +3,7 @@ const fs = require('node:fs');
 const { app } = require('electron');
 const Database = require('better-sqlite3');
 
-const { seed } = require('./seed');
+const { seed, sincronizarPermisosFaltantes } = require('./seed');
 
 let db = null;
 
@@ -42,6 +42,8 @@ function getDb() {
 
   if (!seedIsApplied(db)) {
     seed(db);
+  } else {
+    sincronizarPermisosFaltantes(db);
   }
 
   return db;

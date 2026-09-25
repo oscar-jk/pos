@@ -288,6 +288,10 @@ function crearFacturaCompra(db, payload) {
     }
   }
 
+  configuracion.registrarAuditoria(db, {
+    usuarioId, modulo: 'compras', entidad: 'documentos_compra', entidadId: documentoId, accion: 'crear', detalle: { numero, total, tipo: 'factura_compra' },
+  });
+
   return documentoId;
 }
 

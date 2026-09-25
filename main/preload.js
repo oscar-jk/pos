@@ -171,6 +171,15 @@ contextBridge.exposeInMainWorld('puntoXConfig', {
   listarBitacora: invoke('config:listarBitacora'),
 });
 
+contextBridge.exposeInMainWorld('puntoXImpresion', {
+  listarImpresoras: invoke('impresion:listarImpresoras'),
+  guardarImpresora: invoke('impresion:guardarImpresora'),
+  eliminarImpresora: invoke('impresion:eliminarImpresora'),
+  listarDispositivos: invoke('impresion:listarDispositivos'),
+  imprimirFactura: invoke('impresion:imprimirFactura'),
+  imprimirArqueo: invoke('impresion:imprimirArqueo'),
+});
+
 contextBridge.exposeInMainWorld('puntoXVentas', {
   crearFactura: invoke('ventas:crearFactura'),
   anularFactura: invoke('ventas:anularFactura'),

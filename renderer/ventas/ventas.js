@@ -335,9 +335,18 @@ document.getElementById('btn-cobrar').addEventListener('click', async () => {
 
   try {
     const factura = await window.puntoXVentas.crearFactura(payload);
-    document.getElementById('factura-exito').style.display = 'block';
-    document.getElementById('factura-exito').innerHTML =
-      `Factura <strong>${factura.numero}</strong> (NCF ${factura.ncf}) guardada. Total ${fmt(factura.total)}.`;
+    const exito = document.getElementById('factura-exito');
+    exito.style.display = 'block';
+    exito.innerHTML =
+      `Factura <strong>${factura.numero}</strong> (NCF ${factura.ncf}) guardada. Total ${fmt(factura.total)}.` +
+      (window.puntoXImpresion ? `
+        <span data-permiso="ventas.factura.imprimir" style="margin-left:10px;">
+          <button type="button" class="btn btn-secundario btn-chico" data-imprimir="factura">Imprimir factura</button>
+          <button type="button" class="btn btn-secundario btn-chico" data-imprimir="tique">Imprimir tique</button>
+        </span>` : '');
+    exito.querySelectorAll('[data-imprimir]').forEach((b) => {
+      b.addEventListener('click', () => imprimirFactura(factura.id, b.dataset.imprimir));
+    });
     state.carrito = [];
     state.cliente = null;
     document.getElementById('cliente-nombre').textContent = 'Consumidor final';
@@ -375,6 +384,7 @@ async function cargarHistorial() {
         <td>
           ${f.estado !== 'anulado' ? `<a href="#" class="btn-anular" data-permiso="ventas.factura.anular" data-id="${f.id}" style="color:var(--color-danger); font-size:12px; font-weight:700;">Anular</a>` : ''}
           ${f.estado !== 'anulado' ? ` · <a href="#" class="btn-devolver" data-permiso="ventas.devolucion.crear" data-id="${f.id}" style="color:var(--color-accent); font-size:12px; font-weight:700;">Devolver</a>` : ''}
+          ${window.puntoXImpresion ? ` · <a href="#" class="btn-reimprimir" data-permiso="ventas.factura.imprimir" data-id="${f.id}" style="color:var(--color-accent); font-size:12px; font-weight:700;">Imprimir</a>` : ''}
         </td>
       </tr>
     `;
@@ -402,6 +412,21 @@ async function cargarHistorial() {
       abrirFormularioDevolucion(btn.dataset.id);
     });
   });
+
+  tbody.querySelectorAll('.btn-reimprimir').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      imprimirFactura(btn.dataset.id, 'factura');
+    });
+  });
+}
+
+async function imprimirFactura(documentoId, formato) {
+  try {
+    await window.puntoXImpresion.imprimirFactura({ documentoId, formato });
+  } catch (err) {
+    mostrarError(err.message.replace(/^Error invoking remote method '.*?': Error: /, ''));
+  }
 }
 
 // --- Devolución (nota de crédito) ---

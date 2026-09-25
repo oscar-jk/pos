@@ -3,9 +3,8 @@ const crypto = require('node:crypto');
 const { hashPassword } = require('../auth/password');
 const session = require('../auth/session');
 
-// Bitácora de auditoría transversal. Se engancha, por ahora, en las acciones administrativas
-// y de anulación de cada módulo (las de mayor riesgo) — instrumentar también cada creación
-// normal de documento en los 7 módulos queda pendiente; ver nota al usuario.
+// Bitácora de auditoría transversal: creación, anulación, cierre y acciones administrativas
+// de todos los módulos.
 function registrarAuditoria(db, { usuarioId, modulo, entidad, entidadId, accion, detalle }) {
   db.prepare(
     `INSERT INTO bitacora_auditoria (id, usuario_id, modulo, entidad, entidad_id, accion, detalle)
@@ -39,7 +38,7 @@ function obtenerDatosNegocio(db) {
   return datos;
 }
 
-function actualizarDatosNegocio(db, { nombre, iniciales, colorAcento }, usuarioId) {
+function actualizarDatosNegocio(db, { nombre, iniciales, colorAcento, rnc, direccion, telefono }, usuarioId) {
   session.requerirPermiso('configuracion.gestionar');
   const upsert = db.prepare(
     `INSERT INTO parametros_negocio (clave, valor, updated_at) VALUES (?, ?, strftime('%Y-%m-%dT%H:%M:%fZ','now'))
@@ -48,7 +47,10 @@ function actualizarDatosNegocio(db, { nombre, iniciales, colorAcento }, usuarioI
   upsert.run('negocio_nombre', nombre);
   upsert.run('negocio_iniciales', iniciales);
   upsert.run('negocio_color_acento', colorAcento);
-  registrarAuditoria(db, { usuarioId, modulo: 'configuracion', entidad: 'parametros_negocio', entidadId: 'negocio', accion: 'editar', detalle: { nombre, iniciales, colorAcento } });
+  upsert.run('negocio_rnc', rnc || '');
+  upsert.run('negocio_direccion', direccion || '');
+  upsert.run('negocio_telefono', telefono || '');
+  registrarAuditoria(db, { usuarioId, modulo: 'configuracion', entidad: 'parametros_negocio', entidadId: 'negocio', accion: 'editar', detalle: { nombre, iniciales, colorAcento, rnc, direccion, telefono } });
 }
 
 // =========================================================================
