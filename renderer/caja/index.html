@@ -27,6 +27,7 @@
         <button class="tab-btn" data-tab="historial">Historial de turnos</button>
         <button class="tab-btn" data-tab="cajachica">Caja chica</button>
         <button class="tab-btn" data-tab="banco">Transferencias a banco</button>
+        <button class="tab-btn" data-tab="conciliacion" data-permiso="caja.conciliacion.gestionar,contabilidad.ver">Conciliación bancaria</button>
       </div>
 
       <div id="tab-turno" class="tab-panel"></div>
@@ -57,6 +58,8 @@
         </table>
         <div id="banco-vacio" class="empty-state" style="display:none;">Aún no hay transferencias registradas.</div>
       </div>
+
+      <div id="tab-conciliacion" class="tab-panel" style="display:none;"></div>
 
     </div>
   </div>

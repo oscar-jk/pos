@@ -231,6 +231,7 @@ function listarCuentasBancarias(db) {
 }
 
 function crearCuentaBancaria(db, { nombre, banco, numeroCuenta, monedaId }) {
+  session.requerirAlgunPermiso('caja.movimiento.crear', 'caja.conciliacion.gestionar');
   if (!nombre || !banco) throw new Error('Nombre y banco son obligatorios');
   const id = crypto.randomUUID();
   db.prepare('INSERT INTO cuentas_bancarias (id, nombre, banco, numero_cuenta, moneda_id, activo) VALUES (?, ?, ?, ?, ?, 1)')
@@ -290,6 +291,380 @@ function listarTransferenciasCajaBanco(db, { limite = 50 } = {}) {
 }
 
 // =========================================================================
+// Conciliación bancaria
+// =========================================================================
+//
+// El extracto del banco se captura como partidas (monto > 0 = crédito/depósito, < 0 = débito).
+// Los movimientos del sistema no se copian: se leen en vivo del libro de la cuenta contable
+// Bancos (1200), porque todo lo que toca el banco (ventas con tarjeta/transferencia, cobros,
+// pagos a proveedor, depósitos de caja) ya genera ahí su línea. Una línea del libro conciliada
+// en una conciliación no vuelve a aparecer en otra; las no conciliadas se arrastran (cheques y
+// depósitos en tránsito) hasta que aparezcan en un extracto.
+
+const CUENTA_BANCOS = '1200';
+const CUENTA_GASTOS_BANCARIOS = '6100';
+const DIAS_TOLERANCIA_AUTOMATICA = 7;
+
+function finDelDia(fecha) {
+  return `${fecha.slice(0, 10)}T23:59:59.999Z`;
+}
+
+function exigirLecturaConciliacion() {
+  session.requerirAlgunPermiso('caja.conciliacion.gestionar', 'contabilidad.ver');
+}
+
+function obtenerConciliacionFila(db, conciliacionId) {
+  const c = db
+    .prepare(
+      `SELECT cb.*, cu.nombre AS cuenta_nombre, cu.banco, cu.numero_cuenta, u.nombre_completo AS usuario_nombre
+       FROM conciliaciones_bancarias cb JOIN cuentas_bancarias cu ON cu.id = cb.cuenta_bancaria_id
+       LEFT JOIN usuarios u ON u.id = cb.usuario_id
+       WHERE cb.id = ? AND cb.deleted_at IS NULL`
+    )
+    .get(conciliacionId);
+  if (!c) throw new Error('Conciliación no encontrada');
+  return c;
+}
+
+function exigirEnProceso(conciliacion) {
+  if (conciliacion.estado !== 'en_proceso') throw new Error('La conciliación ya está cerrada. Reábrala para modificarla.');
+}
+
+function saldoLibroBancos(db, hasta) {
+  const row = db
+    .prepare(
+      `SELECT COALESCE(SUM(d.debe - d.haber), 0) AS saldo
+       FROM asientos_contables_detalle d JOIN asientos_contables a ON a.id = d.asiento_id
+       JOIN cuentas_contables c ON c.id = d.cuenta_id
+       WHERE c.codigo = ? AND a.fecha <= ?`
+    )
+    .get(CUENTA_BANCOS, finDelDia(hasta));
+  return redondear(row.saldo);
+}
+
+// Líneas del libro de Bancos hasta la fecha de corte que le corresponden a esta conciliación:
+// las conciliadas en ella, las que no están conciliadas en ninguna, y las que se conciliaron en
+// una conciliación posterior (para esta seguían en tránsito — así una conciliación cerrada no
+// cambia su resumen cuando el cheque se cobra el mes siguiente). `disponible` indica si la
+// línea todavía puede emparejarse (no está conciliada en ninguna parte).
+function movimientosSistema(db, conciliacion) {
+  const lineas = db
+    .prepare(
+      `SELECT d.id AS asiento_detalle_id, a.id AS asiento_id, a.numero, a.fecha, a.concepto, a.origen_modulo,
+              a.origen_documento_tipo, a.origen_documento_id, d.descripcion, d.debe - d.haber AS monto,
+              cbd.id AS partida_id, cbd.conciliacion_id AS conciliado_en, cb.periodo_hasta AS conciliado_hasta
+       FROM asientos_contables_detalle d
+       JOIN asientos_contables a ON a.id = d.asiento_id
+       JOIN cuentas_contables c ON c.id = d.cuenta_id
+       LEFT JOIN conciliaciones_bancarias_detalle cbd ON cbd.asiento_detalle_id = d.id AND cbd.deleted_at IS NULL
+       LEFT JOIN conciliaciones_bancarias cb ON cb.id = cbd.conciliacion_id
+       WHERE c.codigo = ? AND a.fecha <= ?
+       ORDER BY a.fecha ASC, a.numero ASC`
+    )
+    .all(CUENTA_BANCOS, finDelDia(conciliacion.periodo_hasta));
+
+  // Un documento anulado deja en Bancos su línea original y la de reversión. Si ninguna de las
+  // dos está conciliada, nunca llegaron al banco: se ocultan en pareja. Se empareja cada
+  // reversión con UNA línea original del mismo documento y monto opuesto (un mismo documento
+  // puede tener varias, p. ej. un cargo bancario registrado, revertido y vuelto a registrar).
+  const clave = (l) => (l.origen_documento_tipo === 'asientos_contables_anulacion' ? l.origen_documento_id : (l.origen_documento_id || l.asiento_id));
+  const esReversion = (l) => (l.origen_documento_tipo || '').endsWith('_anulacion');
+  const ocultas = new Set();
+  for (const reversion of lineas.filter((l) => esReversion(l) && !l.conciliado_en)) {
+    const original = lineas.find((l) => !esReversion(l) && !l.conciliado_en && !ocultas.has(l.asiento_detalle_id)
+      && clave(l) === clave(reversion) && Math.abs(l.monto + reversion.monto) < 0.005);
+    if (!original) continue;
+    ocultas.add(original.asiento_detalle_id);
+    ocultas.add(reversion.asiento_detalle_id);
+  }
+
+  return lineas
+    .filter((l) => !ocultas.has(l.asiento_detalle_id))
+    .filter((l) => !l.conciliado_en || l.conciliado_en === conciliacion.id || l.conciliado_hasta > conciliacion.periodo_hasta)
+    .map((l) => {
+      const aqui = l.conciliado_en === conciliacion.id;
+      return {
+        asiento_detalle_id: l.asiento_detalle_id, asiento_id: l.asiento_id, numero: l.numero, fecha: l.fecha,
+        concepto: l.concepto, descripcion: l.descripcion, origen_modulo: l.origen_modulo, monto: redondear(l.monto),
+        partida_id: aqui ? l.partida_id : null, conciliado: aqui, disponible: !l.conciliado_en,
+      };
+    });
+}
+
+function partidasEstadoCuenta(db, conciliacionId) {
+  return db
+    .prepare(
+      `SELECT * FROM conciliaciones_bancarias_detalle
+       WHERE conciliacion_id = ? AND origen = 'estado_cuenta' AND deleted_at IS NULL
+       ORDER BY fecha ASC, created_at ASC`
+    )
+    .all(conciliacionId);
+}
+
+// saldo del banco + depósitos en tránsito − cheques en tránsito
+//   debe igualar a
+// saldo en libros + partidas del banco aún no conciliadas ni registradas
+function resumenConciliacion(conciliacion, partidas, movimientos, saldoLibros) {
+  const pendientesSistema = movimientos.filter((m) => !m.conciliado);
+  const depositosEnTransito = redondear(pendientesSistema.filter((m) => m.monto > 0).reduce((a, m) => a + m.monto, 0));
+  const chequesEnTransito = redondear(pendientesSistema.filter((m) => m.monto < 0).reduce((a, m) => a - m.monto, 0));
+  const pendientesBanco = partidas.filter((p) => !p.conciliado);
+  const partidasBancoPendientes = redondear(pendientesBanco.reduce((a, p) => a + p.monto, 0));
+  const saldoEstadoCuenta = redondear(conciliacion.saldo_estado_cuenta || 0);
+  const saldoBancoAjustado = redondear(saldoEstadoCuenta + depositosEnTransito - chequesEnTransito);
+  const saldoLibrosAjustado = redondear(saldoLibros + partidasBancoPendientes);
+  const diferencia = redondear(saldoBancoAjustado - saldoLibrosAjustado);
+  return {
+    saldoLibros, saldoEstadoCuenta, depositosEnTransito, chequesEnTransito, partidasBancoPendientes,
+    saldoBancoAjustado, saldoLibrosAjustado, diferencia,
+    partidasConciliadas: partidas.length - pendientesBanco.length, partidasPendientes: pendientesBanco.length,
+    movimientosPendientes: pendientesSistema.length,
+    cuadra: Math.abs(diferencia) < 0.01 && pendientesBanco.length === 0,
+  };
+}
+
+function obtenerConciliacion(db, conciliacionId) {
+  exigirLecturaConciliacion();
+  const conciliacion = obtenerConciliacionFila(db, conciliacionId);
+  const partidas = partidasEstadoCuenta(db, conciliacionId);
+  const movimientos = movimientosSistema(db, conciliacion);
+  // Una conciliación cerrada muestra el saldo en libros que tenía al cerrarse, aunque después
+  // se registren operaciones con fecha anterior al corte.
+  const saldoLibros = conciliacion.estado === 'conciliada' && conciliacion.saldo_sistema !== null
+    ? conciliacion.saldo_sistema : saldoLibroBancos(db, conciliacion.periodo_hasta);
+  return { conciliacion, partidas, movimientos, resumen: resumenConciliacion(conciliacion, partidas, movimientos, saldoLibros) };
+}
+
+function listarConciliaciones(db, { cuentaBancariaId, desde, hasta } = {}) {
+  exigirLecturaConciliacion();
+  const condiciones = ['cb.deleted_at IS NULL'];
+  const params = [];
+  if (cuentaBancariaId) { condiciones.push('cb.cuenta_bancaria_id = ?'); params.push(cuentaBancariaId); }
+  if (desde) { condiciones.push('cb.periodo_hasta >= ?'); params.push(desde.slice(0, 10)); }
+  if (hasta) { condiciones.push('cb.periodo_desde <= ?'); params.push(hasta.slice(0, 10)); }
+  const filas = db
+    .prepare(
+      `SELECT cb.id FROM conciliaciones_bancarias cb WHERE ${condiciones.join(' AND ')}
+       ORDER BY cb.periodo_hasta DESC, cb.created_at DESC`
+    )
+    .all(...params);
+  return filas.map(({ id }) => {
+    const { conciliacion, resumen } = obtenerConciliacion(db, id);
+    return { ...conciliacion, ...resumen };
+  });
+}
+
+function crearConciliacion(db, { cuentaBancariaId, periodoDesde, periodoHasta, saldoEstadoCuenta, usuarioId }) {
+  session.requerirPermiso('caja.conciliacion.gestionar');
+  if (!cuentaBancariaId) throw new Error('Seleccione la cuenta bancaria');
+  if (!periodoDesde || !periodoHasta) throw new Error('Indique el periodo del estado de cuenta');
+  if (periodoDesde > periodoHasta) throw new Error('La fecha inicial del periodo no puede ser posterior a la final');
+  if (saldoEstadoCuenta === undefined || saldoEstadoCuenta === null || Number.isNaN(Number(saldoEstadoCuenta))) {
+    throw new Error('Indique el saldo final que muestra el estado de cuenta');
+  }
+  const abierta = db
+    .prepare("SELECT id FROM conciliaciones_bancarias WHERE cuenta_bancaria_id = ? AND estado = 'en_proceso' AND deleted_at IS NULL")
+    .get(cuentaBancariaId);
+  if (abierta) throw new Error('Ya hay una conciliación en proceso para esta cuenta. Ciérrela antes de iniciar otra.');
+
+  const id = crypto.randomUUID();
+  db.prepare(
+    `INSERT INTO conciliaciones_bancarias (id, cuenta_bancaria_id, periodo_desde, periodo_hasta, saldo_estado_cuenta, estado, usuario_id)
+     VALUES (?, ?, ?, ?, ?, 'en_proceso', ?)`
+  ).run(id, cuentaBancariaId, periodoDesde.slice(0, 10), periodoHasta.slice(0, 10), redondear(Number(saldoEstadoCuenta)), usuarioId);
+  configuracion.registrarAuditoria(db, {
+    usuarioId, modulo: 'caja', entidad: 'conciliaciones_bancarias', entidadId: id, accion: 'crear',
+    detalle: { periodoDesde, periodoHasta, saldoEstadoCuenta },
+  });
+  return id;
+}
+
+function actualizarSaldoEstadoCuenta(db, { conciliacionId, saldoEstadoCuenta, usuarioId }) {
+  session.requerirPermiso('caja.conciliacion.gestionar');
+  exigirEnProceso(obtenerConciliacionFila(db, conciliacionId));
+  if (Number.isNaN(Number(saldoEstadoCuenta))) throw new Error('Saldo inválido');
+  db.prepare("UPDATE conciliaciones_bancarias SET saldo_estado_cuenta = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?")
+    .run(redondear(Number(saldoEstadoCuenta)), conciliacionId);
+  configuracion.registrarAuditoria(db, { usuarioId, modulo: 'caja', entidad: 'conciliaciones_bancarias', entidadId: conciliacionId, accion: 'editar', detalle: { saldoEstadoCuenta } });
+}
+
+function agregarPartidas(db, { conciliacionId, partidas, usuarioId }) {
+  session.requerirPermiso('caja.conciliacion.gestionar');
+  exigirEnProceso(obtenerConciliacionFila(db, conciliacionId));
+  if (!partidas || partidas.length === 0) throw new Error('No hay partidas para agregar');
+  const insertar = db.prepare(
+    `INSERT INTO conciliaciones_bancarias_detalle
+       (id, conciliacion_id, fecha, descripcion, monto, origen, conciliado, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, 'estado_cuenta', 0, strftime('%Y-%m-%dT%H:%M:%fZ','now'), strftime('%Y-%m-%dT%H:%M:%fZ','now'))`
+  );
+  partidas.forEach((p, i) => {
+    const fila = partidas.length > 1 ? ` (partida ${i + 1})` : '';
+    if (!p.fecha || !/^\d{4}-\d{2}-\d{2}/.test(p.fecha)) throw new Error(`Fecha inválida${fila}`);
+    if (!p.descripcion || !String(p.descripcion).trim()) throw new Error(`La descripción es obligatoria${fila}`);
+    const monto = redondear(Number(p.monto));
+    if (!monto) throw new Error(`El monto debe ser distinto de cero${fila}`);
+    insertar.run(crypto.randomUUID(), conciliacionId, p.fecha.slice(0, 10), String(p.descripcion).trim(), monto);
+  });
+  configuracion.registrarAuditoria(db, { usuarioId, modulo: 'caja', entidad: 'conciliaciones_bancarias', entidadId: conciliacionId, accion: 'agregar_partidas', detalle: { cantidad: partidas.length } });
+  return partidas.length;
+}
+
+function obtenerPartidaEditable(db, partidaId) {
+  const partida = db.prepare("SELECT * FROM conciliaciones_bancarias_detalle WHERE id = ? AND origen = 'estado_cuenta' AND deleted_at IS NULL").get(partidaId);
+  if (!partida) throw new Error('Partida no encontrada');
+  exigirEnProceso(obtenerConciliacionFila(db, partida.conciliacion_id));
+  return partida;
+}
+
+function eliminarPartida(db, { partidaId, usuarioId }) {
+  session.requerirPermiso('caja.conciliacion.gestionar');
+  const partida = obtenerPartidaEditable(db, partidaId);
+  if (partida.conciliado) throw new Error('Deshaga la conciliación de la partida antes de quitarla');
+  db.prepare("UPDATE conciliaciones_bancarias_detalle SET deleted_at = strftime('%Y-%m-%dT%H:%M:%fZ','now'), updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?").run(partidaId);
+  configuracion.registrarAuditoria(db, { usuarioId, modulo: 'caja', entidad: 'conciliaciones_bancarias_detalle', entidadId: partidaId, accion: 'eliminar', detalle: { descripcion: partida.descripcion, monto: partida.monto } });
+}
+
+function conciliarPareja(db, { partidaId, asientoDetalleId, usuarioId }) {
+  session.requerirPermiso('caja.conciliacion.gestionar');
+  const partida = obtenerPartidaEditable(db, partidaId);
+  if (partida.conciliado) throw new Error('La partida del banco ya está conciliada');
+  const conciliacion = obtenerConciliacionFila(db, partida.conciliacion_id);
+  const linea = movimientosSistema(db, conciliacion).find((m) => m.asiento_detalle_id === asientoDetalleId);
+  if (!linea) throw new Error('El movimiento del sistema no está disponible para esta conciliación');
+  if (!linea.disponible) throw new Error('El movimiento del sistema ya está conciliado');
+  if (Math.abs(linea.monto - partida.monto) > 0.009) {
+    throw new Error(`Los montos no coinciden (banco ${partida.monto.toFixed(2)} vs sistema ${linea.monto.toFixed(2)}). Si la diferencia es un cargo del banco, regístrela aparte.`);
+  }
+  db.prepare(
+    `UPDATE conciliaciones_bancarias_detalle SET asiento_detalle_id = ?, conciliado = 1, tipo_diferencia = NULL,
+       updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?`
+  ).run(asientoDetalleId, partidaId);
+  configuracion.registrarAuditoria(db, { usuarioId, modulo: 'caja', entidad: 'conciliaciones_bancarias_detalle', entidadId: partidaId, accion: 'conciliar', detalle: { asientoDetalleId, monto: partida.monto } });
+}
+
+// Empareja partida del banco ↔ movimiento del sistema con el mismo monto y fecha cercana
+// (±7 días), uno a uno, prefiriendo la fecha más cercana.
+function conciliarAutomaticamente(db, { conciliacionId, usuarioId }) {
+  session.requerirPermiso('caja.conciliacion.gestionar');
+  const conciliacion = obtenerConciliacionFila(db, conciliacionId);
+  exigirEnProceso(conciliacion);
+  const disponibles = movimientosSistema(db, conciliacion).filter((m) => m.disponible);
+  const usados = new Set();
+  const actualizar = db.prepare(
+    `UPDATE conciliaciones_bancarias_detalle SET asiento_detalle_id = ?, conciliado = 1, tipo_diferencia = NULL,
+       updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?`
+  );
+  const unDia = 24 * 60 * 60 * 1000;
+  let emparejadas = 0;
+  for (const partida of partidasEstadoCuenta(db, conciliacionId).filter((p) => !p.conciliado)) {
+    const fechaPartida = new Date(`${partida.fecha}T12:00:00Z`).getTime();
+    const candidato = disponibles
+      .filter((m) => !usados.has(m.asiento_detalle_id) && Math.abs(m.monto - partida.monto) < 0.009)
+      .map((m) => ({ m, dias: Math.abs(new Date(m.fecha).getTime() - fechaPartida) / unDia }))
+      .filter((x) => x.dias <= DIAS_TOLERANCIA_AUTOMATICA)
+      .sort((a, b) => a.dias - b.dias)[0];
+    if (!candidato) continue;
+    usados.add(candidato.m.asiento_detalle_id);
+    actualizar.run(candidato.m.asiento_detalle_id, partida.id);
+    emparejadas += 1;
+  }
+  if (emparejadas > 0) {
+    configuracion.registrarAuditoria(db, { usuarioId, modulo: 'caja', entidad: 'conciliaciones_bancarias', entidadId: conciliacionId, accion: 'conciliar_automatico', detalle: { emparejadas } });
+  }
+  return emparejadas;
+}
+
+function idLineaBancos(db, asientoId) {
+  return db
+    .prepare(
+      `SELECT d.id FROM asientos_contables_detalle d JOIN cuentas_contables c ON c.id = d.cuenta_id
+       WHERE d.asiento_id = ? AND c.codigo = ?`
+    )
+    .get(asientoId, CUENTA_BANCOS).id;
+}
+
+// Cargo o crédito del banco que no estaba en el sistema (comisión, mantenimiento, intereses):
+// se registra contra Gastos Operativos y queda conciliado con la línea de Bancos que genera.
+function registrarPartidaEnContabilidad(db, { partidaId, usuarioId }) {
+  session.requerirPermiso('caja.conciliacion.gestionar');
+  const partida = obtenerPartidaEditable(db, partidaId);
+  if (partida.conciliado) throw new Error('La partida ya está conciliada');
+  const monto = Math.abs(partida.monto);
+  const esCargo = partida.monto < 0;
+  const asientoId = contabilidad.generarAsiento(db, {
+    fecha: `${partida.fecha}T12:00:00.000Z`,
+    concepto: `${esCargo ? 'Cargo' : 'Crédito'} bancario: ${partida.descripcion}`,
+    origenModulo: 'caja', origenDocumentoTipo: 'conciliaciones_bancarias_detalle', origenDocumentoId: partidaId, usuarioId,
+    lineas: esCargo
+      ? [{ cuentaCodigo: CUENTA_GASTOS_BANCARIOS, debe: monto, descripcion: partida.descripcion }, { cuentaCodigo: CUENTA_BANCOS, haber: monto, descripcion: partida.descripcion }]
+      : [{ cuentaCodigo: CUENTA_BANCOS, debe: monto, descripcion: partida.descripcion }, { cuentaCodigo: CUENTA_GASTOS_BANCARIOS, haber: monto, descripcion: partida.descripcion }],
+  });
+  db.prepare(
+    `UPDATE conciliaciones_bancarias_detalle SET asiento_id = ?, asiento_detalle_id = ?, conciliado = 1,
+       tipo_diferencia = 'cargo_bancario_no_registrado', updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?`
+  ).run(asientoId, idLineaBancos(db, asientoId), partidaId);
+  configuracion.registrarAuditoria(db, { usuarioId, modulo: 'caja', entidad: 'conciliaciones_bancarias_detalle', entidadId: partidaId, accion: 'registrar_en_contabilidad', detalle: { asientoId, monto: partida.monto } });
+  return asientoId;
+}
+
+// Deshace una conciliación. Si la partida se había registrado en contabilidad, se revierte ese
+// asiento con uno espejo (nunca se borra); original y reversión se netean y desaparecen de la lista.
+function deshacerConciliacionPartida(db, { partidaId, usuarioId }) {
+  session.requerirPermiso('caja.conciliacion.gestionar');
+  const partida = obtenerPartidaEditable(db, partidaId);
+  if (!partida.conciliado) throw new Error('La partida no está conciliada');
+  if (partida.asiento_id) {
+    const asiento = db.prepare('SELECT * FROM asientos_contables WHERE id = ?').get(partida.asiento_id);
+    const detalle = db.prepare('SELECT d.*, c.codigo FROM asientos_contables_detalle d JOIN cuentas_contables c ON c.id = d.cuenta_id WHERE d.asiento_id = ?').all(asiento.id);
+    contabilidad.generarAsiento(db, {
+      fecha: asiento.fecha, concepto: `Reversión: ${asiento.concepto}`, origenModulo: 'caja',
+      origenDocumentoTipo: 'conciliaciones_bancarias_detalle_anulacion', origenDocumentoId: partidaId, usuarioId,
+      lineas: detalle.map((d) => ({ cuentaCodigo: d.codigo, debe: d.haber, haber: d.debe, descripcion: `Reversión: ${d.descripcion || ''}` })),
+    });
+  }
+  db.prepare(
+    `UPDATE conciliaciones_bancarias_detalle SET asiento_detalle_id = NULL, asiento_id = NULL, conciliado = 0, tipo_diferencia = NULL,
+       updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?`
+  ).run(partidaId);
+  configuracion.registrarAuditoria(db, { usuarioId, modulo: 'caja', entidad: 'conciliaciones_bancarias_detalle', entidadId: partidaId, accion: 'deshacer_conciliacion', detalle: { revirtioAsiento: Boolean(partida.asiento_id) } });
+}
+
+function cerrarConciliacion(db, { conciliacionId, usuarioId }) {
+  session.requerirPermiso('caja.conciliacion.gestionar');
+  const { conciliacion, resumen } = obtenerConciliacion(db, conciliacionId);
+  exigirEnProceso(conciliacion);
+  if (resumen.partidasPendientes > 0) {
+    throw new Error(`Quedan ${resumen.partidasPendientes} partida(s) del banco sin conciliar. Concílielas con un movimiento del sistema o regístrelas en contabilidad.`);
+  }
+  if (Math.abs(resumen.diferencia) >= 0.01) {
+    throw new Error(`La conciliación no cuadra: diferencia de RD$ ${resumen.diferencia.toFixed(2)}. Revise el saldo del estado de cuenta y las partidas.`);
+  }
+  db.prepare(
+    `UPDATE conciliaciones_bancarias SET estado = 'conciliada', saldo_sistema = ?, fecha_conciliada = strftime('%Y-%m-%dT%H:%M:%fZ','now'),
+       updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?`
+  ).run(resumen.saldoLibros, conciliacionId);
+  configuracion.registrarAuditoria(db, { usuarioId, modulo: 'caja', entidad: 'conciliaciones_bancarias', entidadId: conciliacionId, accion: 'cerrar', detalle: { saldoLibros: resumen.saldoLibros, saldoEstadoCuenta: resumen.saldoEstadoCuenta } });
+}
+
+function reabrirConciliacion(db, { conciliacionId, usuarioId }) {
+  session.requerirPermiso('caja.conciliacion.gestionar');
+  const conciliacion = obtenerConciliacionFila(db, conciliacionId);
+  if (conciliacion.estado !== 'conciliada') throw new Error('La conciliación no está cerrada');
+  const posterior = db
+    .prepare(
+      `SELECT 1 FROM conciliaciones_bancarias WHERE cuenta_bancaria_id = ? AND id != ? AND deleted_at IS NULL
+         AND (periodo_hasta > ? OR estado = 'en_proceso')`
+    )
+    .get(conciliacion.cuenta_bancaria_id, conciliacionId, conciliacion.periodo_hasta);
+  if (posterior) throw new Error('Solo se puede reabrir la última conciliación de la cuenta, y sin otra en proceso.');
+  db.prepare(
+    `UPDATE conciliaciones_bancarias SET estado = 'en_proceso', saldo_sistema = NULL, fecha_conciliada = NULL,
+       updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?`
+  ).run(conciliacionId);
+  configuracion.registrarAuditoria(db, { usuarioId, modulo: 'caja', entidad: 'conciliaciones_bancarias', entidadId: conciliacionId, accion: 'reabrir' });
+}
+
+// =========================================================================
 // IPC
 // =========================================================================
 
@@ -340,6 +715,23 @@ function register(ipcMain, getDb) {
     return db.transaction(() => crearTransferenciaCajaBanco(db, payload))();
   });
   ipcMain.handle('caja:listarTransferenciasBanco', (event, filtros) => listarTransferenciasCajaBanco(getDb(), filtros || {}));
+
+  ipcMain.handle('caja:listarConciliaciones', (event, filtros) => listarConciliaciones(getDb(), filtros || {}));
+  ipcMain.handle('caja:obtenerConciliacion', (event, { conciliacionId }) => obtenerConciliacion(getDb(), conciliacionId));
+  const escritura = (canal, fn) => ipcMain.handle(canal, (event, payload) => {
+    const db = getDb();
+    return db.transaction(() => fn(db, payload))();
+  });
+  escritura('caja:crearConciliacion', crearConciliacion);
+  escritura('caja:actualizarSaldoEstadoCuenta', actualizarSaldoEstadoCuenta);
+  escritura('caja:agregarPartidasConciliacion', agregarPartidas);
+  escritura('caja:eliminarPartidaConciliacion', eliminarPartida);
+  escritura('caja:conciliarPareja', conciliarPareja);
+  escritura('caja:conciliarAutomaticamente', conciliarAutomaticamente);
+  escritura('caja:registrarPartidaEnContabilidad', registrarPartidaEnContabilidad);
+  escritura('caja:deshacerConciliacionPartida', deshacerConciliacionPartida);
+  escritura('caja:cerrarConciliacion', cerrarConciliacion);
+  escritura('caja:reabrirConciliacion', reabrirConciliacion);
 }
 
 module.exports = {
@@ -347,4 +739,7 @@ module.exports = {
   listarTurnos, historialSobrantesFaltantes, movimientosDeTurno, registrarMovimientoManual, obtenerOCrearCajaChica,
   crearGastoCajaChica, listarGastosCajaChica, listarCuentasBancarias, crearCuentaBancaria,
   crearTransferenciaCajaBanco, listarTransferenciasCajaBanco, listarCajas, crearCaja,
+  listarConciliaciones, obtenerConciliacion, crearConciliacion, actualizarSaldoEstadoCuenta, agregarPartidas,
+  eliminarPartida, conciliarPareja, conciliarAutomaticamente, registrarPartidaEnContabilidad,
+  deshacerConciliacionPartida, cerrarConciliacion, reabrirConciliacion, saldoLibroBancos,
 };

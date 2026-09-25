@@ -4,6 +4,7 @@ const { app } = require('electron');
 const Database = require('better-sqlite3');
 
 const { seed, sincronizarPermisosFaltantes } = require('./seed');
+const { aplicarMigraciones } = require('./migrations');
 
 let db = null;
 
@@ -39,6 +40,7 @@ function getDb() {
     const schemaSql = fs.readFileSync(path.join(__dirname, 'schema.sql'), 'utf8');
     db.exec(schemaSql);
   }
+  aplicarMigraciones(db);
 
   if (!seedIsApplied(db)) {
     seed(db);

@@ -86,6 +86,19 @@ contextBridge.exposeInMainWorld('puntoXCaja', {
   crearCuentaBancaria: invoke('caja:crearCuentaBancaria'),
   crearTransferenciaBanco: invoke('caja:crearTransferenciaBanco'),
   listarTransferenciasBanco: invoke('caja:listarTransferenciasBanco'),
+
+  listarConciliaciones: invoke('caja:listarConciliaciones'),
+  obtenerConciliacion: invoke('caja:obtenerConciliacion'),
+  crearConciliacion: invoke('caja:crearConciliacion'),
+  actualizarSaldoEstadoCuenta: invoke('caja:actualizarSaldoEstadoCuenta'),
+  agregarPartidasConciliacion: invoke('caja:agregarPartidasConciliacion'),
+  eliminarPartidaConciliacion: invoke('caja:eliminarPartidaConciliacion'),
+  conciliarPareja: invoke('caja:conciliarPareja'),
+  conciliarAutomaticamente: invoke('caja:conciliarAutomaticamente'),
+  registrarPartidaEnContabilidad: invoke('caja:registrarPartidaEnContabilidad'),
+  deshacerConciliacionPartida: invoke('caja:deshacerConciliacionPartida'),
+  cerrarConciliacion: invoke('caja:cerrarConciliacion'),
+  reabrirConciliacion: invoke('caja:reabrirConciliacion'),
 });
 
 contextBridge.exposeInMainWorld('puntoXContabilidad', {

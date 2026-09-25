@@ -148,8 +148,11 @@ function listarAsientos(db, { desde, hasta, origenModulo, limite = 100 } = {}) {
   return asientos.map((a) => ({ ...a, lineas: detalleStmt.all(a.id) }));
 }
 
+// Un asiento manual anulado se marca 'anulado' y además se revierte con un asiento espejo;
+// ambos cuentan (se netean a cero, cada uno en su fecha), igual que las anulaciones de
+// documentos, que dejan el original 'confirmado' y agregan su reversión.
 function libroMayor(db, { cuentaId, desde, hasta }) {
-  const condiciones = ['d.cuenta_id = ?', "a.estado = 'confirmado'"];
+  const condiciones = ['d.cuenta_id = ?'];
   const params = [cuentaId];
   if (desde) { condiciones.push('a.fecha >= ?'); params.push(desde); }
   if (hasta) { condiciones.push('a.fecha <= ?'); params.push(hasta); }
@@ -177,17 +180,22 @@ function libroMayor(db, { cuentaId, desde, hasta }) {
 // =========================================================================
 
 function balanceComprobacion(db, { desde, hasta } = {}) {
-  const condiciones = ["a.estado = 'confirmado'"];
+  // El filtro de fechas va dentro de la subconsulta: puesto en el ON de un LEFT JOIN solo
+  // anulaba las columnas del asiento pero seguía sumando todas las líneas de detalle.
+  const condiciones = ['1 = 1'];
   const params = [];
   if (desde) { condiciones.push('a.fecha >= ?'); params.push(desde); }
   if (hasta) { condiciones.push('a.fecha <= ?'); params.push(hasta); }
 
   const filas = db
     .prepare(
-      `SELECT c.id, c.codigo, c.nombre, c.tipo, COALESCE(SUM(d.debe),0) AS total_debe, COALESCE(SUM(d.haber),0) AS total_haber
+      `SELECT c.id, c.codigo, c.nombre, c.tipo, COALESCE(SUM(m.debe),0) AS total_debe, COALESCE(SUM(m.haber),0) AS total_haber
        FROM cuentas_contables c
-       LEFT JOIN asientos_contables_detalle d ON d.cuenta_id = c.id
-       LEFT JOIN asientos_contables a ON a.id = d.asiento_id AND ${condiciones.join(' AND ')}
+       LEFT JOIN (
+         SELECT d.cuenta_id, d.debe, d.haber FROM asientos_contables_detalle d
+         JOIN asientos_contables a ON a.id = d.asiento_id
+         WHERE ${condiciones.join(' AND ')}
+       ) m ON m.cuenta_id = c.id
        WHERE c.deleted_at IS NULL AND c.es_movimiento = 1
        GROUP BY c.id HAVING total_debe > 0 OR total_haber > 0
        ORDER BY c.codigo`

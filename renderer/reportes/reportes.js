@@ -425,6 +425,24 @@ const CATALOGO = [
           { label: 'Comprobante', key: 'comprobante_ruta' }, { label: 'Fecha', key: 'fecha', formato: 'fecha' }, { label: 'Usuario', key: 'usuario_nombre' },
         ],
       },
+      {
+        clave: 'caja-conciliacion', etiqueta: 'Conciliación Bancaria',
+        // Solo existe en la app de escritorio.
+        disponible: () => Boolean(window.puntoXCaja.listarConciliaciones),
+        filtros: [{ tipo: 'fecha', clave: 'desde', label: 'Desde' }, { tipo: 'fecha', clave: 'hasta', label: 'Hasta' }],
+        cargar: (v) => window.puntoXCaja.listarConciliaciones(v),
+        columnas: [
+          { label: 'Cuenta', key: (c) => `${c.cuenta_nombre} — ${c.banco}` },
+          { label: 'Desde', key: (c) => `${c.periodo_desde}T12:00:00`, formato: 'fecha' }, { label: 'Hasta', key: (c) => `${c.periodo_hasta}T12:00:00`, formato: 'fecha' },
+          { label: 'Saldo banco', key: 'saldoEstadoCuenta', formato: 'moneda', alinear: 'right' },
+          { label: 'Saldo en libros', key: 'saldoLibros', formato: 'moneda', alinear: 'right' },
+          { label: 'Partidas conciliadas', key: 'partidasConciliadas', alinear: 'right' },
+          { label: 'Partidas del banco pendientes', key: 'partidasPendientes', alinear: 'right' },
+          { label: 'En tránsito (sistema)', key: 'movimientosPendientes', alinear: 'right' },
+          { label: 'Diferencia', key: 'diferencia', formato: 'moneda', alinear: 'right' },
+          { label: 'Estado', key: (c) => (c.estado === 'conciliada' ? 'Conciliada' : 'En proceso') },
+        ],
+      },
     ],
   },
   {
@@ -508,7 +526,7 @@ function renderNav() {
   nav.innerHTML = CATALOGO.map((g) => `
     <div class="reportes-nav__grupo">
       <div class="reportes-nav__titulo">${g.grupo}</div>
-      ${g.reportes.map((r) => `<button class="reportes-nav__item" data-clave="${r.clave}">${r.etiqueta}</button>`).join('')}
+      ${g.reportes.filter((r) => !r.disponible || r.disponible()).map((r) => `<button class="reportes-nav__item" data-clave="${r.clave}">${r.etiqueta}</button>`).join('')}
     </div>
   `).join('');
   nav.querySelectorAll('[data-clave]').forEach((btn) => btn.addEventListener('click', () => seleccionarReporte(btn.dataset.clave)));

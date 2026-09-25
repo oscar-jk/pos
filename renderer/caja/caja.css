@@ -40,6 +40,80 @@
   color: #fff;
 }
 
+/* --- Conciliación bancaria --- */
+
+.enlace-accion {
+  color: var(--color-accent);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.conc-aviso {
+  background: var(--color-accent-soft);
+  border: 1px solid var(--color-accent);
+  border-radius: var(--radius-md);
+  padding: 12px 14px;
+  margin-bottom: 12px;
+  font-size: 13px;
+}
+
+.conc-encabezado {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.conc-encabezado__titulo { font-family: var(--font-heading); font-size: 18px; font-weight: 800; }
+.conc-encabezado__sub { font-size: 12px; color: var(--color-text-muted); margin-top: 2px; }
+.conc-volver { font-size: 12px; font-weight: 700; color: var(--color-accent); cursor: pointer; margin-bottom: 8px; display: inline-block; }
+
+/* Fila 1: lado del banco; fila 2: lado de los libros y la diferencia. */
+.conc-resumen {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.conc-resumen .resumen-turno__valor { font-size: 16px; }
+.conc-resumen__item--diferencia { background: #fdecec; }
+.conc-resumen__item--cuadra { background: #e7f5ea; }
+
+.conc-formula {
+  font-size: 12px;
+  color: var(--color-text-muted);
+  margin-bottom: 16px;
+}
+
+.conc-acciones { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+
+.conc-columnas {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.conc-columna__titulo { font-weight: 800; font-size: 13px; margin-bottom: 4px; }
+.conc-columna__sub { font-size: 11px; color: var(--color-text-muted); margin-bottom: 10px; }
+
+.conc-columna .data-table td, .conc-columna .data-table th { font-size: 12px; padding: 8px 6px; }
+.conc-monto { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.conc-monto--neg { color: var(--color-danger); }
+
+.conc-fila--seleccionada td { background: var(--color-accent-soft); }
+.conc-fila--candidata td { background: #fff7e6; }
+.conc-fila--conciliada td { color: var(--color-text-faint); }
+
+.conc-estado { font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 10px; color: #fff; white-space: nowrap; }
+
+@media (max-width: 1280px) {
+  .conc-columnas { grid-template-columns: minmax(0, 1fr); }
+}
+
 .form-seccion {
   margin-top: 18px;
   padding-top: 14px;

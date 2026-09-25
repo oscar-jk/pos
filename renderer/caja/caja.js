@@ -35,6 +35,7 @@ function cambiarTab(tab) {
   if (tab === 'historial') cargarHistorial();
   if (tab === 'cajachica') cargarCajaChica();
   if (tab === 'banco') { cargarBanco(); document.getElementById('acciones-tab').innerHTML = '<button class="btn btn-primario" id="btn-nueva-transferencia" data-permiso="caja.movimiento.crear">+ Nueva transferencia</button>'; document.getElementById('btn-nueva-transferencia').addEventListener('click', abrirFormularioTransferencia); }
+  if (tab === 'conciliacion') { state.conciliacionId = null; cargarConciliaciones(); }
 }
 
 document.querySelectorAll('.tab-btn').forEach((b) => b.addEventListener('click', () => cambiarTab(b.dataset.tab)));
@@ -318,10 +319,398 @@ async function abrirFormularioTransferencia() {
   });
 }
 
+// --- Conciliación bancaria ---
+
+function esc(texto) {
+  return String(texto ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+function fechaCorta(iso) {
+  if (!iso) return '—';
+  // Las partidas del banco son fechas puras (YYYY-MM-DD): se muestran sin convertir zona horaria.
+  if (/^\d{4}-\d{2}-\d{2}$/.test(iso)) { const [a, m, d] = iso.split('-'); return `${d}/${m}/${a}`; }
+  return new Date(iso).toLocaleDateString('es-DO', { day: '2-digit', month: '2-digit', year: 'numeric' });
+}
+
+function montoCelda(n) {
+  return `<td class="conc-monto ${n < 0 ? 'conc-monto--neg' : ''}">${n < 0 ? '−' : ''}${fmt(Math.abs(n)).replace('RD$ ', '')}</td>`;
+}
+
+function puedeGestionarConciliacion() {
+  return state.info.tienePermiso('caja.conciliacion.gestionar');
+}
+
+async function ejecutarConciliacion(fn) {
+  mostrarError(null);
+  try {
+    const resultado = await fn();
+    await renderDetalleConciliacion();
+    return resultado;
+  } catch (err) { mostrarError(err.message); return undefined; }
+}
+
+async function cargarConciliaciones() {
+  const panel = document.getElementById('tab-conciliacion');
+  document.getElementById('acciones-tab').innerHTML = '<button class="btn btn-primario" id="btn-nueva-conciliacion" data-permiso="caja.conciliacion.gestionar">+ Nueva conciliación</button>';
+  document.getElementById('btn-nueva-conciliacion').addEventListener('click', abrirFormularioConciliacion);
+
+  let lista = [];
+  try { lista = await window.puntoXCaja.listarConciliaciones({}); } catch (err) { mostrarError(err.message); }
+  panel.innerHTML = `
+    <p style="font-size:13px; color:var(--color-text-muted); margin:0 0 14px; max-width:760px;">
+      Compara el estado de cuenta del banco contra los movimientos de la cuenta contable <strong>Bancos</strong>:
+      ventas y cobros con tarjeta, transferencia o cheque, pagos a proveedores y depósitos de caja.
+    </p>
+    ${lista.length === 0 ? '<div class="empty-state">Aún no hay conciliaciones. Crea la primera con el estado de cuenta del mes.</div>' : `
+    <table class="data-table">
+      <thead><tr><th>Cuenta</th><th>Periodo</th><th>Saldo banco</th><th>Saldo en libros</th><th>Pendientes</th><th>Diferencia</th><th>Estado</th><th></th></tr></thead>
+      <tbody>
+        ${lista.map((c) => `
+          <tr>
+            <td>${esc(c.cuenta_nombre)} — ${esc(c.banco)}</td>
+            <td>${fechaCorta(c.periodo_desde)} al ${fechaCorta(c.periodo_hasta)}</td>
+            <td>${fmt(c.saldoEstadoCuenta)}</td>
+            <td>${fmt(c.saldoLibros)}</td>
+            <td>${c.partidasPendientes} del banco · ${c.movimientosPendientes} del sistema</td>
+            <td style="color:${Math.abs(c.diferencia) < 0.01 ? 'var(--color-success)' : 'var(--color-danger)'}; font-weight:700;">${fmt(c.diferencia)}</td>
+            <td><span class="pill-estado" style="background:${c.estado === 'conciliada' ? 'var(--color-success)' : 'var(--color-warning)'};">${c.estado === 'conciliada' ? 'Conciliada' : 'En proceso'}</span></td>
+            <td><span class="enlace-accion" data-abrir-conciliacion="${c.id}">Abrir</span></td>
+          </tr>`).join('')}
+      </tbody>
+    </table>`}
+  `;
+  panel.querySelectorAll('[data-abrir-conciliacion]').forEach((el) => el.addEventListener('click', () => {
+    state.conciliacionId = el.dataset.abrirConciliacion;
+    state.partidaSeleccionada = null;
+    renderDetalleConciliacion();
+  }));
+}
+
+async function abrirFormularioConciliacion() {
+  const cuentas = await window.puntoXCaja.listarCuentasBancarias();
+  const hoy = new Date();
+  const primeroMes = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
+  const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+  window.PuntoXModal.abrirModal('Nueva conciliación bancaria', `
+    <div class="form-field"><label>Cuenta bancaria *</label>
+      <select id="nc-cuenta" class="input-normal">
+        ${cuentas.map((c) => `<option value="${c.id}">${esc(c.nombre)} — ${esc(c.banco)}${c.numero_cuenta ? ` (${esc(c.numero_cuenta)})` : ''}</option>`).join('')}
+        <option value="__nueva__" ${cuentas.length === 0 ? 'selected' : ''}>+ Nueva cuenta bancaria...</option>
+      </select>
+    </div>
+    <div id="nc-nueva-cuenta" style="display:${cuentas.length === 0 ? 'grid' : 'none'}; margin-top:10px;" class="form-grid">
+      <div class="form-field"><label>Nombre</label><input id="nc-nc-nombre" class="input-normal" placeholder="Ej: Cuenta corriente" /></div>
+      <div class="form-field"><label>Banco</label><input id="nc-nc-banco" class="input-normal" placeholder="Ej: Banco Popular" /></div>
+      <div class="form-field"><label>Número de cuenta</label><input id="nc-nc-numero" class="input-normal" /></div>
+    </div>
+    <div class="form-grid" style="margin-top:10px;">
+      <div class="form-field"><label>Periodo desde *</label><input id="nc-desde" type="date" class="input-normal" value="${iso(primeroMes)}" /></div>
+      <div class="form-field"><label>Periodo hasta (fecha de corte) *</label><input id="nc-hasta" type="date" class="input-normal" value="${iso(hoy)}" /></div>
+      <div class="form-field" style="grid-column: span 2;"><label>Saldo final según el estado de cuenta *</label><input id="nc-saldo" type="number" step="0.01" class="input-normal" placeholder="0.00" /></div>
+    </div>
+    <div class="form-seccion" style="display:flex; justify-content:flex-end; gap:8px;">
+      <button type="button" class="btn btn-secundario" id="nc-cancelar">Cancelar</button>
+      <button type="button" class="btn btn-primario" id="nc-guardar">Crear conciliación</button>
+    </div>
+  `);
+  document.getElementById('nc-cuenta').addEventListener('change', (e) => {
+    document.getElementById('nc-nueva-cuenta').style.display = e.target.value === '__nueva__' ? 'grid' : 'none';
+  });
+  document.getElementById('nc-cancelar').addEventListener('click', window.PuntoXModal.cerrarModal);
+  document.getElementById('nc-guardar').addEventListener('click', async () => {
+    try {
+      let cuentaBancariaId = document.getElementById('nc-cuenta').value;
+      if (cuentaBancariaId === '__nueva__') {
+        const nueva = await window.puntoXCaja.crearCuentaBancaria({
+          nombre: document.getElementById('nc-nc-nombre').value, banco: document.getElementById('nc-nc-banco').value,
+          numeroCuenta: document.getElementById('nc-nc-numero').value, monedaId: state.info.monedaId,
+        });
+        cuentaBancariaId = nueva.id;
+      }
+      const saldo = document.getElementById('nc-saldo').value;
+      state.conciliacionId = await window.puntoXCaja.crearConciliacion({
+        cuentaBancariaId, periodoDesde: document.getElementById('nc-desde').value, periodoHasta: document.getElementById('nc-hasta').value,
+        saldoEstadoCuenta: saldo === '' ? null : parseFloat(saldo), usuarioId: state.info.usuario.id,
+      });
+      window.PuntoXModal.cerrarModal();
+      state.partidaSeleccionada = null;
+      renderDetalleConciliacion();
+    } catch (err) {
+      window.PuntoXModal.cerrarModal();
+      mostrarError(err.message);
+    }
+  });
+}
+
+const ESTADO_PARTIDA = {
+  pendiente: ['Pendiente', 'var(--color-warning)'],
+  conciliada: ['Conciliada', 'var(--color-success)'],
+  registrada: ['Registrada', 'var(--color-info)'],
+};
+
+async function renderDetalleConciliacion() {
+  const panel = document.getElementById('tab-conciliacion');
+  document.getElementById('acciones-tab').innerHTML = '';
+  let datos;
+  try { datos = await window.puntoXCaja.obtenerConciliacion({ conciliacionId: state.conciliacionId }); } catch (err) { mostrarError(err.message); return; }
+  const { conciliacion: c, partidas, movimientos, resumen: r } = datos;
+  const editable = c.estado === 'en_proceso' && puedeGestionarConciliacion();
+  const seleccion = partidas.find((p) => p.id === state.partidaSeleccionada && !p.conciliado) || null;
+  if (!seleccion) state.partidaSeleccionada = null;
+
+  const partidaPorLinea = Object.fromEntries(partidas.filter((p) => p.asiento_detalle_id).map((p) => [p.asiento_detalle_id, p]));
+  const cuadraDiferencia = Math.abs(r.diferencia) < 0.01;
+
+  panel.innerHTML = `
+    <span class="conc-volver" id="conc-volver">← Todas las conciliaciones</span>
+    <div class="conc-encabezado">
+      <div>
+        <div class="conc-encabezado__titulo">${esc(c.cuenta_nombre)} — ${esc(c.banco)}</div>
+        <div class="conc-encabezado__sub">Periodo ${fechaCorta(c.periodo_desde)} al ${fechaCorta(c.periodo_hasta)}
+          ${c.estado === 'conciliada' ? ` · Conciliada el ${fechaHora(c.fecha_conciliada)}` : ''}</div>
+      </div>
+      <span class="pill-estado" style="background:${c.estado === 'conciliada' ? 'var(--color-success)' : 'var(--color-warning)'};">${c.estado === 'conciliada' ? 'Conciliada' : 'En proceso'}</span>
+    </div>
+
+    <div class="conc-resumen">
+      <div class="resumen-turno__item"><div class="resumen-turno__label">Saldo estado de cuenta</div>
+        <div class="resumen-turno__valor">${fmt(r.saldoEstadoCuenta)}</div>
+        ${editable ? '<span class="enlace-accion" id="conc-editar-saldo" style="font-size:11px;">Cambiar</span>' : ''}</div>
+      <div class="resumen-turno__item"><div class="resumen-turno__label">+ Depósitos en tránsito</div><div class="resumen-turno__valor">${fmt(r.depositosEnTransito)}</div></div>
+      <div class="resumen-turno__item"><div class="resumen-turno__label">− Cheques en tránsito</div><div class="resumen-turno__valor">${fmt(r.chequesEnTransito)}</div></div>
+      <div class="resumen-turno__item"><div class="resumen-turno__label">Saldo en libros (Bancos)</div><div class="resumen-turno__valor">${fmt(r.saldoLibros)}</div></div>
+      <div class="resumen-turno__item"><div class="resumen-turno__label">+ Partidas del banco pendientes</div><div class="resumen-turno__valor">${fmt(r.partidasBancoPendientes)}</div></div>
+      <div class="resumen-turno__item ${cuadraDiferencia ? 'conc-resumen__item--cuadra' : 'conc-resumen__item--diferencia'}"><div class="resumen-turno__label">Diferencia</div>
+        <div class="resumen-turno__valor" style="color:${cuadraDiferencia ? 'var(--color-success)' : 'var(--color-danger)'};">${fmt(r.diferencia)}</div></div>
+    </div>
+    <div class="conc-formula">
+      Banco ajustado ${fmt(r.saldoBancoAjustado)} vs. libros ajustados ${fmt(r.saldoLibrosAjustado)}.
+      ${r.cuadra ? `<strong style="color:var(--color-success);">${c.estado === 'conciliada' ? 'Cuadra.' : 'Cuadra: lista para cerrar.'}</strong>`
+        : (r.partidasPendientes > 0 ? `Faltan ${r.partidasPendientes} partida(s) del banco por conciliar o registrar.`
+          : 'Si la diferencia no se explica, revisa el saldo del estado de cuenta; si es la primera conciliación, puede faltar el saldo inicial del banco en Contabilidad.')}
+    </div>
+
+    <div class="conc-acciones">
+      ${editable ? `
+        <button class="btn btn-secundario btn-chico" id="conc-agregar">+ Agregar partida</button>
+        <button class="btn btn-secundario btn-chico" id="conc-pegar">Pegar desde el banco</button>
+        <button class="btn btn-secundario btn-chico" id="conc-auto">Conciliar automáticamente</button>
+        <button class="btn btn-primario btn-chico" id="conc-cerrar" ${r.cuadra ? '' : 'disabled title="Concilia o registra todas las partidas del banco y deja la diferencia en cero"'}>Cerrar conciliación</button>` : ''}
+      ${c.estado === 'conciliada' && puedeGestionarConciliacion() ? '<button class="btn btn-secundario btn-chico" id="conc-reabrir">Reabrir</button>' : ''}
+    </div>
+
+    ${seleccion ? `<div class="conc-aviso">
+      Partida seleccionada: <strong>${esc(seleccion.descripcion)}</strong> (${fmt(seleccion.monto)}). Elige a la derecha el movimiento del sistema que le corresponde.
+      <span class="enlace-accion" id="conc-cancelar-seleccion" style="margin-left:8px;">Cancelar</span></div>` : ''}
+
+    <div class="conc-columnas">
+      <div class="conc-columna">
+        <div class="conc-columna__titulo">Estado de cuenta del banco</div>
+        <div class="conc-columna__sub">${partidas.length} partida(s) · ${r.partidasConciliadas} conciliada(s)</div>
+        ${partidas.length === 0 ? '<div class="empty-state">Agrega las partidas del estado de cuenta, o pégalas desde el archivo del banco.</div>' : `
+        <table class="data-table">
+          <thead><tr><th>Fecha</th><th>Descripción</th><th class="conc-monto">Monto</th><th>Estado</th><th></th></tr></thead>
+          <tbody>
+            ${partidas.map((p) => {
+              const estado = !p.conciliado ? 'pendiente' : (p.asiento_id ? 'registrada' : 'conciliada');
+              const [etiqueta, color] = ESTADO_PARTIDA[estado];
+              const acciones = !editable ? '' : (estado === 'pendiente'
+                ? `<span class="enlace-accion" data-seleccionar="${p.id}">Emparejar</span> ·
+                   <span class="enlace-accion" data-registrar="${p.id}" title="${p.monto < 0 ? 'Gasto bancario: Gastos Operativos contra Bancos' : 'Crédito del banco: Bancos contra Gastos Operativos'}">Registrar</span> ·
+                   <span class="enlace-accion" data-quitar="${p.id}" style="color:var(--color-danger);">Quitar</span>`
+                : `<span class="enlace-accion" data-deshacer="${p.id}">Deshacer</span>`);
+              return `<tr class="${p.id === state.partidaSeleccionada ? 'conc-fila--seleccionada' : ''} ${p.conciliado ? 'conc-fila--conciliada' : ''}">
+                <td>${fechaCorta(p.fecha)}</td><td>${esc(p.descripcion)}</td>${montoCelda(p.monto)}
+                <td><span class="conc-estado" style="background:${color};">${etiqueta}</span></td><td style="white-space:nowrap;">${acciones}</td></tr>`;
+            }).join('')}
+          </tbody>
+        </table>`}
+      </div>
+
+      <div class="conc-columna">
+        <div class="conc-columna__titulo">Movimientos del sistema (cuenta Bancos)</div>
+        <div class="conc-columna__sub">Hasta el ${fechaCorta(c.periodo_hasta)}, incluidos los que quedaron en tránsito de periodos anteriores</div>
+        ${movimientos.length === 0 ? '<div class="empty-state">No hay movimientos bancarios en el sistema hasta la fecha de corte.</div>' : `
+        <table class="data-table">
+          <thead><tr><th>Fecha</th><th>Concepto</th><th class="conc-monto">Monto</th><th>Estado</th><th></th></tr></thead>
+          <tbody>
+            ${movimientos.map((m) => {
+              const candidata = seleccion && m.disponible && Math.abs(m.monto - seleccion.monto) < 0.009;
+              const pareja = partidaPorLinea[m.asiento_detalle_id];
+              const estado = m.conciliado
+                ? `<span class="conc-estado" style="background:var(--color-success);" title="${pareja ? esc(pareja.descripcion) : ''}">Conciliado</span>`
+                : `<span class="conc-estado" style="background:var(--color-warning);">${m.disponible ? 'En tránsito' : 'Conciliado después'}</span>`;
+              return `<tr class="${candidata ? 'conc-fila--candidata' : ''} ${m.conciliado ? 'conc-fila--conciliada' : ''}">
+                <td>${fechaCorta(m.fecha)}</td><td>${esc(m.concepto)}</td>${montoCelda(m.monto)}<td>${estado}</td>
+                <td>${candidata ? `<span class="enlace-accion" data-emparejar="${m.asiento_detalle_id}">Emparejar</span>` : ''}</td></tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+        ${seleccion && !movimientos.some((m) => m.disponible && Math.abs(m.monto - seleccion.monto) < 0.009)
+          ? '<p style="font-size:12px; color:var(--color-text-muted);">Ningún movimiento pendiente del sistema tiene ese monto. Si es un cargo o crédito del banco, usa "Registrar".</p>' : ''}`}
+      </div>
+    </div>
+  `;
+
+  const on = (id, fn) => { const el = document.getElementById(id); if (el) el.addEventListener('click', fn); };
+  const usuarioId = state.info.usuario.id;
+  on('conc-volver', () => { state.conciliacionId = null; mostrarError(null); cargarConciliaciones(); });
+  on('conc-agregar', abrirFormularioPartida);
+  on('conc-pegar', abrirFormularioPegarPartidas);
+  on('conc-auto', async () => {
+    const n = await ejecutarConciliacion(() => window.puntoXCaja.conciliarAutomaticamente({ conciliacionId: c.id, usuarioId }));
+    if (n !== undefined && n === 0) mostrarError('No se encontraron parejas automáticas (mismo monto y fecha a ±7 días). Empareja manualmente o registra las partidas.');
+  });
+  on('conc-cerrar', () => {
+    if (!confirm('¿Cerrar la conciliación? Quedará bloqueada; para cambiarla habrá que reabrirla.')) return;
+    ejecutarConciliacion(() => window.puntoXCaja.cerrarConciliacion({ conciliacionId: c.id, usuarioId }));
+  });
+  on('conc-reabrir', () => ejecutarConciliacion(() => window.puntoXCaja.reabrirConciliacion({ conciliacionId: c.id, usuarioId })));
+  on('conc-cancelar-seleccion', () => { state.partidaSeleccionada = null; renderDetalleConciliacion(); });
+  on('conc-editar-saldo', () => {
+    const valor = prompt('Saldo final según el estado de cuenta:', r.saldoEstadoCuenta);
+    if (valor === null || valor.trim() === '') return;
+    ejecutarConciliacion(() => window.puntoXCaja.actualizarSaldoEstadoCuenta({ conciliacionId: c.id, saldoEstadoCuenta: parseFloat(valor), usuarioId }));
+  });
+
+  panel.querySelectorAll('[data-seleccionar]').forEach((el) => el.addEventListener('click', () => { state.partidaSeleccionada = el.dataset.seleccionar; renderDetalleConciliacion(); }));
+  panel.querySelectorAll('[data-emparejar]').forEach((el) => el.addEventListener('click', () => {
+    const partidaId = state.partidaSeleccionada;
+    state.partidaSeleccionada = null;
+    ejecutarConciliacion(() => window.puntoXCaja.conciliarPareja({ partidaId, asientoDetalleId: el.dataset.emparejar, usuarioId }));
+  }));
+  panel.querySelectorAll('[data-registrar]').forEach((el) => el.addEventListener('click', () => {
+    const p = partidas.find((x) => x.id === el.dataset.registrar);
+    const texto = p.monto < 0
+      ? `¿Registrar "${p.descripcion}" (${fmt(-p.monto)}) como gasto bancario?\n\nAsiento: Gastos Operativos al debe, Bancos al haber.`
+      : `¿Registrar "${p.descripcion}" (${fmt(p.monto)}) como crédito del banco?\n\nAsiento: Bancos al debe, Gastos Operativos al haber.`;
+    if (!confirm(texto)) return;
+    ejecutarConciliacion(() => window.puntoXCaja.registrarPartidaEnContabilidad({ partidaId: p.id, usuarioId }));
+  }));
+  panel.querySelectorAll('[data-quitar]').forEach((el) => el.addEventListener('click', () => {
+    if (!confirm('¿Quitar esta partida del estado de cuenta?')) return;
+    ejecutarConciliacion(() => window.puntoXCaja.eliminarPartidaConciliacion({ partidaId: el.dataset.quitar, usuarioId }));
+  }));
+  panel.querySelectorAll('[data-deshacer]').forEach((el) => el.addEventListener('click', () => {
+    const p = partidas.find((x) => x.id === el.dataset.deshacer);
+    if (p.asiento_id && !confirm('Esta partida se registró en contabilidad. Deshacerla revierte ese asiento con uno de reversión. ¿Continuar?')) return;
+    ejecutarConciliacion(() => window.puntoXCaja.deshacerConciliacionPartida({ partidaId: p.id, usuarioId }));
+  }));
+}
+
+function abrirFormularioPartida() {
+  window.PuntoXModal.abrirModal('Agregar partida del estado de cuenta', `
+    <div class="form-grid">
+      <div class="form-field"><label>Fecha *</label><input id="pa-fecha" type="date" class="input-normal" value="${new Date().toISOString().slice(0, 10)}" /></div>
+      <div class="form-field"><label>Tipo *</label>
+        <select id="pa-tipo" class="input-normal">
+          <option value="credito">Crédito (depósito, transferencia recibida)</option>
+          <option value="debito">Débito (cheque cobrado, pago, cargo)</option>
+        </select>
+      </div>
+      <div class="form-field" style="grid-column: span 2;"><label>Descripción *</label><input id="pa-descripcion" class="input-normal" placeholder="Como aparece en el estado de cuenta" /></div>
+      <div class="form-field"><label>Monto *</label><input id="pa-monto" type="number" step="0.01" min="0" class="input-normal" /></div>
+    </div>
+    <div class="form-seccion" style="display:flex; justify-content:flex-end; gap:8px;">
+      <button type="button" class="btn btn-secundario" id="pa-cancelar">Cancelar</button>
+      <button type="button" class="btn btn-primario" id="pa-guardar">Agregar</button>
+    </div>
+  `);
+  document.getElementById('pa-cancelar').addEventListener('click', window.PuntoXModal.cerrarModal);
+  document.getElementById('pa-guardar').addEventListener('click', async () => {
+    const monto = Math.abs(parseFloat(document.getElementById('pa-monto').value) || 0);
+    const partida = {
+      fecha: document.getElementById('pa-fecha').value, descripcion: document.getElementById('pa-descripcion').value,
+      monto: document.getElementById('pa-tipo').value === 'debito' ? -monto : monto,
+    };
+    window.PuntoXModal.cerrarModal();
+    await ejecutarConciliacion(() => window.puntoXCaja.agregarPartidasConciliacion({ conciliacionId: state.conciliacionId, partidas: [partida], usuarioId: state.info.usuario.id }));
+  });
+}
+
+// Líneas copiadas del Excel/CSV del banco, una por renglón, separadas por tabulador o punto y
+// coma: "fecha; descripción; monto" o "fecha; descripción; débito; crédito". Los renglones que
+// no empiezan con una fecha (encabezados, totales) se ignoran.
+function interpretarMonto(texto) {
+  let t = String(texto || '').replace(/RD\$|\$|\s/g, '');
+  if (!t) return 0;
+  const negativo = /^\(.*\)$/.test(t) || t.startsWith('-') || t.endsWith('-');
+  t = t.replace(/[()\-]/g, '');
+  if (/^\d{1,3}(\.\d{3})+,\d{1,2}$/.test(t)) t = t.replace(/\./g, '').replace(',', '.'); // 1.234,56
+  else t = t.replace(/,/g, '');                                                           // 1,234.56
+  const n = parseFloat(t);
+  return Number.isNaN(n) ? NaN : (negativo ? -n : n);
+}
+
+function interpretarFecha(texto) {
+  const t = String(texto || '').trim();
+  let m = t.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (m) return `${m[1]}-${m[2].padStart(2, '0')}-${m[3].padStart(2, '0')}`;
+  m = t.match(/^(\d{1,2})[/.-](\d{1,2})[/.-](\d{2,4})$/);
+  if (m) {
+    const anio = m[3].length === 2 ? `20${m[3]}` : m[3];
+    return `${anio}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`;
+  }
+  return null;
+}
+
+function interpretarPegado(texto) {
+  const partidas = [];
+  let ignoradas = 0;
+  for (const linea of texto.split(/\r?\n/)) {
+    if (!linea.trim()) continue;
+    const cols = linea.split(/\t|;/).map((c) => c.trim());
+    const fecha = interpretarFecha(cols[0]);
+    if (!fecha || cols.length < 3) { ignoradas += 1; continue; }
+    let monto;
+    if (cols.length >= 4) monto = (interpretarMonto(cols[3]) || 0) - Math.abs(interpretarMonto(cols[2]) || 0);
+    else monto = interpretarMonto(cols[2]);
+    if (!monto || Number.isNaN(monto) || !cols[1]) { ignoradas += 1; continue; }
+    partidas.push({ fecha, descripcion: cols[1], monto: Math.round(monto * 100) / 100 });
+  }
+  return { partidas, ignoradas };
+}
+
+function abrirFormularioPegarPartidas() {
+  window.PuntoXModal.abrirModal('Pegar partidas del estado de cuenta', `
+    <p style="font-size:12px; color:var(--color-text-muted); margin:0 0 10px;">
+      Copia las filas del estado de cuenta (Excel o CSV del banco) y pégalas aquí. Formatos aceptados, separados por tabulador o punto y coma:<br/>
+      <code>fecha; descripción; monto</code> (débitos en negativo) o <code>fecha; descripción; débito; crédito</code>.
+      Fechas como 15/09/2026 o 2026-09-15. Se ignoran encabezados y totales.
+    </p>
+    <div class="form-field"><textarea id="pp-texto" rows="10" style="font-family:monospace; font-size:12px;" placeholder="15/09/2026&#9;DEPOSITO EN EFECTIVO&#9;&#9;4,000.00&#10;16/09/2026&#9;COMISION MANEJO CUENTA&#9;150.00&#9;"></textarea></div>
+    <div id="pp-vista" style="font-size:12px; margin-top:8px; color:var(--color-text-muted);">Pega las filas para ver cuántas se reconocen.</div>
+    <div class="form-seccion" style="display:flex; justify-content:flex-end; gap:8px;">
+      <button type="button" class="btn btn-secundario" id="pp-cancelar">Cancelar</button>
+      <button type="button" class="btn btn-primario" id="pp-guardar" disabled>Agregar partidas</button>
+    </div>
+  `);
+  const textarea = document.getElementById('pp-texto');
+  const vista = document.getElementById('pp-vista');
+  const boton = document.getElementById('pp-guardar');
+  let resultado = { partidas: [], ignoradas: 0 };
+  textarea.addEventListener('input', () => {
+    resultado = interpretarPegado(textarea.value);
+    const total = resultado.partidas.reduce((a, p) => a + p.monto, 0);
+    vista.innerHTML = resultado.partidas.length === 0
+      ? `No se reconoció ninguna partida${resultado.ignoradas ? ` (${resultado.ignoradas} línea(s) ignorada(s))` : ''}.`
+      : `<strong>${resultado.partidas.length}</strong> partida(s) reconocida(s), neto ${fmt(total)}${resultado.ignoradas ? ` · ${resultado.ignoradas} línea(s) ignorada(s)` : ''}.`;
+    boton.disabled = resultado.partidas.length === 0;
+  });
+  document.getElementById('pp-cancelar').addEventListener('click', window.PuntoXModal.cerrarModal);
+  boton.addEventListener('click', async () => {
+    window.PuntoXModal.cerrarModal();
+    await ejecutarConciliacion(() => window.puntoXCaja.agregarPartidasConciliacion({ conciliacionId: state.conciliacionId, partidas: resultado.partidas, usuarioId: state.info.usuario.id }));
+  });
+}
+
 // --- Inicialización ---
 
 async function init() {
   state.info = await window.PuntoXShell.initPuntoXShell('caja');
+  // La conciliación bancaria solo existe en la app de escritorio.
+  if (!window.puntoXCaja.listarConciliaciones) document.querySelector('.tab-btn[data-tab="conciliacion"]').remove();
   state.cajaActual = await window.puntoXCaja.obtenerCajaPrincipal();
   cambiarTab('turno');
 }

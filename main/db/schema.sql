@@ -881,13 +881,18 @@ CREATE TABLE conciliaciones_bancarias (
   saldo_sistema       REAL,
   saldo_estado_cuenta REAL,
   estado              TEXT NOT NULL DEFAULT 'en_proceso', -- en_proceso | conciliada
+  fecha_conciliada    TEXT,
   usuario_id          TEXT NOT NULL REFERENCES usuarios(id),
   created_at          TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
   updated_at          TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
   deleted_at          TEXT
 );
 
--- Partidas del extracto bancario real, cruzadas manualmente contra movimientos del sistema.
+-- Partidas del extracto bancario real (origen = estado_cuenta). Cada una se concilia contra
+-- una línea del libro en la cuenta Bancos (asiento_detalle_id), o se registra en contabilidad
+-- si era un cargo/crédito del banco que no estaba en el sistema (asiento_id). Las líneas del
+-- sistema no se copian aquí: se leen en vivo del libro mayor de Bancos.
+-- monto > 0 = crédito a la cuenta (depósito); monto < 0 = débito (cheque cobrado, cargo).
 CREATE TABLE conciliaciones_bancarias_detalle (
   id                    TEXT PRIMARY KEY,
   conciliacion_id       TEXT NOT NULL REFERENCES conciliaciones_bancarias(id),
@@ -897,10 +902,16 @@ CREATE TABLE conciliaciones_bancarias_detalle (
   origen                TEXT NOT NULL, -- sistema | estado_cuenta
   movimiento_caja_id    TEXT REFERENCES movimientos_caja(id),
   transferencia_id      TEXT REFERENCES transferencias_caja_banco(id),
+  asiento_detalle_id    TEXT REFERENCES asientos_contables_detalle(id),
+  asiento_id            TEXT REFERENCES asientos_contables(id),
   conciliado            INTEGER NOT NULL DEFAULT 0,
-  tipo_diferencia       TEXT -- cheque_en_transito | cargo_bancario_no_registrado | otro
+  tipo_diferencia       TEXT, -- cheque_en_transito | cargo_bancario_no_registrado | otro
+  created_at            TEXT,
+  updated_at            TEXT,
+  deleted_at            TEXT
 );
 CREATE INDEX idx_conciliacion_detalle_conciliacion ON conciliaciones_bancarias_detalle(conciliacion_id);
+CREATE INDEX idx_conciliacion_detalle_asiento ON conciliaciones_bancarias_detalle(asiento_detalle_id);
 
 -- =========================================================================
 -- MÓDULO 7: Contabilidad

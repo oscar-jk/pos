@@ -54,7 +54,8 @@
 
   function balanceComprobacion(db, { desde, hasta } = {}) {
     asegurarCuentas(db);
-    const asientos = db.asientosContables.filter((a) => a.estado === 'confirmado' && (!desde || a.fecha >= desde) && (!hasta || a.fecha <= hasta));
+    // Un asiento manual anulado cuenta junto con su reversión (se netean), igual que en escritorio.
+    const asientos = db.asientosContables.filter((a) => (!desde || a.fecha >= desde) && (!hasta || a.fecha <= hasta));
     const idsAsiento = new Set(asientos.map((a) => a.id));
     const filas = db.cuentasContables.filter((c) => c.es_movimiento).map((c) => {
       const detalle = db.asientosContablesDetalle.filter((d) => d.cuenta_id === c.id && idsAsiento.has(d.asiento_id));
@@ -96,7 +97,7 @@
   function libroMayor(db, { cuentaId, desde, hasta }) {
     asegurarCuentas(db);
     const cuenta = db.cuentasContables.find((c) => c.id === cuentaId);
-    const asientosValidos = db.asientosContables.filter((a) => a.estado === 'confirmado' && (!desde || a.fecha >= desde) && (!hasta || a.fecha <= hasta));
+    const asientosValidos = db.asientosContables.filter((a) => (!desde || a.fecha >= desde) && (!hasta || a.fecha <= hasta));
     const idsPorAsiento = Object.fromEntries(asientosValidos.map((a) => [a.id, a]));
     const movimientos = db.asientosContablesDetalle
       .filter((d) => d.cuenta_id === cuentaId && idsPorAsiento[d.asiento_id])
