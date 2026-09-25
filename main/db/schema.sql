@@ -676,6 +676,8 @@ CREATE TABLE documentos_compra (
   itbis_total             REAL NOT NULL DEFAULT 0,
   total                   REAL NOT NULL DEFAULT 0,
   estado                  TEXT NOT NULL DEFAULT 'abierto', -- abierto | recibido_parcial | recibido_total | facturado | anulado
+  tipo_ajuste             TEXT, -- solo notas de compra: devolucion | ajuste_costo
+  concepto                TEXT, -- solo notas de compra: motivo
   motivo_anulacion        TEXT,
   usuario_anulo_id        TEXT REFERENCES usuarios(id),
   usuario_id              TEXT NOT NULL REFERENCES usuarios(id),
@@ -699,12 +701,19 @@ CREATE TABLE documentos_compra_detalle (
   tasa_itbis          REAL NOT NULL,
   itbis_monto         REAL NOT NULL,
   total_linea         REAL NOT NULL,
+  -- Solo líneas de notas de compra: línea de la factura a la que se refieren, base imponible,
+  -- y reparto del ajuste entre Inventario y Costo de Ventas.
+  detalle_referencia_id TEXT REFERENCES documentos_compra_detalle(id),
+  base_imponible      REAL,
+  monto_inventario    REAL,
+  monto_costo_ventas  REAL,
   created_at          TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
   updated_at          TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
   deleted_at          TEXT
 );
 CREATE INDEX idx_doccompra_detalle_documento ON documentos_compra_detalle(documento_id);
 CREATE INDEX idx_doccompra_detalle_producto ON documentos_compra_detalle(producto_id);
+CREATE INDEX idx_doccompra_detalle_referencia ON documentos_compra_detalle(detalle_referencia_id);
 
 -- Liquidación de mercancía importada: distribuye flete/seguro/aranceles entre productos de una o varias entradas.
 CREATE TABLE liquidaciones_importacion (
@@ -752,7 +761,8 @@ CREATE TABLE pagos_proveedor (
   numero            TEXT NOT NULL UNIQUE,
   proveedor_id      TEXT NOT NULL REFERENCES proveedores(id),
   fecha             TEXT NOT NULL,
-  forma_pago        TEXT NOT NULL, -- efectivo | transferencia | cheque
+  forma_pago        TEXT NOT NULL, -- efectivo | transferencia | cheque | saldo_a_favor (aplica crédito de notas de crédito)
+                                   -- | reembolso_efectivo | reembolso_transferencia (el proveedor devuelve dinero; sin aplicaciones)
   monto_total       REAL NOT NULL,
   cuenta_bancaria_id TEXT REFERENCES cuentas_bancarias(id),
   numero_cheque     TEXT,

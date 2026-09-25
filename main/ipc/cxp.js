@@ -17,27 +17,18 @@ function siguienteNumeroDocumento(db, tabla) {
 
 const CUENTA_POR_FORMA_PAGO = { efectivo: '1100', transferencia: '1200', cheque: '1200' };
 
-// Saldo pendiente de UNA factura de compra específica.
+// Saldo pendiente de UN documento por pagar (factura de compra o nota de débito), ya neto de
+// notas de crédito. Nunca negativo: un exceso de notas de crédito es saldo a favor del proveedor.
 function saldoPorFacturaCompra(db, documentoId) {
   const doc = db.prepare('SELECT * FROM documentos_compra WHERE id = ?').get(documentoId);
   if (!doc) return 0;
-  const pagado = db
-    .prepare(
-      `SELECT COALESCE(SUM(ppa.monto_aplicado), 0) AS total FROM pagos_proveedor_aplicaciones ppa
-       JOIN pagos_proveedor pp ON pp.id = ppa.pago_id WHERE ppa.documento_compra_id = ? AND pp.estado != 'anulado'`
-    )
-    .get(documentoId).total;
-  return redondear(doc.total - pagado);
+  return compras.saldoDocumentoCompra(db, doc).pendiente;
 }
 
 function facturasAbiertasProveedor(db, proveedorId) {
-  const facturas = db
-    .prepare(
-      `SELECT * FROM documentos_compra WHERE proveedor_id = ? AND tipo = 'factura_compra' AND condicion_pago IN ('credito','mixto')
-       AND estado != 'anulado' AND deleted_at IS NULL ORDER BY fecha ASC`
-    )
-    .all(proveedorId);
-  return facturas.map((f) => ({ ...f, saldo_pendiente: saldoPorFacturaCompra(db, f.id) })).filter((f) => f.saldo_pendiente > 0.01);
+  return compras.documentosPorPagarProveedor(db, proveedorId)
+    .map((f) => ({ ...f, saldo_pendiente: compras.saldoDocumentoCompra(db, f).pendiente }))
+    .filter((f) => f.saldo_pendiente > 0.01);
 }
 
 function diasRestantes(fechaVencimiento) {
@@ -65,12 +56,18 @@ function crearPago(db, { proveedorId, fecha, formaPago, numeroCheque, bancoChequ
     }
   }
 
+  if (!['efectivo', 'transferencia', 'cheque', 'saldo_a_favor'].includes(formaPago)) throw new Error('Forma de pago inválida');
   let turno = null;
   if (formaPago === 'efectivo') {
     turno = caja.obtenerTurnoAbierto(db, cajaId);
     if (!turno) throw new Error('Debe abrir un turno de caja antes de pagar a un proveedor en efectivo');
   }
   if (formaPago === 'cheque' && !numeroCheque) throw new Error('El número de cheque es obligatorio');
+  const aplicaSaldoAFavor = formaPago === 'saldo_a_favor';
+  if (aplicaSaldoAFavor) {
+    const disponible = compras.saldoAFavorProveedor(db, proveedorId);
+    if (montoTotal > disponible + 0.01) throw new Error(`El proveedor solo tiene RD$ ${disponible.toFixed(2)} de saldo a favor`);
+  }
 
   const pagoId = crypto.randomUUID();
   const numero = siguienteNumeroDocumento(db, 'pagos_proveedor');
@@ -99,14 +96,18 @@ function crearPago(db, { proveedorId, fecha, formaPago, numeroCheque, bancoChequ
     });
   }
 
-  contabilidad.generarAsiento(db, {
-    fecha: fechaIso, concepto: `Pago a proveedor ${numero}`, origenModulo: 'cxp',
-    origenDocumentoTipo: 'pagos_proveedor', origenDocumentoId: pagoId, usuarioId,
-    lineas: [
-      { cuentaCodigo: '2100', debe: montoTotal, descripcion: 'Aplicado a cuentas por pagar' },
-      { cuentaCodigo: CUENTA_POR_FORMA_PAGO[formaPago] || '1100', haber: montoTotal, descripcion: 'Salida de pago' },
-    ],
-  });
+  // Aplicar saldo a favor no mueve dinero ni cuentas: la nota de crédito ya rebajó Proveedores
+  // (2100) al emitirse; aquí solo se reparte ese crédito entre las facturas del proveedor.
+  if (!aplicaSaldoAFavor) {
+    contabilidad.generarAsiento(db, {
+      fecha: fechaIso, concepto: `Pago a proveedor ${numero}`, origenModulo: 'cxp',
+      origenDocumentoTipo: 'pagos_proveedor', origenDocumentoId: pagoId, usuarioId,
+      lineas: [
+        { cuentaCodigo: '2100', debe: montoTotal, descripcion: 'Aplicado a cuentas por pagar' },
+        { cuentaCodigo: CUENTA_POR_FORMA_PAGO[formaPago] || '1100', haber: montoTotal, descripcion: 'Salida de pago' },
+      ],
+    });
+  }
 
   configuracion.registrarAuditoria(db, {
     usuarioId, modulo: 'cxp', entidad: 'pagos_proveedor', entidadId: pagoId, accion: 'crear', detalle: { numero, montoTotal, formaPago },
@@ -126,6 +127,12 @@ function anularPago(db, { pagoId, motivo, usuarioId }) {
     `UPDATE pagos_proveedor SET estado = 'anulado', motivo_anulacion = ?, usuario_anulo_id = ?,
        updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?`
   ).run(motivo, usuarioId, pagoId);
+
+  // Si el pago cubría una factura que luego tuvo una nota de crédito, anularlo reduce el saldo a
+  // favor; si ese crédito ya se usó, no se permite (la transacción del handler lo revierte).
+  if (compras.saldoAFavorProveedor(db, pago.proveedor_id) < -0.009) {
+    throw new Error('Anular este pago dejaría en negativo el saldo a favor del proveedor, que ya se usó. Anule primero el pago con saldo a favor o el reembolso.');
+  }
 
   const movimientosCaja = db
     .prepare("SELECT * FROM movimientos_caja WHERE documento_origen_tipo = 'pagos_proveedor' AND documento_origen_id = ?")
@@ -154,6 +161,49 @@ function anularPago(db, { pagoId, motivo, usuarioId }) {
   configuracion.registrarAuditoria(db, {
     usuarioId, modulo: 'cxp', entidad: 'pagos_proveedor', entidadId: pagoId, accion: 'anular', detalle: { numero: pago.numero, motivo },
   });
+}
+
+// El proveedor devuelve en dinero parte del saldo a favor (nota de crédito que superó lo que se
+// le debía). Se guarda en pagos_proveedor, sin aplicaciones, para que anularPago lo revierta igual.
+function registrarReembolso(db, { proveedorId, monto, formaPago, cajaId, usuarioId }) {
+  session.requerirPermiso('cxp.pago.crear');
+  if (!['efectivo', 'transferencia'].includes(formaPago)) throw new Error('El reembolso se recibe en efectivo o por transferencia');
+  const montoRedondeado = redondear(Number(monto) || 0);
+  if (montoRedondeado <= 0) throw new Error('El monto del reembolso debe ser mayor a cero');
+  const disponible = compras.saldoAFavorProveedor(db, proveedorId);
+  if (montoRedondeado > disponible + 0.01) throw new Error(`El proveedor solo tiene RD$ ${disponible.toFixed(2)} de saldo a favor`);
+  let turno = null;
+  if (formaPago === 'efectivo') {
+    turno = caja.obtenerTurnoAbierto(db, cajaId);
+    if (!turno) throw new Error('Debe abrir un turno de caja antes de recibir un reembolso en efectivo');
+  }
+
+  const pagoId = crypto.randomUUID();
+  const numero = siguienteNumeroDocumento(db, 'pagos_proveedor');
+  const fechaIso = new Date().toISOString();
+  db.prepare(
+    `INSERT INTO pagos_proveedor (id, numero, proveedor_id, fecha, forma_pago, monto_total, prioridad, usuario_id)
+     VALUES (?, ?, ?, ?, ?, ?, 'normal', ?)`
+  ).run(pagoId, numero, proveedorId, fechaIso, `reembolso_${formaPago}`, montoRedondeado, usuarioId);
+
+  if (turno) {
+    caja.registrarMovimiento(db, {
+      turnoCajaId: turno.id, tipo: 'entrada_manual', concepto: `Reembolso de proveedor ${numero}`, monto: montoRedondeado,
+      documentoOrigenTipo: 'pagos_proveedor', documentoOrigenId: pagoId, usuarioId,
+    });
+  }
+  contabilidad.generarAsiento(db, {
+    fecha: fechaIso, concepto: `Reembolso de proveedor ${numero}`, origenModulo: 'cxp',
+    origenDocumentoTipo: 'pagos_proveedor', origenDocumentoId: pagoId, usuarioId,
+    lineas: [
+      { cuentaCodigo: CUENTA_POR_FORMA_PAGO[formaPago], debe: montoRedondeado, descripcion: 'Reembolso recibido del proveedor' },
+      { cuentaCodigo: '2100', haber: montoRedondeado, descripcion: 'Saldo a favor reembolsado' },
+    ],
+  });
+  configuracion.registrarAuditoria(db, {
+    usuarioId, modulo: 'cxp', entidad: 'pagos_proveedor', entidadId: pagoId, accion: 'crear', detalle: { numero, monto: montoRedondeado, formaPago: `reembolso_${formaPago}` },
+  });
+  return pagoId;
 }
 
 function listarPagos(db, { proveedorId, limite = 50 } = {}) {
@@ -241,6 +291,10 @@ function register(ipcMain, getDb) {
     return db.transaction(() => anularPago(db, payload))();
   });
   ipcMain.handle('cxp:listarPagos', (event, filtros) => listarPagos(getDb(), filtros || {}));
+  ipcMain.handle('cxp:registrarReembolso', (event, payload) => {
+    const db = getDb();
+    return db.transaction(() => registrarReembolso(db, payload))();
+  });
 
   ipcMain.handle('cxp:antiguedadSaldos', () => antiguedadSaldos(getDb()));
   ipcMain.handle('cxp:facturasProximasAVencer', () => facturasProximasAVencer(getDb()));
@@ -252,6 +306,6 @@ function register(ipcMain, getDb) {
 }
 
 module.exports = {
-  register, saldoPorFacturaCompra, facturasAbiertasProveedor, crearPago, anularPago, listarPagos,
+  register, saldoPorFacturaCompra, facturasAbiertasProveedor, crearPago, anularPago, listarPagos, registrarReembolso,
   antiguedadSaldos, facturasProximasAVencer, chequesPosdatadosPendientes, marcarChequeCobrado,
 };

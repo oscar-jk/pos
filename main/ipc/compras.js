@@ -12,8 +12,9 @@ const session = require('../auth/session');
 // factura que genera el pasivo — fusionando ambos roles en un solo acto, que es como
 // ocurre en la mayoría de compras de un negocio pequeño cuando el proveedor entrega la
 // factura junto con la mercancía. Puede crearse suelta o contra una orden de compra
-// (con recepción parcial). Quedan fuera: presupuesto/cotización de compra como documento
-// separado, liquidación de mercancía importada, y notas de crédito/débito de compra.
+// (con recepción parcial). También notas de crédito (devolución a proveedor o rebaja de
+// precio) y de débito (aumento de precio) sobre una factura de compra. Quedan fuera:
+// presupuesto/cotización de compra como documento separado y liquidación de mercancía importada.
 
 function redondear(n) {
   return Math.round((n + Number.EPSILON) * 100) / 100;
@@ -28,29 +29,57 @@ function siguienteNumero(db, tipo) {
 // Proveedores
 // =========================================================================
 
-function saldoPendienteProveedor(db, proveedorId) {
-  const facturado = db
-    .prepare(
-      `SELECT COALESCE(SUM(total), 0) AS total FROM documentos_compra
-       WHERE proveedor_id = ? AND tipo = 'factura_compra' AND condicion_pago = 'credito'
-         AND estado != 'anulado' AND deleted_at IS NULL`
-    )
-    .get(proveedorId).total;
-  const pagado = db
+// Saldo de un documento por pagar (factura de compra o nota de débito):
+//   total − lo pagado al contado − pagos aplicados − notas de crédito que lo referencian.
+// Si las notas de crédito superan lo que se debía (p. ej. devolución de una compra ya pagada),
+// el exceso es saldo a favor del negocio con ese proveedor.
+function saldoDocumentoCompra(db, doc) {
+  const pagos = db
     .prepare(
       `SELECT COALESCE(SUM(ppa.monto_aplicado), 0) AS total FROM pagos_proveedor_aplicaciones ppa
-       JOIN pagos_proveedor pp ON pp.id = ppa.pago_id
-       JOIN documentos_compra dc ON dc.id = ppa.documento_compra_id
-       WHERE dc.proveedor_id = ? AND pp.estado != 'anulado'`
+       JOIN pagos_proveedor pp ON pp.id = ppa.pago_id WHERE ppa.documento_compra_id = ? AND pp.estado != 'anulado'`
+    )
+    .get(doc.id).total;
+  const pagadoAlContado = doc.tipo === 'factura_compra' && doc.condicion_pago === 'contado' ? doc.total : 0;
+  const notasCredito = doc.tipo === 'factura_compra'
+    ? db.prepare("SELECT COALESCE(SUM(total), 0) AS total FROM documentos_compra WHERE tipo = 'nota_credito' AND documento_referencia_id = ? AND estado != 'anulado' AND deleted_at IS NULL").get(doc.id).total
+    : 0;
+  const saldo = redondear(doc.total - pagadoAlContado - pagos - notasCredito);
+  return { saldo, pendiente: Math.max(0, saldo), exceso: Math.max(0, -saldo) };
+}
+
+function documentosPorPagarProveedor(db, proveedorId) {
+  return db
+    .prepare(
+      `SELECT * FROM documentos_compra WHERE proveedor_id = ? AND tipo IN ('factura_compra', 'nota_debito')
+       AND estado != 'anulado' AND deleted_at IS NULL ORDER BY fecha ASC`
+    )
+    .all(proveedorId);
+}
+
+function saldoPendienteProveedor(db, proveedorId) {
+  return redondear(documentosPorPagarProveedor(db, proveedorId).reduce((acc, d) => acc + saldoDocumentoCompra(db, d).pendiente, 0));
+}
+
+// Crédito que el proveedor le debe al negocio: excesos de notas de crédito, menos lo ya usado
+// como forma de pago ('saldo_a_favor') o devuelto por el proveedor ('reembolso_*').
+function saldoAFavorProveedor(db, proveedorId) {
+  const excesos = documentosPorPagarProveedor(db, proveedorId)
+    .filter((d) => d.tipo === 'factura_compra')
+    .reduce((acc, d) => acc + saldoDocumentoCompra(db, d).exceso, 0);
+  const usado = db
+    .prepare(
+      `SELECT COALESCE(SUM(monto_total), 0) AS total FROM pagos_proveedor
+       WHERE proveedor_id = ? AND estado != 'anulado' AND (forma_pago = 'saldo_a_favor' OR forma_pago LIKE 'reembolso_%')`
     )
     .get(proveedorId).total;
-  return redondear(facturado - pagado);
+  return redondear(excesos - usado);
 }
 
 function obtenerProveedor(db, proveedorId) {
   const proveedor = db.prepare('SELECT * FROM proveedores WHERE id = ? AND deleted_at IS NULL').get(proveedorId);
   if (!proveedor) return null;
-  return { ...proveedor, saldo_pendiente: saldoPendienteProveedor(db, proveedorId) };
+  return { ...proveedor, saldo_pendiente: saldoPendienteProveedor(db, proveedorId), saldo_a_favor: saldoAFavorProveedor(db, proveedorId) };
 }
 
 function listarProveedores(db, { texto = '', limite = 100 } = {}) {
@@ -60,7 +89,7 @@ function listarProveedores(db, { texto = '', limite = 100 } = {}) {
       `SELECT * FROM proveedores WHERE deleted_at IS NULL AND (nombre LIKE ? OR rnc LIKE ?) ORDER BY nombre LIMIT ?`
     )
     .all(like, like, limite);
-  return proveedores.map((p) => ({ ...p, saldo_pendiente: saldoPendienteProveedor(db, p.id) }));
+  return proveedores.map((p) => ({ ...p, saldo_pendiente: saldoPendienteProveedor(db, p.id), saldo_a_favor: saldoAFavorProveedor(db, p.id) }));
 }
 
 function guardarProveedor(db, payload, proveedorIdExistente) {
@@ -301,6 +330,12 @@ function anularFacturaCompra(db, { documentoId, motivo, usuarioId }) {
   if (!documento) throw new Error('Factura de compra no encontrada');
   if (documento.estado === 'anulado') throw new Error('La factura ya está anulada');
   if (!motivo || !motivo.trim()) throw new Error('La anulación requiere un motivo');
+  const notas = db
+    .prepare("SELECT numero, tipo FROM documentos_compra WHERE documento_referencia_id = ? AND tipo IN ('nota_credito', 'nota_debito') AND estado != 'anulado' AND deleted_at IS NULL")
+    .all(documentoId);
+  if (notas.length > 0) {
+    throw new Error(`La factura tiene notas de compra activas (${notas.map((n) => `${n.tipo === 'nota_credito' ? 'NC' : 'ND'} ${n.numero}`).join(', ')}). Anúlelas primero.`);
+  }
 
   db.prepare(
     `UPDATE documentos_compra SET estado = 'anulado', motivo_anulacion = ?, usuario_anulo_id = ?,
@@ -372,6 +407,325 @@ function obtenerFacturaCompra(db, documentoId) {
 }
 
 // =========================================================================
+// Notas de crédito y débito de compra
+// =========================================================================
+//
+// Siempre se emiten contra una factura de compra:
+//   - Nota de crédito, devolución: saca mercancía del inventario al costo de la factura.
+//   - Nota de crédito, ajuste de costo: el proveedor rebaja el precio (sin devolver mercancía).
+//   - Nota de débito, ajuste de costo: el proveedor sube el precio. Es un documento por pagar.
+// En los ajustes de costo, la parte proporcional a la mercancía que sigue en existencia mueve el
+// costo promedio (Inventario 1300) y la parte que ya se vendió va a Costo de Ventas (5100).
+// La nota de crédito reduce el saldo de la factura; si lo supera, queda saldo a favor.
+
+const TIPOS_NOTA = ['nota_credito', 'nota_debito'];
+
+function existenciaTotalProducto(db, productoId) {
+  return db.prepare('SELECT COALESCE(SUM(cantidad_disponible), 0) AS total FROM existencias WHERE producto_id = ?').get(productoId).total;
+}
+
+function cantidadDevueltaLinea(db, detalleFacturaId) {
+  return db
+    .prepare(
+      `SELECT COALESCE(SUM(d.cantidad), 0) AS total FROM documentos_compra_detalle d
+       JOIN documentos_compra n ON n.id = d.documento_id
+       WHERE d.detalle_referencia_id = ? AND n.tipo = 'nota_credito' AND n.tipo_ajuste = 'devolucion'
+         AND n.estado != 'anulado' AND n.deleted_at IS NULL`
+    )
+    .get(detalleFacturaId).total;
+}
+
+function obtenerFacturaVigente(db, facturaId) {
+  const factura = db.prepare("SELECT * FROM documentos_compra WHERE id = ? AND tipo = 'factura_compra' AND deleted_at IS NULL").get(facturaId);
+  if (!factura) throw new Error('Factura de compra no encontrada');
+  if (factura.estado === 'anulado') throw new Error('La factura de compra está anulada');
+  return factura;
+}
+
+// Líneas de la factura con lo que todavía se puede devolver, para armar la nota.
+function lineasParaNota(db, facturaId) {
+  const factura = obtenerFacturaVigente(db, facturaId);
+  return db
+    .prepare(
+      `SELECT d.*, p.descripcion AS producto_descripcion, p.codigo_interno FROM documentos_compra_detalle d
+       JOIN productos p ON p.id = d.producto_id WHERE d.documento_id = ? AND d.deleted_at IS NULL`
+    )
+    .all(facturaId)
+    .map((l) => {
+      const devuelta = cantidadDevueltaLinea(db, l.id);
+      return {
+        ...l, cantidad_devuelta: devuelta, disponible_devolver: redondear(l.cantidad - devuelta),
+        existencia_almacen: inventario.existenciaDisponible(db, l.producto_id, factura.almacen_id),
+      };
+    });
+}
+
+function actualizarCostoPromedio(db, productoId, costo) {
+  db.prepare("UPDATE productos SET costo_promedio = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?").run(costo, productoId);
+}
+
+// Devolución: sale la mercancía al costo de la factura y el costo promedio se recalcula para
+// que el valor que queda en inventario baje exactamente lo devuelto. Si eso no se puede (no
+// queda existencia, o el promedio quedaría negativo), la diferencia entre el valor que sale
+// del inventario y lo que acredita el proveedor va a Costo de Ventas.
+function aplicarDevolucion(db, { lineaFactura, cantidad, factura, documentoId, usuarioId }) {
+  const producto = db.prepare('SELECT costo_promedio FROM productos WHERE id = ?').get(lineaFactura.producto_id);
+  const base = redondear(cantidad * lineaFactura.costo_unitario);
+  const existenciaAntes = existenciaTotalProducto(db, lineaFactura.producto_id);
+  const promedio = producto.costo_promedio || 0;
+  const existenciaDespues = redondear(existenciaAntes - cantidad);
+  const nuevoPromedio = existenciaDespues > 0 ? Math.max(0, redondear((existenciaAntes * promedio - base) / existenciaDespues)) : promedio;
+  const valorSalida = redondear(existenciaAntes * promedio - Math.max(0, existenciaDespues) * nuevoPromedio);
+
+  inventario.registrarMovimientoInventario(db, {
+    productoId: lineaFactura.producto_id, almacenId: factura.almacen_id, tipoMovimiento: 'devolucion_compra',
+    cantidad: -cantidad, costoUnitario: lineaFactura.costo_unitario, documentoOrigenTipo: 'documentos_compra',
+    documentoOrigenId: documentoId, usuarioId,
+  });
+  if (existenciaDespues > 0) actualizarCostoPromedio(db, lineaFactura.producto_id, nuevoPromedio);
+  return { base, montoInventario: valorSalida, montoCostoVentas: redondear(base - valorSalida) };
+}
+
+// Ajuste de costo (signo +1 nota de débito, −1 nota de crédito). La proporción que sigue en
+// existencia se estima como existencia actual ÷ unidades netas compradas en la factura (con
+// costo promedio no se puede saber qué unidades exactas se vendieron).
+function aplicarAjusteCosto(db, { lineaFactura, base, signo, factura, documentoId, usuarioId }) {
+  const producto = db.prepare('SELECT costo_promedio FROM productos WHERE id = ?').get(lineaFactura.producto_id);
+  const promedio = producto.costo_promedio || 0;
+  const existencia = existenciaTotalProducto(db, lineaFactura.producto_id);
+  const unidadesNetas = redondear(lineaFactura.cantidad - cantidadDevueltaLinea(db, lineaFactura.id));
+  const proporcion = unidadesNetas > 0 ? Math.min(1, Math.max(0, existencia) / unidadesNetas) : 0;
+  let montoInventario = redondear(base * proporcion);
+  let nuevoPromedio = promedio;
+  if (existencia > 0 && montoInventario > 0) {
+    nuevoPromedio = redondear((existencia * promedio + signo * montoInventario) / existencia);
+    if (nuevoPromedio < 0) {
+      nuevoPromedio = 0;
+      montoInventario = redondear(existencia * promedio);
+    }
+    actualizarCostoPromedio(db, lineaFactura.producto_id, nuevoPromedio);
+    inventario.registrarMovimientoInventario(db, {
+      productoId: lineaFactura.producto_id, almacenId: factura.almacen_id, tipoMovimiento: 'ajuste_costo_compra',
+      cantidad: 0, costoUnitario: nuevoPromedio, documentoOrigenTipo: 'documentos_compra', documentoOrigenId: documentoId, usuarioId,
+    });
+  } else {
+    montoInventario = 0;
+  }
+  return { base, montoInventario, montoCostoVentas: redondear(base - montoInventario) };
+}
+
+function crearNotaCompra(db, { tipo, tipoAjuste, facturaId, ncfProveedor, concepto, lineas, usuarioId }) {
+  if (!TIPOS_NOTA.includes(tipo)) throw new Error('Tipo de nota inválido');
+  session.requerirPermiso(tipo === 'nota_credito' ? 'compras.devolucion.crear' : 'compras.nota_debito.crear');
+  const ajuste = tipo === 'nota_debito' ? 'ajuste_costo' : tipoAjuste;
+  if (!['devolucion', 'ajuste_costo'].includes(ajuste)) throw new Error('Indique si la nota es por devolución o por ajuste de precio');
+  if (!concepto || !concepto.trim()) throw new Error('Indique el motivo de la nota');
+  if (!lineas || lineas.length === 0) throw new Error('La nota debe tener al menos una línea');
+
+  const factura = obtenerFacturaVigente(db, facturaId);
+  const proveedor = db.prepare('SELECT * FROM proveedores WHERE id = ?').get(factura.proveedor_id);
+  const lineasFactura = new Map(lineasParaNota(db, facturaId).map((l) => [l.id, l]));
+
+  // Validar todo antes de mover inventario.
+  const usadas = new Set();
+  const devueltoPorProducto = new Map();
+  const pedidas = lineas.map((l) => {
+    const lineaFactura = lineasFactura.get(l.detalleReferenciaId);
+    if (!lineaFactura) throw new Error('Una de las líneas no pertenece a la factura');
+    if (usadas.has(lineaFactura.id)) throw new Error(`El producto "${lineaFactura.producto_descripcion}" está repetido en la nota`);
+    usadas.add(lineaFactura.id);
+    if (ajuste === 'devolucion') {
+      const cantidad = redondear(Number(l.cantidad) || 0);
+      if (cantidad <= 0) throw new Error(`La cantidad a devolver de "${lineaFactura.producto_descripcion}" debe ser mayor a cero`);
+      if (cantidad > lineaFactura.disponible_devolver + 0.001) {
+        throw new Error(`No puede devolver ${cantidad} de "${lineaFactura.producto_descripcion}": de esa factura quedan ${lineaFactura.disponible_devolver} por devolver`);
+      }
+      const acumulado = redondear((devueltoPorProducto.get(lineaFactura.producto_id) || 0) + cantidad);
+      devueltoPorProducto.set(lineaFactura.producto_id, acumulado);
+      if (acumulado > lineaFactura.existencia_almacen + 0.001) {
+        throw new Error(`No hay existencia suficiente de "${lineaFactura.producto_descripcion}" para devolver (disponible: ${lineaFactura.existencia_almacen})`);
+      }
+      return { lineaFactura, cantidad };
+    }
+    const monto = redondear(Number(l.monto) || 0);
+    if (monto <= 0) throw new Error(`El monto del ajuste de "${lineaFactura.producto_descripcion}" debe ser mayor a cero`);
+    return { lineaFactura, monto };
+  });
+
+  const documentoId = crypto.randomUUID();
+  const numero = siguienteNumero(db, tipo);
+  const fechaIso = new Date().toISOString();
+  const signo = tipo === 'nota_debito' ? 1 : -1;
+
+  const calculadas = pedidas.map((p) => {
+    const r = ajuste === 'devolucion'
+      ? aplicarDevolucion(db, { lineaFactura: p.lineaFactura, cantidad: p.cantidad, factura, documentoId, usuarioId })
+      : aplicarAjusteCosto(db, { lineaFactura: p.lineaFactura, base: p.monto, signo, factura, documentoId, usuarioId });
+    const itbis = redondear(r.base * p.lineaFactura.tasa_itbis);
+    return { ...p, ...r, itbis, totalLinea: redondear(r.base + itbis) };
+  });
+  const subtotal = redondear(calculadas.reduce((a, c) => a + c.base, 0));
+  const itbisTotal = redondear(calculadas.reduce((a, c) => a + c.itbis, 0));
+  const total = redondear(subtotal + itbisTotal);
+  const montoInventario = redondear(calculadas.reduce((a, c) => a + c.montoInventario, 0));
+  const montoCostoVentas = redondear(calculadas.reduce((a, c) => a + c.montoCostoVentas, 0));
+
+  const vencimiento = new Date();
+  vencimiento.setDate(vencimiento.getDate() + (tipo === 'nota_debito' ? (proveedor.dias_credito || 0) : 0));
+  db.prepare(
+    `INSERT INTO documentos_compra
+       (id, tipo, numero, proveedor_id, almacen_id, ncf_proveedor, documento_referencia_id, fecha, condicion_pago,
+        dias_credito, fecha_vencimiento, subtotal, itbis_total, total, estado, tipo_ajuste, concepto, usuario_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'credito', ?, ?, ?, ?, ?, 'facturado', ?, ?, ?)`
+  ).run(
+    documentoId, tipo, numero, factura.proveedor_id, factura.almacen_id, ncfProveedor || null, facturaId, fechaIso,
+    tipo === 'nota_debito' ? (proveedor.dias_credito || 0) : 0, vencimiento.toISOString(), subtotal, itbisTotal, total,
+    ajuste, concepto.trim(), usuarioId
+  );
+  const insertDetalle = db.prepare(
+    `INSERT INTO documentos_compra_detalle
+       (id, documento_id, producto_id, cantidad, cantidad_recibida, costo_unitario, tasa_itbis, itbis_monto, total_linea,
+        detalle_referencia_id, base_imponible, monto_inventario, monto_costo_ventas)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  );
+  for (const c of calculadas) {
+    const cantidad = ajuste === 'devolucion' ? c.cantidad : 0;
+    insertDetalle.run(
+      crypto.randomUUID(), documentoId, c.lineaFactura.producto_id, cantidad, cantidad,
+      ajuste === 'devolucion' ? c.lineaFactura.costo_unitario : 0, c.lineaFactura.tasa_itbis, c.itbis, c.totalLinea,
+      c.lineaFactura.id, c.base, c.montoInventario, c.montoCostoVentas
+    );
+  }
+
+  // Nota de débito: Inventario, Costo de Ventas e ITBIS pagado al debe; Proveedores al haber.
+  // Nota de crédito: al revés. Montos con signo (+ debe, − haber), porque en una devolución
+  // Costo de Ventas puede quedar del lado contrario si el valor en inventario difería del costo.
+  const linea = (cuentaCodigo, montoConSigno, descripcion) => (
+    montoConSigno >= 0 ? { cuentaCodigo, debe: montoConSigno, descripcion } : { cuentaCodigo, haber: -montoConSigno, descripcion }
+  );
+  const lineasAsiento = [
+    linea('1300', signo * montoInventario, ajuste === 'devolucion' ? 'Devolución a proveedor' : 'Ajuste de costo de inventario'),
+    linea('5100', signo * montoCostoVentas, 'Ajuste de costo de mercancía ya vendida'),
+    linea('1500', signo * itbisTotal, 'Ajuste ITBIS pagado (crédito fiscal)'),
+    linea('2100', -signo * total, tipo === 'nota_credito' ? 'Nota de crédito del proveedor' : 'Nota de débito del proveedor'),
+  ];
+  contabilidad.generarAsiento(db, {
+    fecha: fechaIso, concepto: `${tipo === 'nota_credito' ? 'Nota de crédito' : 'Nota de débito'} de compra ${numero} (factura ${factura.numero})`,
+    origenModulo: 'compras', origenDocumentoTipo: 'documentos_compra', origenDocumentoId: documentoId, usuarioId, lineas: lineasAsiento,
+  });
+
+  configuracion.registrarAuditoria(db, {
+    usuarioId, modulo: 'compras', entidad: 'documentos_compra', entidadId: documentoId, accion: 'crear',
+    detalle: { tipo, tipoAjuste: ajuste, numero, total, facturaNumero: factura.numero },
+  });
+  return documentoId;
+}
+
+function anularNotaCompra(db, { documentoId, motivo, usuarioId }) {
+  session.requerirPermiso('compras.factura.anular');
+  const nota = db.prepare("SELECT * FROM documentos_compra WHERE id = ? AND tipo IN ('nota_credito', 'nota_debito')").get(documentoId);
+  if (!nota) throw new Error('Nota de compra no encontrada');
+  if (nota.estado === 'anulado') throw new Error('La nota ya está anulada');
+  if (!motivo || !motivo.trim()) throw new Error('La anulación requiere un motivo');
+
+  if (nota.tipo === 'nota_debito') {
+    const pagada = db
+      .prepare(
+        `SELECT 1 FROM pagos_proveedor_aplicaciones ppa JOIN pagos_proveedor pp ON pp.id = ppa.pago_id
+         WHERE ppa.documento_compra_id = ? AND pp.estado != 'anulado' LIMIT 1`
+      )
+      .get(documentoId);
+    if (pagada) throw new Error('La nota de débito tiene pagos aplicados. Anule esos pagos primero.');
+  } else {
+    // Si el crédito de esta nota ya se usó (como pago de otra factura o reembolso), anularla
+    // dejaría el saldo a favor en negativo.
+    const factura = db.prepare('SELECT * FROM documentos_compra WHERE id = ?').get(nota.documento_referencia_id);
+    const excesoActual = saldoDocumentoCompra(db, factura).exceso;
+    const excesoSinNota = Math.max(0, -(saldoDocumentoCompra(db, factura).saldo + nota.total));
+    const disponible = saldoAFavorProveedor(db, nota.proveedor_id);
+    if (disponible - (excesoActual - excesoSinNota) < -0.009) {
+      throw new Error('El saldo a favor que generó esta nota ya se usó en pagos o reembolsos. Anule esos movimientos primero.');
+    }
+  }
+
+  db.prepare(
+    `UPDATE documentos_compra SET estado = 'anulado', motivo_anulacion = ?, usuario_anulo_id = ?,
+       updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?`
+  ).run(motivo, usuarioId, documentoId);
+
+  const signo = nota.tipo === 'nota_debito' ? 1 : -1;
+  for (const l of db.prepare('SELECT * FROM documentos_compra_detalle WHERE documento_id = ?').all(documentoId)) {
+    if (nota.tipo_ajuste === 'devolucion') {
+      inventario.registrarMovimientoInventario(db, {
+        productoId: l.producto_id, almacenId: nota.almacen_id, tipoMovimiento: 'ajuste_entrada', cantidad: l.cantidad,
+        costoUnitario: l.costo_unitario, documentoOrigenTipo: 'documentos_compra_anulacion', documentoOrigenId: documentoId, usuarioId,
+      });
+    } else if (l.monto_inventario > 0) {
+      const existencia = existenciaTotalProducto(db, l.producto_id);
+      if (existencia > 0) {
+        const promedio = db.prepare('SELECT costo_promedio FROM productos WHERE id = ?').get(l.producto_id).costo_promedio || 0;
+        const nuevoPromedio = Math.max(0, redondear((existencia * promedio - signo * l.monto_inventario) / existencia));
+        actualizarCostoPromedio(db, l.producto_id, nuevoPromedio);
+        inventario.registrarMovimientoInventario(db, {
+          productoId: l.producto_id, almacenId: nota.almacen_id, tipoMovimiento: 'ajuste_costo_compra', cantidad: 0,
+          costoUnitario: nuevoPromedio, documentoOrigenTipo: 'documentos_compra_anulacion', documentoOrigenId: documentoId, usuarioId,
+        });
+      }
+    }
+  }
+
+  const codigoPorId = Object.fromEntries(db.prepare('SELECT id, codigo FROM cuentas_contables').all().map((c) => [c.id, c.codigo]));
+  const asientos = db
+    .prepare("SELECT * FROM asientos_contables WHERE origen_documento_tipo = 'documentos_compra' AND origen_documento_id = ? AND estado = 'confirmado'")
+    .all(documentoId);
+  for (const asiento of asientos) {
+    const det = db.prepare('SELECT * FROM asientos_contables_detalle WHERE asiento_id = ?').all(asiento.id);
+    contabilidad.generarAsiento(db, {
+      fecha: new Date().toISOString(), concepto: `Reversión: ${asiento.concepto}`, origenModulo: 'compras',
+      origenDocumentoTipo: 'documentos_compra_anulacion', origenDocumentoId: documentoId, usuarioId,
+      lineas: det.map((d) => ({ cuentaCodigo: codigoPorId[d.cuenta_id], debe: d.haber, haber: d.debe, descripcion: `Reversión: ${d.descripcion || ''}` })),
+    });
+  }
+
+  configuracion.registrarAuditoria(db, {
+    usuarioId, modulo: 'compras', entidad: 'documentos_compra', entidadId: documentoId, accion: 'anular', detalle: { tipo: nota.tipo, numero: nota.numero, motivo },
+  });
+}
+
+function listarNotasCompra(db, { proveedorId, facturaId, limite = 100 } = {}) {
+  const condiciones = ["n.tipo IN ('nota_credito', 'nota_debito')", 'n.deleted_at IS NULL'];
+  const params = [];
+  if (proveedorId) { condiciones.push('n.proveedor_id = ?'); params.push(proveedorId); }
+  if (facturaId) { condiciones.push('n.documento_referencia_id = ?'); params.push(facturaId); }
+  params.push(limite);
+  return db
+    .prepare(
+      `SELECT n.*, p.nombre AS proveedor_nombre, f.numero AS factura_numero FROM documentos_compra n
+       JOIN proveedores p ON p.id = n.proveedor_id LEFT JOIN documentos_compra f ON f.id = n.documento_referencia_id
+       WHERE ${condiciones.join(' AND ')} ORDER BY n.fecha DESC LIMIT ?`
+    )
+    .all(...params);
+}
+
+function obtenerNotaCompra(db, documentoId) {
+  const nota = db
+    .prepare(
+      `SELECT n.*, p.nombre AS proveedor_nombre, f.numero AS factura_numero FROM documentos_compra n
+       JOIN proveedores p ON p.id = n.proveedor_id LEFT JOIN documentos_compra f ON f.id = n.documento_referencia_id
+       WHERE n.id = ? AND n.tipo IN ('nota_credito', 'nota_debito')`
+    )
+    .get(documentoId);
+  if (!nota) return null;
+  nota.lineas = db
+    .prepare(
+      `SELECT d.*, p.descripcion AS producto_descripcion, p.codigo_interno FROM documentos_compra_detalle d
+       JOIN productos p ON p.id = d.producto_id WHERE d.documento_id = ?`
+    )
+    .all(documentoId);
+  return nota;
+}
+
+// =========================================================================
 // Reportes
 // =========================================================================
 
@@ -390,14 +744,18 @@ function comparacionMejorCosto(db, { productoId }) {
     .all(productoId);
 }
 
+// Neto de notas: las devoluciones restan cantidad y costo; las rebajas y aumentos de precio
+// solo mueven el costo.
 function comprasPorProducto(db, { desde, hasta } = {}) {
-  const condiciones = ["dc.tipo = 'factura_compra'", "dc.estado != 'anulado'"];
+  const condiciones = ["dc.tipo IN ('factura_compra', 'nota_credito', 'nota_debito')", "dc.estado != 'anulado'"];
   const params = [];
   if (desde) { condiciones.push('dc.fecha >= ?'); params.push(desde); }
   if (hasta) { condiciones.push('dc.fecha <= ?'); params.push(hasta); }
   return db
     .prepare(
-      `SELECT p.id AS producto_id, p.codigo_interno, p.descripcion, SUM(dcd.cantidad) AS cantidad_total, SUM(dcd.total_linea) AS costo_total
+      `SELECT p.id AS producto_id, p.codigo_interno, p.descripcion,
+              SUM(CASE WHEN dc.tipo = 'nota_credito' THEN -dcd.cantidad WHEN dc.tipo = 'factura_compra' THEN dcd.cantidad ELSE 0 END) AS cantidad_total,
+              ROUND(SUM(CASE WHEN dc.tipo = 'nota_credito' THEN -dcd.total_linea ELSE dcd.total_linea END), 2) AS costo_total
        FROM documentos_compra_detalle dcd
        JOIN documentos_compra dc ON dc.id = dcd.documento_id
        JOIN productos p ON p.id = dcd.producto_id
@@ -458,11 +816,27 @@ function register(ipcMain, getDb) {
 
   ipcMain.handle('compras:comparacionMejorCosto', (event, { productoId }) => comparacionMejorCosto(getDb(), { productoId }));
   ipcMain.handle('compras:comprasPorProducto', (event, filtros) => comprasPorProducto(getDb(), filtros || {}));
+
+  ipcMain.handle('compras:lineasParaNota', (event, { facturaId }) => lineasParaNota(getDb(), facturaId));
+  ipcMain.handle('compras:crearNota', (event, payload) => {
+    const db = getDb();
+    const id = db.transaction(() => crearNotaCompra(db, payload))();
+    return obtenerNotaCompra(db, id);
+  });
+  ipcMain.handle('compras:anularNota', (event, payload) => {
+    const db = getDb();
+    db.transaction(() => anularNotaCompra(db, payload))();
+    return obtenerNotaCompra(db, payload.documentoId);
+  });
+  ipcMain.handle('compras:listarNotas', (event, filtros) => listarNotasCompra(getDb(), filtros || {}));
+  ipcMain.handle('compras:obtenerNota', (event, { documentoId }) => obtenerNotaCompra(getDb(), documentoId));
 }
 
 module.exports = {
-  register, obtenerProveedor, listarProveedores, guardarProveedor, saldoPendienteProveedor,
+  register, obtenerProveedor, listarProveedores, guardarProveedor, saldoPendienteProveedor, saldoAFavorProveedor,
+  saldoDocumentoCompra, documentosPorPagarProveedor,
   crearFacturaCompra, anularFacturaCompra, listarFacturasCompra, obtenerFacturaCompra,
   crearOrdenCompra, listarOrdenesCompra, obtenerOrdenCompra, anularOrdenCompra,
+  lineasParaNota, crearNotaCompra, anularNotaCompra, listarNotasCompra, obtenerNotaCompra,
   comparacionMejorCosto, comprasPorProducto,
 };

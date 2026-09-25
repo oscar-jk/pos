@@ -139,6 +139,12 @@ contextBridge.exposeInMainWorld('puntoXCompras', {
 
   comparacionMejorCosto: invoke('compras:comparacionMejorCosto'),
   comprasPorProducto: invoke('compras:comprasPorProducto'),
+
+  lineasParaNota: invoke('compras:lineasParaNota'),
+  crearNota: invoke('compras:crearNota'),
+  anularNota: invoke('compras:anularNota'),
+  listarNotas: invoke('compras:listarNotas'),
+  obtenerNota: invoke('compras:obtenerNota'),
 });
 
 contextBridge.exposeInMainWorld('puntoXCxp', {
@@ -146,6 +152,7 @@ contextBridge.exposeInMainWorld('puntoXCxp', {
   crearPago: invoke('cxp:crearPago'),
   anularPago: invoke('cxp:anularPago'),
   listarPagos: invoke('cxp:listarPagos'),
+  registrarReembolso: invoke('cxp:registrarReembolso'),
   antiguedadSaldos: invoke('cxp:antiguedadSaldos'),
   facturasProximasAVencer: invoke('cxp:facturasProximasAVencer'),
   chequesPosdatadosPendientes: invoke('cxp:chequesPosdatadosPendientes'),

@@ -33,6 +33,8 @@ const PERMISOS = [
   ['compras', 'compras.orden.crear', 'Crear orden de compra'],
   ['compras', 'compras.factura.crear', 'Registrar factura de compra'],
   ['compras', 'compras.factura.anular', 'Anular documento de compra'],
+  ['compras', 'compras.devolucion.crear', 'Registrar devolución a proveedor o nota de crédito de compra'],
+  ['compras', 'compras.nota_debito.crear', 'Registrar nota de débito de compra'],
   ['compras', 'compras.pago.aprobar', 'Aprobar pago a proveedor'],
   ['compras', 'compras.costos.ver', 'Ver costos de compra'],
   ['compras', 'compras.reportes.ver', 'Ver reportes de compras'],
@@ -100,8 +102,8 @@ const ROLES = [
     descripcion: 'Crea órdenes de compra y registra facturas de compra. No aprueba pagos.',
     limite_descuento_pct: 0,
     permisos: [
-      'compras.orden.crear', 'compras.factura.crear', 'compras.costos.ver',
-      'compras.reportes.ver', 'inventario.ver',
+      'compras.orden.crear', 'compras.factura.crear', 'compras.devolucion.crear', 'compras.nota_debito.crear',
+      'compras.costos.ver', 'compras.reportes.ver', 'inventario.ver',
     ],
   },
   {

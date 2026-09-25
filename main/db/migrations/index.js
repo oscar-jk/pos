@@ -3,6 +3,7 @@
 // porque en una base nueva sus cambios ya vienen aplicados desde schema.sql.
 const MIGRACIONES = [
   require('./001_conciliacion_bancaria'),
+  require('./002_notas_compra'),
 ];
 
 function columnasDe(db, tabla) {

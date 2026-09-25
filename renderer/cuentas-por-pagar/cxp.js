@@ -59,6 +59,7 @@ async function cargarProveedores() {
     <tr>
       <td>${p.nombre}</td><td>${p.rnc || '—'}</td><td>${p.dias_credito}</td>
       <td style="color:${p.saldo_pendiente > 0 ? 'var(--color-warning)' : 'inherit'};">${fmt(p.saldo_pendiente)}</td>
+      <td style="color:${p.saldo_a_favor > 0 ? 'var(--color-success)' : 'inherit'};">${p.saldo_a_favor === undefined ? '—' : fmt(p.saldo_a_favor)}</td>
       <td><span class="enlace-accion" data-editar="${p.id}">Editar</span></td>
     </tr>
   `).join('');
@@ -119,7 +120,7 @@ async function cargarFacturas() {
       <td>${f.estado !== 'anulado' ? `<span class="enlace-accion" data-permiso="compras.factura.anular" data-anular="${f.id}">Anular</span>` : ''}</td>
     </tr>
   `).join('');
-  document.querySelectorAll('[data-anular]').forEach((el) => el.addEventListener('click', async () => {
+  document.querySelectorAll('#facturas-tbody [data-anular]').forEach((el) => el.addEventListener('click', async () => {
     const motivo = prompt('Motivo de la anulación:');
     if (!motivo) return;
     try {
@@ -284,24 +285,73 @@ document.getElementById('pagar-buscar-proveedor').addEventListener('input', (e) 
   }, 200);
 });
 
+// Saldo a favor: lo que el proveedor le debe al negocio por notas de crédito que superaron lo
+// que se le debía. Se usa como forma de pago o se registra su reembolso.
+function bloqueSaldoAFavor(proveedor) {
+  if (!(proveedor.saldo_a_favor > 0) || !window.puntoXCxp.registrarReembolso) return '';
+  return `
+    <div style="background:var(--color-accent-soft); border:1px solid var(--color-accent); border-radius:var(--radius-md); padding:12px 14px; margin-bottom:14px; font-size:13px; display:flex; justify-content:space-between; align-items:center; gap:12px;">
+      <span><strong>${fmt(proveedor.saldo_a_favor)} a favor</strong> por notas de crédito. Úsalo como forma de pago abajo, o registra que el proveedor te lo devolvió.</span>
+      <button class="btn btn-secundario btn-chico" id="btn-reembolso" data-permiso="cxp.pago.crear">Registrar reembolso</button>
+    </div>`;
+}
+
+function abrirFormularioReembolso() {
+  const proveedor = state.proveedorPago;
+  window.PuntoXModal.abrirModal('Reembolso del proveedor', `
+    <p style="font-size:13px; margin:0 0 12px;">${proveedor.nombre} tiene <strong>${fmt(proveedor.saldo_a_favor)}</strong> a favor.</p>
+    <div class="form-grid">
+      <div class="form-field"><label>Monto recibido *</label><input id="re-monto" type="number" step="0.01" min="0" max="${proveedor.saldo_a_favor}" value="${proveedor.saldo_a_favor}" /></div>
+      <div class="form-field"><label>Recibido en</label>
+        <select id="re-forma"><option value="efectivo">Efectivo (entra a la caja)</option><option value="transferencia">Transferencia (entra al banco)</option></select>
+      </div>
+    </div>
+    <div class="form-seccion" style="display:flex; justify-content:flex-end; gap:8px;">
+      <button type="button" class="btn btn-secundario" id="re-cancelar">Cancelar</button>
+      <button type="button" class="btn btn-primario" id="re-guardar">Registrar reembolso</button>
+    </div>
+  `);
+  document.getElementById('re-cancelar').addEventListener('click', window.PuntoXModal.cerrarModal);
+  document.getElementById('re-guardar').addEventListener('click', async () => {
+    try {
+      await window.puntoXCxp.registrarReembolso({
+        proveedorId: proveedor.id, monto: parseFloat(document.getElementById('re-monto').value) || 0,
+        formaPago: document.getElementById('re-forma').value, cajaId: state.info.cajaId, usuarioId: state.info.usuario.id,
+      });
+      window.PuntoXModal.cerrarModal();
+      state.proveedorPago = await window.puntoXCompras.obtenerProveedor({ proveedorId: proveedor.id });
+      renderPagar();
+      cargarPagos();
+      mostrarError(null);
+    } catch (err) {
+      window.PuntoXModal.cerrarModal();
+      mostrarError(err.message);
+    }
+  });
+}
+
 async function renderPagar() {
   const contenedor = document.getElementById('pagar-contenido');
   if (!state.proveedorPago) { contenedor.innerHTML = ''; return; }
+  const proveedor = state.proveedorPago;
 
-  const facturas = await window.puntoXCxp.facturasAbiertas({ proveedorId: state.proveedorPago.id });
+  const facturas = await window.puntoXCxp.facturasAbiertas({ proveedorId: proveedor.id });
   if (facturas.length === 0) {
-    contenedor.innerHTML = `<div class="empty-state">${state.proveedorPago.nombre} no tiene facturas abiertas a crédito.</div>`;
+    contenedor.innerHTML = `${bloqueSaldoAFavor(proveedor)}<div class="empty-state">${proveedor.nombre} no tiene facturas abiertas a crédito.</div>`;
+    const btn = document.getElementById('btn-reembolso');
+    if (btn) btn.addEventListener('click', abrirFormularioReembolso);
     return;
   }
 
   contenedor.innerHTML = `
-    <div style="font-weight:700; margin-bottom:10px;">${state.proveedorPago.nombre} — saldo total: ${fmt(state.proveedorPago.saldo_pendiente)}</div>
+    ${bloqueSaldoAFavor(proveedor)}
+    <div style="font-weight:700; margin-bottom:10px;">${proveedor.nombre} — saldo total: ${fmt(proveedor.saldo_pendiente)}</div>
     <table class="data-table">
-      <thead><tr><th>Factura</th><th>Vencimiento</th><th>Total</th><th>Saldo</th><th style="width:140px;">Monto a pagar</th></tr></thead>
+      <thead><tr><th>Documento</th><th>Vencimiento</th><th>Total</th><th>Saldo</th><th style="width:140px;">Monto a pagar</th></tr></thead>
       <tbody>
         ${facturas.map((f) => `
           <tr>
-            <td>${f.numero}</td><td>${fechaCorta(f.fecha_vencimiento)}</td><td>${fmt(f.total)}</td><td>${fmt(f.saldo_pendiente)}</td>
+            <td>${f.tipo === 'nota_debito' ? 'Nota de débito' : 'Factura'} ${f.numero}</td><td>${fechaCorta(f.fecha_vencimiento)}</td><td>${fmt(f.total)}</td><td>${fmt(f.saldo_pendiente)}</td>
             <td><input type="number" step="0.01" min="0" max="${f.saldo_pendiente}" value="0" class="input-aplicacion" data-id="${f.id}" data-max="${f.saldo_pendiente}" style="width:120px; padding:6px 8px; border:1px solid var(--color-border-input); border-radius:6px;" /></td>
           </tr>
         `).join('')}
@@ -313,6 +363,7 @@ async function renderPagar() {
           <option value="efectivo">Efectivo</option>
           <option value="transferencia">Transferencia</option>
           <option value="cheque">Cheque</option>
+          ${proveedor.saldo_a_favor > 0 ? `<option value="saldo_a_favor">Saldo a favor (disponible ${fmt(proveedor.saldo_a_favor)})</option>` : ''}
         </select>
       </div>
       <div class="form-field"><label>Prioridad</label>
@@ -333,6 +384,8 @@ async function renderPagar() {
   document.getElementById('pagar-forma-pago').addEventListener('change', (e) => {
     document.getElementById('pagar-campos-cheque').style.display = e.target.value === 'cheque' ? 'grid' : 'none';
   });
+  const btnReembolso = document.getElementById('btn-reembolso');
+  if (btnReembolso) btnReembolso.addEventListener('click', abrirFormularioReembolso);
 
   function actualizarTotal() {
     const total = Array.from(document.querySelectorAll('.input-aplicacion')).reduce((acc, inp) => acc + (parseFloat(inp.value) || 0), 0);
@@ -366,16 +419,21 @@ async function renderPagar() {
   });
 }
 
+const FORMA_PAGO_ETIQUETA = {
+  efectivo: 'Efectivo', transferencia: 'Transferencia', cheque: 'Cheque', saldo_a_favor: 'Saldo a favor',
+  reembolso_efectivo: 'Reembolso recibido (efectivo)', reembolso_transferencia: 'Reembolso recibido (transferencia)',
+};
+
 async function cargarPagos() {
   const pagos = await window.puntoXCxp.listarPagos({});
   document.getElementById('pagos-tbody').innerHTML = pagos.map((p) => `
     <tr>
-      <td>${p.numero}</td><td>${p.proveedor_nombre}</td><td>${p.forma_pago}</td><td>${fmt(p.monto_total)}</td><td>${fechaCorta(p.fecha)}</td>
+      <td>${p.numero}</td><td>${p.proveedor_nombre}</td><td>${FORMA_PAGO_ETIQUETA[p.forma_pago] || p.forma_pago}</td><td>${fmt(p.monto_total)}</td><td>${fechaCorta(p.fecha)}</td>
       <td><span class="pill-estado" style="background:${p.estado === 'anulado' ? 'var(--color-danger)' : 'var(--color-success)'};">${p.estado}</span></td>
       <td>${p.estado !== 'anulado' ? `<span class="enlace-accion" data-permiso="cxp.pago.anular" data-anular="${p.id}">Anular</span>` : ''}</td>
     </tr>
   `).join('');
-  document.querySelectorAll('[data-anular]').forEach((el) => el.addEventListener('click', async () => {
+  document.querySelectorAll('#pagos-tbody [data-anular]').forEach((el) => el.addEventListener('click', async () => {
     const motivo = prompt('Motivo de la anulación:');
     if (!motivo) return;
     try {

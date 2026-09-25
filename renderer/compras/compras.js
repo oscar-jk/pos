@@ -43,6 +43,7 @@ function cambiarTab(tab) {
   if (tab === 'proveedores') { cargarProveedores(); enlazarBtn('btn-nuevo-proveedor', () => abrirFormularioProveedor()); }
   if (tab === 'ordenes') { cargarOrdenes(); enlazarBtn('btn-nueva-orden', () => abrirFormularioOrdenCompra()); }
   if (tab === 'facturas') { cargarFacturas(); enlazarBtn('btn-nueva-factura', () => abrirFormularioFacturaCompra(null)); }
+  if (tab === 'notas') cargarNotas();
   if (tab === 'comparacion') renderComparacion();
   if (tab === 'porProducto') cargarPorProducto();
 }
@@ -64,6 +65,7 @@ async function cargarProveedores() {
     <tr>
       <td>${p.nombre}</td><td>${p.rnc || '—'}</td><td>${p.dias_credito}</td>
       <td style="color:${p.saldo_pendiente > 0 ? 'var(--color-warning)' : 'inherit'};">${fmt(p.saldo_pendiente)}</td>
+      <td style="color:${p.saldo_a_favor > 0 ? 'var(--color-success)' : 'inherit'};">${p.saldo_a_favor === undefined ? '—' : fmt(p.saldo_a_favor)}</td>
       <td><span class="enlace-accion" data-editar="${p.id}">Editar</span></td>
     </tr>
   `).join('');
@@ -151,7 +153,7 @@ async function cargarOrdenes() {
   `).join('');
   document.querySelectorAll('[data-ver]').forEach((el) => el.addEventListener('click', () => verOrdenCompra(el.dataset.ver)));
   document.querySelectorAll('[data-recibir]').forEach((el) => el.addEventListener('click', () => abrirFormularioFacturaCompra(el.dataset.recibir)));
-  document.querySelectorAll('[data-anular]').forEach((el) => el.addEventListener('click', async () => {
+  document.querySelectorAll('#ordenes-tbody [data-anular]').forEach((el) => el.addEventListener('click', async () => {
     const motivo = prompt('Motivo de la anulación:');
     if (!motivo) return;
     try {
@@ -290,10 +292,12 @@ async function cargarFacturas() {
       <td>${f.documento_referencia_id ? 'Orden de compra' : 'Directa'}</td>
       <td>${fmt(f.total)}</td>
       <td><span class="pill-estado" style="background:${f.estado === 'anulado' ? 'var(--color-danger)' : 'var(--color-success)'};">${f.estado}</span></td>
-      <td>${f.estado !== 'anulado' ? `<span class="enlace-accion" data-permiso="compras.factura.anular" data-anular="${f.id}">Anular</span>` : ''}</td>
+      <td style="white-space:nowrap;">${f.estado !== 'anulado' ? `
+        ${window.puntoXCompras.crearNota ? `<span class="enlace-accion" data-permiso="compras.devolucion.crear,compras.nota_debito.crear" data-nota="${f.id}">Nota C/D</span> · ` : ''}
+        <span class="enlace-accion" data-permiso="compras.factura.anular" data-anular="${f.id}">Anular</span>` : ''}</td>
     </tr>
   `).join('');
-  document.querySelectorAll('[data-anular]').forEach((el) => el.addEventListener('click', async () => {
+  document.querySelectorAll('#facturas-tbody [data-anular]').forEach((el) => el.addEventListener('click', async () => {
     const motivo = prompt('Motivo de la anulación:');
     if (!motivo) return;
     try {
@@ -301,6 +305,172 @@ async function cargarFacturas() {
       cargarFacturas();
     } catch (err) { mostrarError(err.message); }
   }));
+  document.querySelectorAll('#facturas-tbody [data-nota]').forEach((el) => el.addEventListener('click', () => abrirFormularioNota(el.dataset.nota)));
+}
+
+// --- Notas de crédito y débito de compra ---
+
+function esc(texto) {
+  return String(texto ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+const TIPOS_NOTA = {
+  devolucion: { tipo: 'nota_credito', tipoAjuste: 'devolucion', etiqueta: 'Devolución de mercancía (nota de crédito)', permiso: 'compras.devolucion.crear' },
+  rebaja: { tipo: 'nota_credito', tipoAjuste: 'ajuste_costo', etiqueta: 'Rebaja de precio (nota de crédito)', permiso: 'compras.devolucion.crear' },
+  aumento: { tipo: 'nota_debito', tipoAjuste: 'ajuste_costo', etiqueta: 'Aumento de precio (nota de débito)', permiso: 'compras.nota_debito.crear' },
+};
+
+function etiquetaNota(n) {
+  if (n.tipo === 'nota_debito') return 'ND · aumento de precio';
+  return n.tipo_ajuste === 'devolucion' ? 'NC · devolución' : 'NC · rebaja de precio';
+}
+
+async function abrirFormularioNota(facturaId) {
+  mostrarError(null);
+  const [factura, lineas] = await Promise.all([
+    window.puntoXCompras.obtenerFactura({ documentoId: facturaId }),
+    window.puntoXCompras.lineasParaNota({ facturaId }).catch((err) => { mostrarError(err.message); return null; }),
+  ]);
+  if (!lineas) return;
+  const opciones = Object.entries(TIPOS_NOTA).filter(([, t]) => state.info.tienePermiso(t.permiso));
+  if (opciones.length === 0) { mostrarError('Tu rol no tiene permiso para registrar notas de compra'); return; }
+  let clave = opciones[0][0];
+
+  const contenido = window.PuntoXModal.abrirModal(`Nota sobre la factura de compra ${esc(factura.numero)}`, `
+    <div style="font-size:13px; margin-bottom:12px;">
+      <strong>${esc(factura.proveedor_nombre)}</strong> — ${fechaCorta(factura.fecha)} — total ${fmt(factura.total)} (${factura.condicion_pago})
+    </div>
+    <div class="form-grid">
+      <div class="form-field" style="grid-column: span 2;"><label>Tipo de nota *</label>
+        <select id="nt-tipo" class="input-normal">${opciones.map(([k, t]) => `<option value="${k}">${t.etiqueta}</option>`).join('')}</select>
+      </div>
+      <div class="form-field"><label>Motivo *</label><input id="nt-concepto" class="input-normal" placeholder="Ej: mercancía dañada, descuento por volumen" /></div>
+      <div class="form-field"><label>NCF de la nota del proveedor</label><input id="nt-ncf" class="input-normal" placeholder="Ej: B04..." /></div>
+    </div>
+    <div id="nt-ayuda" style="font-size:12px; color:var(--color-text-muted); margin:12px 0 8px;"></div>
+    <table class="data-table">
+      <thead id="nt-thead"></thead>
+      <tbody id="nt-tbody"></tbody>
+    </table>
+    <div id="nt-totales" style="text-align:right; margin-top:10px; font-size:13px;"></div>
+    <div class="form-seccion" style="display:flex; justify-content:flex-end; gap:8px;">
+      <button type="button" class="btn btn-secundario" id="nt-cancelar">Cancelar</button>
+      <button type="button" class="btn btn-primario" id="nt-guardar">Registrar nota</button>
+    </div>
+  `);
+
+  const valores = {};
+  function render() {
+    const esDevolucion = TIPOS_NOTA[clave].tipoAjuste === 'devolucion';
+    document.getElementById('nt-ayuda').innerHTML = esDevolucion
+      ? 'Indica cuántas unidades devuelves. Salen del inventario al costo de la factura y el proveedor queda debiéndote ese monto (o se rebaja de lo que le debes).'
+      : `Indica el monto del ${clave === 'aumento' ? 'aumento' : 'descuento'} por producto, <strong>sin ITBIS</strong>. La parte que corresponde a mercancía aún en existencia ajusta el costo promedio; la que ya se vendió va a Costo de Ventas.`;
+    document.getElementById('nt-thead').innerHTML = esDevolucion
+      ? '<tr><th>Producto</th><th>Costo</th><th>Comprado</th><th>Ya devuelto</th><th>En existencia</th><th style="width:110px;">Devolver</th></tr>'
+      : '<tr><th>Producto</th><th>Costo</th><th>Cantidad</th><th style="width:140px;">Monto sin ITBIS</th></tr>';
+    document.getElementById('nt-tbody').innerHTML = lineas.map((l) => {
+      const valor = valores[`${clave === 'devolucion' ? 'c' : 'm'}-${l.id}`] ?? '';
+      const maximo = Math.min(l.disponible_devolver, l.existencia_almacen);
+      return esDevolucion
+        ? `<tr><td>${esc(l.producto_descripcion)}</td><td>${fmt(l.costo_unitario)}</td><td>${l.cantidad}</td><td>${l.cantidad_devuelta}</td><td>${l.existencia_almacen}</td>
+            <td><input type="number" min="0" max="${maximo}" step="0.01" data-linea="${l.id}" value="${valor}" ${maximo <= 0 ? 'disabled title="Nada disponible para devolver"' : ''} style="width:90px;" /></td></tr>`
+        : `<tr><td>${esc(l.producto_descripcion)}</td><td>${fmt(l.costo_unitario)}</td><td>${l.cantidad}</td>
+            <td><input type="number" min="0" step="0.01" data-linea="${l.id}" value="${valor}" style="width:120px;" /></td></tr>`;
+    }).join('');
+    contenido.querySelectorAll('#nt-tbody input').forEach((inp) => inp.addEventListener('input', () => {
+      const max = parseFloat(inp.max);
+      if (!Number.isNaN(max) && parseFloat(inp.value) > max) inp.value = max;
+      valores[`${clave === 'devolucion' ? 'c' : 'm'}-${inp.dataset.linea}`] = inp.value;
+      actualizarTotales();
+    }));
+    actualizarTotales();
+  }
+
+  function lineasCapturadas() {
+    const esDevolucion = TIPOS_NOTA[clave].tipoAjuste === 'devolucion';
+    return lineas
+      .map((l) => ({ l, valor: parseFloat(valores[`${esDevolucion ? 'c' : 'm'}-${l.id}`]) || 0 }))
+      .filter((x) => x.valor > 0)
+      .map(({ l, valor }) => ({ l, base: redondear(esDevolucion ? valor * l.costo_unitario : valor), valor }));
+  }
+
+  function actualizarTotales() {
+    const capturadas = lineasCapturadas();
+    const base = redondear(capturadas.reduce((a, c) => a + c.base, 0));
+    const itbis = redondear(capturadas.reduce((a, c) => a + redondear(c.base * c.l.tasa_itbis), 0));
+    document.getElementById('nt-totales').innerHTML = `Subtotal ${fmt(base)} · ITBIS ${fmt(itbis)} · <strong>Total ${fmt(base + itbis)}</strong>`;
+  }
+
+  document.getElementById('nt-tipo').addEventListener('change', (e) => { clave = e.target.value; render(); });
+  render();
+  document.getElementById('nt-cancelar').addEventListener('click', window.PuntoXModal.cerrarModal);
+  document.getElementById('nt-guardar').addEventListener('click', async () => {
+    const t = TIPOS_NOTA[clave];
+    const capturadas = lineasCapturadas();
+    if (capturadas.length === 0) { mostrarError(t.tipoAjuste === 'devolucion' ? 'Indica al menos una cantidad a devolver' : 'Indica al menos un monto'); return; }
+    try {
+      const nota = await window.puntoXCompras.crearNota({
+        tipo: t.tipo, tipoAjuste: t.tipoAjuste, facturaId, usuarioId: state.info.usuario.id,
+        concepto: document.getElementById('nt-concepto').value, ncfProveedor: document.getElementById('nt-ncf').value || null,
+        lineas: capturadas.map(({ l, valor }) => (t.tipoAjuste === 'devolucion' ? { detalleReferenciaId: l.id, cantidad: valor } : { detalleReferenciaId: l.id, monto: valor })),
+      });
+      window.PuntoXModal.cerrarModal();
+      mostrarError(null);
+      cambiarTab('notas');
+      mostrarAviso(`${etiquetaNota(nota)} ${nota.numero} registrada por ${fmt(nota.total)}.`);
+    } catch (err) { mostrarError(err.message); }
+  });
+}
+
+function mostrarAviso(texto) {
+  const el = document.getElementById('mensaje-exito');
+  el.textContent = texto;
+  el.style.display = 'block';
+  setTimeout(() => { el.style.display = 'none'; }, 5000);
+}
+
+async function cargarNotas() {
+  const notas = await window.puntoXCompras.listarNotas({});
+  document.getElementById('notas-vacio').style.display = notas.length === 0 ? 'block' : 'none';
+  document.getElementById('notas-tbody').innerHTML = notas.map((n) => `
+    <tr>
+      <td>${etiquetaNota(n)}</td><td>${n.numero}</td><td>${n.factura_numero || '—'}</td><td>${esc(n.proveedor_nombre)}</td>
+      <td>${fechaCorta(n.fecha)}</td><td>${esc(n.concepto)}</td>
+      <td style="color:${n.tipo === 'nota_credito' ? 'var(--color-success)' : 'var(--color-warning)'};">${n.tipo === 'nota_credito' ? '−' : '+'}${fmt(n.total)}</td>
+      <td><span class="pill-estado" style="background:${n.estado === 'anulado' ? 'var(--color-danger)' : 'var(--color-success)'};">${n.estado === 'anulado' ? 'anulada' : 'vigente'}</span></td>
+      <td style="white-space:nowrap;"><span class="enlace-accion" data-ver-nota="${n.id}">Ver</span>
+        ${n.estado !== 'anulado' ? ` · <span class="enlace-accion" data-permiso="compras.factura.anular" data-anular-nota="${n.id}">Anular</span>` : ''}</td>
+    </tr>
+  `).join('');
+  document.querySelectorAll('[data-ver-nota]').forEach((el) => el.addEventListener('click', () => verNota(el.dataset.verNota)));
+  document.querySelectorAll('[data-anular-nota]').forEach((el) => el.addEventListener('click', async () => {
+    const motivo = prompt('Motivo de la anulación:');
+    if (!motivo) return;
+    try {
+      await window.puntoXCompras.anularNota({ documentoId: el.dataset.anularNota, motivo, usuarioId: state.info.usuario.id });
+      cargarNotas();
+    } catch (err) { mostrarError(err.message); }
+  }));
+}
+
+async function verNota(documentoId) {
+  const n = await window.puntoXCompras.obtenerNota({ documentoId });
+  const esDevolucion = n.tipo_ajuste === 'devolucion';
+  window.PuntoXModal.abrirModal(`${etiquetaNota(n)} ${n.numero}`, `
+    <div style="font-size:13px; margin-bottom:10px;">
+      <strong>${esc(n.proveedor_nombre)}</strong> — factura ${n.factura_numero} — ${fechaCorta(n.fecha)}${n.ncf_proveedor ? ` — NCF ${esc(n.ncf_proveedor)}` : ''}<br/>
+      Motivo: ${esc(n.concepto)}${n.estado === 'anulado' ? `<br/><span style="color:var(--color-danger);">Anulada: ${esc(n.motivo_anulacion)}</span>` : ''}
+    </div>
+    <table class="data-table">
+      <thead><tr><th>Producto</th>${esDevolucion ? '<th>Cantidad</th><th>Costo</th>' : '<th>A inventario</th><th>A costo de ventas</th>'}<th>ITBIS</th><th>Total</th></tr></thead>
+      <tbody>${n.lineas.map((l) => `<tr><td>${esc(l.producto_descripcion)}</td>
+        ${esDevolucion ? `<td>${l.cantidad}</td><td>${fmt(l.costo_unitario)}</td>` : `<td>${fmt(l.monto_inventario)}</td><td>${fmt(l.monto_costo_ventas)}</td>`}
+        <td>${fmt(l.itbis_monto)}</td><td>${fmt(l.total_linea)}</td></tr>`).join('')}</tbody>
+    </table>
+    <div style="text-align:right; font-weight:800; margin-top:10px;">Total: ${fmt(n.total)}</div>
+    <div class="form-seccion" style="display:flex; justify-content:flex-end;"><button type="button" class="btn btn-secundario" id="nota-cerrar">Cerrar</button></div>
+  `);
+  document.getElementById('nota-cerrar').addEventListener('click', window.PuntoXModal.cerrarModal);
 }
 
 async function abrirFormularioFacturaCompra(ordenId) {
@@ -501,6 +671,8 @@ document.getElementById('pp-hasta').addEventListener('change', cargarPorProducto
 
 async function init() {
   state.info = await window.PuntoXShell.initPuntoXShell('compras');
+  // Las notas de crédito/débito de compra solo existen en la app de escritorio.
+  if (!window.puntoXCompras.crearNota) document.querySelector('.tab-btn[data-tab="notas"]').remove();
   cambiarTab('proveedores');
 }
 

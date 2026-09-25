@@ -21,11 +21,13 @@
       </div>
 
       <div id="mensaje-error" class="mensaje-error" style="display:none;"></div>
+      <div id="mensaje-exito" style="display:none; background:var(--color-accent-soft); border:1px solid var(--color-accent); border-radius:var(--radius-md); padding:12px 14px; margin-bottom:12px; font-size:13px;"></div>
 
       <div class="tabs">
         <button class="tab-btn is-active" data-tab="proveedores">Proveedores</button>
         <button class="tab-btn" data-tab="ordenes">Órdenes de compra</button>
         <button class="tab-btn" data-tab="facturas">Facturas de compra</button>
+        <button class="tab-btn" data-tab="notas">Notas de crédito/débito</button>
         <button class="tab-btn" data-tab="comparacion">Comparación de costos</button>
         <button class="tab-btn" data-tab="porProducto">Compras por producto</button>
       </div>
@@ -33,7 +35,7 @@
       <div id="tab-proveedores" class="tab-panel">
         <input id="buscar-proveedores" class="input-normal" type="text" placeholder="Buscar por nombre o RNC..." style="max-width:320px; margin-bottom:14px;" />
         <table class="data-table">
-          <thead><tr><th>Nombre</th><th>RNC</th><th>Días de crédito</th><th>Saldo pendiente</th><th></th></tr></thead>
+          <thead><tr><th>Nombre</th><th>RNC</th><th>Días de crédito</th><th>Saldo pendiente</th><th>Saldo a favor</th><th></th></tr></thead>
           <tbody id="proveedores-tbody"></tbody>
         </table>
         <div id="proveedores-vacio" class="empty-state" style="display:none;">No hay proveedores registrados. Crea el primero con "+ Nuevo proveedor".</div>
@@ -53,6 +55,17 @@
           <tbody id="facturas-tbody"></tbody>
         </table>
         <div id="facturas-vacio" class="empty-state" style="display:none;">Aún no hay facturas de compra registradas.</div>
+      </div>
+
+      <div id="tab-notas" class="tab-panel" style="display:none;">
+        <p style="font-size:13px; color:var(--color-text-muted); margin:0 0 14px; max-width:760px;">
+          Devoluciones a proveedor y ajustes de precio. Se crean desde la pestaña <strong>Facturas de compra</strong>, con "Nota C/D" en la factura correspondiente.
+        </p>
+        <table class="data-table">
+          <thead><tr><th>Tipo</th><th>Número</th><th>Factura</th><th>Proveedor</th><th>Fecha</th><th>Motivo</th><th>Total</th><th>Estado</th><th></th></tr></thead>
+          <tbody id="notas-tbody"></tbody>
+        </table>
+        <div id="notas-vacio" class="empty-state" style="display:none;">Aún no hay notas de crédito o débito de compra.</div>
       </div>
 
       <div id="tab-comparacion" class="tab-panel" style="display:none;">
