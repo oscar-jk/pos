@@ -173,17 +173,41 @@ function gastoCajaChicaTotalDelPeriodo(db, cajaChicaId) {
   return row.total;
 }
 
-function crearGastoCajaChica(db, { cajaChicaId, turnoCajaId, concepto, categoria, monto, comprobanteRuta, usuarioId }) {
+const TIPOS_BIENES_SERVICIOS_606 = ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11'];
+
+function limpiarRnc(rnc) {
+  return (rnc || '').replace(/[^0-9]/g, '');
+}
+
+// monto: total pagado (ITBIS incluido). itbisFacturado: el ITBIS de la factura del suplidor con
+// derecho a crédito fiscal; va a ITBIS pagado (1500) igual que en las compras, y el resto a gasto.
+function crearGastoCajaChica(db, {
+  cajaChicaId, turnoCajaId, concepto, categoria, monto, comprobanteRuta, usuarioId,
+  rncSuplidor, ncf, tipoBienesServicios, itbisFacturado, claseMonto,
+}) {
   session.requerirPermiso('caja.movimiento.crear');
   if (!concepto || !concepto.trim()) throw new Error('El concepto del gasto es obligatorio');
   if (!comprobanteRuta || !comprobanteRuta.trim()) throw new Error('El comprobante del gasto es obligatorio');
   if (!monto || monto <= 0) throw new Error('El monto debe ser mayor a cero');
+  const itbis = redondear(Number(itbisFacturado) || 0);
+  if (itbis < 0 || itbis >= monto) throw new Error('El ITBIS debe ser menor que el monto total del gasto');
+  const rnc = limpiarRnc(rncSuplidor);
+  const ncfLimpio = (ncf || '').trim().toUpperCase();
+  if (rnc && rnc.length !== 9 && rnc.length !== 11) throw new Error('El RNC debe tener 9 dígitos (o 11 si es cédula)');
+  if (ncfLimpio && !rnc) throw new Error('Si el gasto tiene NCF, indique también el RNC o cédula del suplidor');
+  const tipo = tipoBienesServicios || '02';
+  if (!TIPOS_BIENES_SERVICIOS_606.includes(tipo)) throw new Error('Tipo de bienes y servicios inválido');
 
   const gastoId = crypto.randomUUID();
   db.prepare(
-    `INSERT INTO gastos_caja_chica (id, caja_chica_id, concepto, categoria, monto, comprobante_ruta, fecha, usuario_id)
-     VALUES (?, ?, ?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%fZ','now'), ?)`
-  ).run(gastoId, cajaChicaId, concepto.trim(), categoria || null, monto, comprobanteRuta.trim(), usuarioId);
+    `INSERT INTO gastos_caja_chica
+       (id, caja_chica_id, concepto, categoria, monto, comprobante_ruta, rnc_suplidor, ncf, tipo_bienes_servicios,
+        itbis_facturado, clase_monto, fecha, usuario_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%fZ','now'), ?)`
+  ).run(
+    gastoId, cajaChicaId, concepto.trim(), categoria || null, monto, comprobanteRuta.trim(), rnc || null, ncfLimpio || null,
+    tipo, itbis, claseMonto === 'servicios' ? 'servicios' : 'bienes', usuarioId
+  );
 
   if (turnoCajaId) {
     registrarMovimiento(db, {
@@ -196,7 +220,8 @@ function crearGastoCajaChica(db, { cajaChicaId, turnoCajaId, concepto, categoria
     fecha: new Date().toISOString(), concepto: `Gasto de caja chica: ${concepto.trim()}`, origenModulo: 'caja',
     origenDocumentoTipo: 'gastos_caja_chica', origenDocumentoId: gastoId, usuarioId,
     lineas: [
-      { cuentaCodigo: '6100', debe: monto, descripcion: concepto.trim() },
+      { cuentaCodigo: '6100', debe: redondear(monto - itbis), descripcion: concepto.trim() },
+      { cuentaCodigo: '1500', debe: itbis, descripcion: 'ITBIS pagado (crédito fiscal)' },
       { cuentaCodigo: '1100', haber: monto, descripcion: 'Salida de caja' },
     ],
   });

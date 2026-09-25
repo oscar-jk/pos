@@ -12,6 +12,55 @@ function fechaHora(iso) {
 function hoyISO() {
   return new Date().toISOString().slice(0, 10);
 }
+function mesAnterior() {
+  const d = new Date();
+  d.setDate(1);
+  d.setMonth(d.getMonth() - 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+function esc(texto) {
+  return String(texto ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+const FORMA_PAGO_606 = { '01': 'Efectivo', '02': 'Cheque/transferencia', '03': 'Tarjeta', '04': 'Crédito', '05': 'Permuta', '06': 'Nota de crédito', '07': 'Mixto' };
+
+function renderReporte606(r) {
+  const periodoTexto = `${r.periodo.slice(4)}/${r.periodo.slice(0, 4)}`;
+  return `
+    ${!r.rncNegocio ? `<div class="mensaje-error" style="display:block;">Falta el RNC del negocio. Configúralo en <strong>Configuración → Negocio</strong> para poder generar el archivo TXT.</div>` : ''}
+    ${renderTarjetas([
+      { label: 'Registros', valor: r.totales.cantidad },
+      { label: 'Monto facturado (sin ITBIS)', valor: r.totales.facturado, formato: 'moneda' },
+      { label: 'ITBIS facturado', valor: r.totales.itbis, formato: 'moneda' },
+      { label: 'Excluidos', valor: r.excluidos.length, color: r.excluidos.length ? 'var(--color-warning)' : undefined },
+    ])}
+    <div style="display:flex; gap:8px; margin:6px 0 12px; flex-wrap:wrap;">
+      <button class="btn btn-primario btn-chico" data-exportar="txt" ${!r.rncNegocio || r.registros.length === 0 ? 'disabled' : ''}>Descargar TXT para la DGII</button>
+      <button class="btn btn-secundario btn-chico" data-exportar="csv" ${r.registros.length === 0 ? 'disabled' : ''}>Descargar para Excel (CSV)</button>
+    </div>
+    <div id="aviso-606" style="display:none; font-size:12px; margin-bottom:12px; color:var(--color-success); font-weight:600;"></div>
+    <p style="font-size:12px; color:var(--color-text-muted); margin:0 0 14px;">
+      Periodo ${periodoTexto} · RNC informante ${esc(r.rncNegocio) || '—'}. Formato según la Norma General 07-2018.
+      Facturas de compra como tipo 09; notas de crédito con forma de pago 06 y notas de débito con 04, ambas con el NCF de la factura afectada.
+      <strong>Revisa el archivo con tu contador antes del primer envío.</strong>
+    </p>
+    ${r.excluidos.length ? `
+      <div class="reportes-panel__header" style="margin-top:4px;"><h3 style="font-size:14px; margin:0;">No incluidos en el 606 (${r.excluidos.length})</h3></div>
+      ${renderTabla([
+        { label: 'Documento', key: (e) => `${e.origen} ${e.numero}` }, { label: 'Proveedor', key: 'proveedor' },
+        { label: 'Fecha', key: 'fecha', formato: 'fecha' }, { label: 'Total', key: 'total', formato: 'moneda', alinear: 'right' },
+        { label: 'Motivo', key: 'motivo' },
+      ], r.excluidos)}` : ''}
+    <div class="reportes-panel__header" style="margin-top:16px;"><h3 style="font-size:14px; margin:0;">Registros</h3></div>
+    ${renderTabla([
+      { label: 'Documento', key: (x) => `${x.origen} ${x.numero}` }, { label: 'RNC/Cédula', key: 'rnc' },
+      { label: 'Tipo', key: 'tipo_bienes_servicios' }, { label: 'NCF', key: 'ncf' }, { label: 'NCF modificado', key: 'ncf_modificado' },
+      { label: 'Fecha', key: (x) => `${x.fecha_comprobante.slice(6)}/${x.fecha_comprobante.slice(4, 6)}/${x.fecha_comprobante.slice(0, 4)}` },
+      { label: 'Bienes', key: 'monto_bienes', formato: 'moneda', alinear: 'right' }, { label: 'Servicios', key: 'monto_servicios', formato: 'moneda', alinear: 'right' },
+      { label: 'ITBIS', key: 'itbis_facturado', formato: 'moneda', alinear: 'right' }, { label: 'Forma de pago', key: (x) => `${x.forma_pago} ${FORMA_PAGO_606[x.forma_pago] || ''}` },
+    ], r.registros)}
+  `;
+}
 
 function mostrarError(msg) {
   const el = document.getElementById('mensaje-error');
@@ -31,7 +80,7 @@ function formatearValor(v, formato) {
   if (formato === 'fecha') return fechaCorta(v);
   if (formato === 'fechahora') return fechaHora(v);
   if (formato === 'porcentaje') return `${v}%`;
-  return String(v);
+  return esc(v);
 }
 
 function renderTabla(columnas, filas) {
@@ -61,6 +110,9 @@ async function renderFiltros(filtros) {
   const partes = await Promise.all(filtros.map(async (f) => {
     if (f.tipo === 'fecha') {
       return `<div class="form-field"><label>${f.label}</label><input type="date" class="input-normal" id="filtro-${f.clave}" value="${f.valorDefault || ''}" /></div>`;
+    }
+    if (f.tipo === 'mes') {
+      return `<div class="form-field"><label>${f.label}</label><input type="month" class="input-normal" id="filtro-${f.clave}" value="${f.valorDefault || ''}" /></div>`;
     }
     if (f.tipo === 'select') {
       return `<div class="form-field"><label>${f.label}</label><select class="input-normal" id="filtro-${f.clave}">${f.opciones.map((o) => `<option value="${o.value}" ${o.value === f.valorDefault ? 'selected' : ''}>${o.label}</option>`).join('')}</select></div>`;
@@ -269,6 +321,28 @@ const CATALOGO = [
           { label: 'Número', key: 'numero' }, { label: 'Proveedor', key: 'proveedor_nombre' }, { label: 'Fecha', key: 'fecha', formato: 'fecha' },
           { label: '% Recibido', key: (f) => `${f.porcentaje_recibido}%` }, { label: 'Estado', key: 'estado' },
         ],
+      },
+      {
+        clave: 'compras-606', etiqueta: 'Compras 606 (DGII)',
+        disponible: () => Boolean(window.puntoXCompras.reporte606),
+        // El 606 se envía a mes vencido: por defecto, el mes anterior.
+        filtros: [{ tipo: 'mes', clave: 'periodo', label: 'Mes a reportar', valorDefault: mesAnterior() }],
+        personalizado: true,
+        cargar: (v) => window.puntoXCompras.reporte606({ periodo: v.periodo }),
+        render: renderReporte606,
+        alRenderizar: (datos, contenedor, filtros) => {
+          contenedor.querySelectorAll('[data-exportar]').forEach((btn) => btn.addEventListener('click', async () => {
+            mostrarError(null);
+            try {
+              const r = await window.puntoXCompras.exportar606({ periodo: filtros.periodo, formato: btn.dataset.exportar });
+              if (r && r.ruta) {
+                const aviso = contenedor.querySelector('#aviso-606');
+                aviso.textContent = `Archivo guardado (${r.registros} registros): ${r.ruta}`;
+                aviso.style.display = 'block';
+              }
+            } catch (err) { mostrarError(err.message); }
+          }));
+        },
       },
     ],
   },
@@ -558,6 +632,7 @@ async function ejecutarReporte(reporte) {
     const filtros = leerFiltros(reporte.filtros);
     const datos = await reporte.cargar(filtros);
     contenedor.innerHTML = reporte.personalizado ? reporte.render(datos) : renderTabla(reporte.columnas, datos);
+    if (reporte.alRenderizar) reporte.alRenderizar(datos, contenedor, filtros);
   } catch (err) {
     contenedor.innerHTML = '';
     mostrarError(err.message);

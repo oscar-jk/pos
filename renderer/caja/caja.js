@@ -225,18 +225,43 @@ async function cargarCajaChica() {
 
   document.getElementById('cajachica-vacio').style.display = gastos.length === 0 ? 'block' : 'none';
   document.getElementById('cajachica-tbody').innerHTML = gastos.map((g) => `
-    <tr><td>${g.concepto}</td><td>${g.categoria || '—'}</td><td>${fmt(g.monto)}</td><td>${g.comprobante_ruta}</td><td>${fechaHora(g.fecha)}</td><td>${g.usuario_nombre || ''}</td></tr>
+    <tr><td>${esc(g.concepto)}</td><td>${esc(g.categoria) || '—'}</td><td>${fmt(g.monto)}</td><td>${esc(g.comprobante_ruta)}${g.ncf ? ` · NCF ${esc(g.ncf)}` : ''}</td><td>${fechaHora(g.fecha)}</td><td>${esc(g.usuario_nombre)}</td></tr>
   `).join('');
 }
 
+const TIPOS_BIENES_SERVICIOS_606 = [
+  ['01', 'Gastos de personal'], ['02', 'Gastos por trabajos, suministros y servicios'], ['03', 'Arrendamientos'],
+  ['04', 'Gastos de activos fijos'], ['05', 'Gastos de representación'], ['06', 'Otras deducciones admitidas'],
+  ['07', 'Gastos financieros'], ['08', 'Gastos extraordinarios'], ['09', 'Compras y gastos que formarán parte del costo de venta'],
+  ['10', 'Adquisiciones de activos'], ['11', 'Gastos de seguros'],
+];
+
 function abrirFormularioGasto() {
+  // Los datos fiscales solo sirven para el Formato 606, que existe en la app de escritorio.
+  const conDatosFiscales = Boolean(window.puntoXCompras && window.puntoXCompras.reporte606);
   window.PuntoXModal.abrirModal('Nuevo gasto de caja chica', `
     <div class="form-grid">
       <div class="form-field"><label>Concepto *</label><input id="g-concepto" class="input-normal" /></div>
       <div class="form-field"><label>Categoría</label><input id="g-categoria" class="input-normal" placeholder="Ej: transporte, suministros" /></div>
-      <div class="form-field"><label>Monto *</label><input id="g-monto" class="input-normal" type="number" step="0.01" value="0" /></div>
+      <div class="form-field"><label>Monto total (ITBIS incluido) *</label><input id="g-monto" class="input-normal" type="number" step="0.01" value="0" /></div>
       <div class="form-field"><label>Comprobante *</label><input id="g-comprobante" class="input-normal" placeholder="Número de recibo / descripción" /></div>
     </div>
+    ${conDatosFiscales ? `
+    <div class="form-seccion">
+      <div style="font-weight:700; font-size:13px; margin-bottom:4px;">Datos fiscales (para el Formato 606)</div>
+      <div style="font-size:12px; color:var(--color-text-muted); margin-bottom:10px;">Llénalos si el suplidor te dio factura con NCF. Sin NCF el gasto no se reporta en el 606.</div>
+      <div class="form-grid">
+        <div class="form-field"><label>RNC o cédula del suplidor</label><input id="g-rnc" class="input-normal" placeholder="9 u 11 dígitos" /></div>
+        <div class="form-field"><label>NCF</label><input id="g-ncf" class="input-normal" placeholder="Ej: B0100000123" /></div>
+        <div class="form-field" style="grid-column: span 2;"><label>Tipo de gasto (DGII)</label>
+          <select id="g-tipo" class="input-normal">${TIPOS_BIENES_SERVICIOS_606.map(([c, e]) => `<option value="${c}" ${c === '02' ? 'selected' : ''}>${c} — ${e}</option>`).join('')}</select>
+        </div>
+        <div class="form-field"><label>Es un pago por</label>
+          <select id="g-clase" class="input-normal"><option value="bienes">Bienes</option><option value="servicios">Servicios</option></select>
+        </div>
+        <div class="form-field"><label>ITBIS con derecho a crédito fiscal</label><input id="g-itbis" class="input-normal" type="number" step="0.01" min="0" value="0" /></div>
+      </div>
+    </div>` : ''}
     <div class="form-seccion" style="display:flex; justify-content:flex-end; gap:8px;">
       <button type="button" class="btn btn-secundario" id="g-cancelar">Cancelar</button>
       <button type="button" class="btn btn-primario" id="g-guardar">Registrar gasto</button>
@@ -250,6 +275,11 @@ function abrirFormularioGasto() {
         concepto: document.getElementById('g-concepto').value, categoria: document.getElementById('g-categoria').value || null,
         monto: parseFloat(document.getElementById('g-monto').value) || 0,
         comprobanteRuta: document.getElementById('g-comprobante').value, usuarioId: state.info.usuario.id,
+        ...(conDatosFiscales ? {
+          rncSuplidor: document.getElementById('g-rnc').value || null, ncf: document.getElementById('g-ncf').value || null,
+          tipoBienesServicios: document.getElementById('g-tipo').value, claseMonto: document.getElementById('g-clase').value,
+          itbisFacturado: parseFloat(document.getElementById('g-itbis').value) || 0,
+        } : {}),
       });
       window.PuntoXModal.cerrarModal();
       cargarCajaChica();

@@ -145,6 +145,9 @@ contextBridge.exposeInMainWorld('puntoXCompras', {
   anularNota: invoke('compras:anularNota'),
   listarNotas: invoke('compras:listarNotas'),
   obtenerNota: invoke('compras:obtenerNota'),
+
+  reporte606: invoke('compras:reporte606'),
+  exportar606: invoke('compras:exportar606'),
 });
 
 contextBridge.exposeInMainWorld('puntoXCxp', {

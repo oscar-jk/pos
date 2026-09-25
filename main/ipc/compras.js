@@ -766,10 +766,212 @@ function comprasPorProducto(db, { desde, hasta } = {}) {
 }
 
 // =========================================================================
+// Formato 606 (DGII): compras de bienes y servicios del mes
+// =========================================================================
+//
+// Estructura según la Norma General 07-2018 (herramienta de Formato 606): encabezado
+// 606|RNC informante|AAAAMM|cantidad de registros, y 23 campos por registro separados por |.
+// Entran facturas de compra (tipo 09, forman parte del costo de venta), notas de crédito y
+// débito de proveedores (línea propia, con el NCF de la factura afectada como NCF modificado)
+// y gastos de caja chica con NCF (tipo elegido al registrarlos). Lo que no tenga RNC/cédula o
+// NCF válidos no se reporta y se lista aparte para que se corrija.
+
+const FORMA_PAGO_606 = { efectivo: '01', transferencia: '02', credito: '04', nota_credito: '06', mixto: '07' };
+const FORMATO_NCF = /^(B\d{10}|E\d{12})$/;
+
+function limpiarIdentificacion(texto) {
+  return (texto || '').replace(/[^0-9]/g, '');
+}
+
+function tipoIdentificacion(rnc) {
+  if (rnc.length === 9) return '1';
+  if (rnc.length === 11) return '2';
+  return null;
+}
+
+// Fecha local del negocio (el proceso principal corre en la zona horaria del equipo).
+function fechaAAAAMMDD(iso) {
+  const d = new Date(iso);
+  return `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function rangoPeriodo(periodo) {
+  const m = /^(\d{4})-(\d{2})$/.exec(periodo || '');
+  if (!m) throw new Error('Indique el mes a reportar (AAAA-MM)');
+  const anio = Number(m[1]);
+  const mes = Number(m[2]);
+  return { desde: new Date(anio, mes - 1, 1).toISOString(), hasta: new Date(anio, mes, 1).toISOString(), aaaamm: `${m[1]}${m[2]}` };
+}
+
+// Forma de pago de una factura de compra. De contado no guarda la forma, pero el asiento sí:
+// la salida fue por Caja (efectivo) o por Bancos (transferencia/cheque).
+function formaPagoFactura(db, factura) {
+  if (factura.condicion_pago === 'credito') return FORMA_PAGO_606.credito;
+  if (factura.condicion_pago === 'mixto') return FORMA_PAGO_606.mixto;
+  const porCaja = db
+    .prepare(
+      `SELECT 1 FROM asientos_contables a JOIN asientos_contables_detalle d ON d.asiento_id = a.id
+       JOIN cuentas_contables c ON c.id = d.cuenta_id
+       WHERE a.origen_documento_tipo = 'documentos_compra' AND a.origen_documento_id = ? AND c.codigo = '1100' AND d.haber > 0 LIMIT 1`
+    )
+    .get(factura.id);
+  return porCaja ? FORMA_PAGO_606.efectivo : FORMA_PAGO_606.transferencia;
+}
+
+// Fecha de pago: la de la factura si fue de contado; si fue a crédito, la del último pago,
+// solo cuando ya está saldada.
+function fechaPagoFactura(db, factura) {
+  if (factura.condicion_pago === 'contado') return fechaAAAAMMDD(factura.fecha);
+  if (saldoDocumentoCompra(db, factura).pendiente > 0.01) return '';
+  const ultimo = db
+    .prepare(
+      `SELECT MAX(pp.fecha) AS fecha FROM pagos_proveedor_aplicaciones ppa JOIN pagos_proveedor pp ON pp.id = ppa.pago_id
+       WHERE ppa.documento_compra_id = ? AND pp.estado != 'anulado'`
+    )
+    .get(factura.id).fecha;
+  return ultimo ? fechaAAAAMMDD(ultimo) : '';
+}
+
+function registro606({ rnc, tipoBienes, ncf, ncfModificado, fecha, fechaPago, servicios, bienes, itbis, formaPago }) {
+  const montoFacturado = redondear(servicios + bienes);
+  return {
+    rnc, tipo_id: tipoIdentificacion(rnc), tipo_bienes_servicios: tipoBienes, ncf, ncf_modificado: ncfModificado || '',
+    fecha_comprobante: fecha, fecha_pago: fechaPago || '', monto_servicios: redondear(servicios), monto_bienes: redondear(bienes),
+    monto_facturado: montoFacturado, itbis_facturado: redondear(itbis), itbis_retenido: 0, itbis_proporcionalidad: 0,
+    itbis_al_costo: 0, itbis_por_adelantar: redondear(itbis), itbis_percibido: 0, tipo_retencion_isr: '', retencion_renta: 0,
+    isr_percibido: 0, impuesto_selectivo: 0, otros_impuestos: 0, propina_legal: 0, forma_pago: formaPago,
+  };
+}
+
+function reporte606(db, { periodo }) {
+  session.requerirPermiso('compras.reportes.ver');
+  const { desde, hasta, aaaamm } = rangoPeriodo(periodo);
+  const rncNegocio = limpiarIdentificacion((db.prepare("SELECT valor FROM parametros_negocio WHERE clave = 'negocio_rnc'").get() || {}).valor);
+  const registros = [];
+  const excluidos = [];
+
+  const validar = ({ nombre, rnc, ncf, ncfModificado, exigeModificado }) => {
+    if (!tipoIdentificacion(rnc)) return `${nombre ? `${nombre}: ` : ''}sin RNC o cédula válido`;
+    if (!ncf) return 'sin NCF';
+    if (!FORMATO_NCF.test(ncf)) return `NCF con formato inválido (${ncf})`;
+    if (exigeModificado && !ncfModificado) return 'la factura afectada no tiene NCF';
+    return null;
+  };
+
+  const documentos = db
+    .prepare(
+      `SELECT dc.*, p.nombre AS proveedor_nombre, p.rnc AS proveedor_rnc, f.ncf_proveedor AS ncf_factura, f.numero AS factura_numero
+       FROM documentos_compra dc JOIN proveedores p ON p.id = dc.proveedor_id
+       LEFT JOIN documentos_compra f ON f.id = dc.documento_referencia_id
+       WHERE dc.tipo IN ('factura_compra', 'nota_credito', 'nota_debito') AND dc.estado != 'anulado' AND dc.deleted_at IS NULL
+         AND dc.fecha >= ? AND dc.fecha < ?
+       ORDER BY dc.fecha ASC`
+    )
+    .all(desde, hasta);
+  const ETIQUETA = { factura_compra: 'Factura de compra', nota_credito: 'Nota de crédito', nota_debito: 'Nota de débito' };
+  for (const d of documentos) {
+    const rnc = limpiarIdentificacion(d.proveedor_rnc);
+    const ncf = (d.ncf_proveedor || '').trim().toUpperCase();
+    const esNota = d.tipo !== 'factura_compra';
+    const ncfModificado = esNota ? (d.ncf_factura || '').trim().toUpperCase() : '';
+    const referencia = { origen: ETIQUETA[d.tipo], numero: d.numero, proveedor: d.proveedor_nombre, fecha: d.fecha, total: d.total };
+    const motivo = validar({ nombre: d.proveedor_nombre, rnc, ncf, ncfModificado, exigeModificado: esNota });
+    if (motivo) { excluidos.push({ ...referencia, motivo }); continue; }
+    registros.push({
+      ...referencia,
+      ...registro606({
+        rnc, tipoBienes: '09', ncf, ncfModificado, fecha: fechaAAAAMMDD(d.fecha),
+        fechaPago: esNota ? '' : fechaPagoFactura(db, d), servicios: 0, bienes: d.subtotal, itbis: d.itbis_total,
+        formaPago: d.tipo === 'nota_credito' ? FORMA_PAGO_606.nota_credito : (d.tipo === 'nota_debito' ? FORMA_PAGO_606.credito : formaPagoFactura(db, d)),
+      }),
+    });
+  }
+
+  const gastos = db
+    .prepare("SELECT * FROM gastos_caja_chica WHERE estado != 'anulado' AND deleted_at IS NULL AND fecha >= ? AND fecha < ? ORDER BY fecha ASC")
+    .all(desde, hasta);
+  for (const g of gastos) {
+    const rnc = limpiarIdentificacion(g.rnc_suplidor);
+    const ncf = (g.ncf || '').trim().toUpperCase();
+    const referencia = { origen: 'Gasto de caja chica', numero: g.concepto, proveedor: '', fecha: g.fecha, total: g.monto };
+    const motivo = validar({ rnc, ncf });
+    if (motivo) { excluidos.push({ ...referencia, motivo }); continue; }
+    const base = redondear(g.monto - (g.itbis_facturado || 0));
+    registros.push({
+      ...referencia,
+      ...registro606({
+        rnc, tipoBienes: g.tipo_bienes_servicios || '02', ncf, fecha: fechaAAAAMMDD(g.fecha), fechaPago: fechaAAAAMMDD(g.fecha),
+        servicios: g.clase_monto === 'servicios' ? base : 0, bienes: g.clase_monto === 'servicios' ? 0 : base,
+        itbis: g.itbis_facturado || 0, formaPago: FORMA_PAGO_606.efectivo,
+      }),
+    });
+  }
+
+  const suma = (campo) => redondear(registros.reduce((a, r) => a + r[campo], 0));
+  return {
+    periodo: aaaamm, rncNegocio: rncNegocio || null, registros, excluidos,
+    totales: { cantidad: registros.length, servicios: suma('monto_servicios'), bienes: suma('monto_bienes'), facturado: suma('monto_facturado'), itbis: suma('itbis_facturado') },
+  };
+}
+
+const CAMPOS_606 = [
+  ['rnc', 'RNC o Cédula'], ['tipo_id', 'Tipo Id'], ['tipo_bienes_servicios', 'Tipo Bienes y Servicios Comprados'],
+  ['ncf', 'NCF'], ['ncf_modificado', 'NCF o Documento Modificado'], ['fecha_comprobante', 'Fecha Comprobante'],
+  ['fecha_pago', 'Fecha Pago'], ['monto_servicios', 'Monto Facturado en Servicios'], ['monto_bienes', 'Monto Facturado en Bienes'],
+  ['monto_facturado', 'Total Monto Facturado'], ['itbis_facturado', 'ITBIS Facturado'], ['itbis_retenido', 'ITBIS Retenido'],
+  ['itbis_proporcionalidad', 'ITBIS sujeto a Proporcionalidad (Art. 349)'], ['itbis_al_costo', 'ITBIS llevado al Costo'],
+  ['itbis_por_adelantar', 'ITBIS por Adelantar'], ['itbis_percibido', 'ITBIS percibido en compras'],
+  ['tipo_retencion_isr', 'Tipo de Retención en ISR'], ['retencion_renta', 'Monto Retención Renta'],
+  ['isr_percibido', 'ISR Percibido en compras'], ['impuesto_selectivo', 'Impuesto Selectivo al Consumo'],
+  ['otros_impuestos', 'Otros Impuesto/Tasas'], ['propina_legal', 'Monto Propina Legal'], ['forma_pago', 'Forma de Pago'],
+];
+const CAMPOS_MONTO_606 = new Set(['monto_servicios', 'monto_bienes', 'monto_facturado', 'itbis_facturado', 'itbis_por_adelantar']);
+
+// Los montos obligatorios van siempre con dos decimales; los opcionales en cero van vacíos.
+function valor606(registro, campo) {
+  const v = registro[campo];
+  if (typeof v === 'number') return CAMPOS_MONTO_606.has(campo) || v !== 0 ? v.toFixed(2) : '';
+  return v ?? '';
+}
+
+function txt606(reporte) {
+  if (!reporte.rncNegocio || !tipoIdentificacion(reporte.rncNegocio)) {
+    throw new Error('Configure el RNC del negocio en Configuración → Negocio antes de generar el archivo 606');
+  }
+  const lineas = [`606|${reporte.rncNegocio}|${reporte.periodo}|${reporte.registros.length}`];
+  for (const r of reporte.registros) lineas.push(CAMPOS_606.map(([campo]) => valor606(r, campo)).join('|'));
+  return `${lineas.join('\r\n')}\r\n`;
+}
+
+function csv606(reporte) {
+  const celda = (v) => (/[",\n]/.test(String(v)) ? `"${String(v).replace(/"/g, '""')}"` : String(v));
+  const lineas = [CAMPOS_606.map(([, titulo]) => celda(titulo)).join(',')];
+  for (const r of reporte.registros) lineas.push(CAMPOS_606.map(([campo]) => celda(valor606(r, campo))).join(','));
+  return `﻿${lineas.join('\r\n')}\r\n`;
+}
+
+// =========================================================================
 // IPC
 // =========================================================================
 
 function register(ipcMain, getDb) {
+  ipcMain.handle('compras:reporte606', (event, { periodo }) => reporte606(getDb(), { periodo }));
+  ipcMain.handle('compras:exportar606', async (event, { periodo, formato }) => {
+    const { dialog, BrowserWindow } = require('electron');
+    const fs = require('node:fs');
+    const reporte = reporte606(getDb(), { periodo });
+    const esTxt = formato === 'txt';
+    const contenido = esTxt ? txt606(reporte) : csv606(reporte);
+    const nombre = esTxt ? `DGII_F_606_${reporte.rncNegocio}_${reporte.periodo}.TXT` : `Formato_606_${reporte.periodo}.csv`;
+    const { canceled, filePath } = await dialog.showSaveDialog(BrowserWindow.fromWebContents(event.sender), {
+      title: esTxt ? 'Guardar archivo 606 para la DGII' : 'Guardar 606 para Excel', defaultPath: nombre,
+      filters: esTxt ? [{ name: 'Archivo de texto', extensions: ['TXT', 'txt'] }] : [{ name: 'CSV (Excel)', extensions: ['csv'] }],
+    });
+    if (canceled || !filePath) return { cancelado: true };
+    fs.writeFileSync(filePath, contenido, 'utf8');
+    return { ruta: filePath, registros: reporte.registros.length };
+  });
+
   ipcMain.handle('proveedores:buscar', (event, { texto, limite = 20 }) => {
     const db = getDb();
     const like = `%${texto || ''}%`;
@@ -838,5 +1040,5 @@ module.exports = {
   crearFacturaCompra, anularFacturaCompra, listarFacturasCompra, obtenerFacturaCompra,
   crearOrdenCompra, listarOrdenesCompra, obtenerOrdenCompra, anularOrdenCompra,
   lineasParaNota, crearNotaCompra, anularNotaCompra, listarNotasCompra, obtenerNotaCompra,
-  comparacionMejorCosto, comprasPorProducto,
+  comparacionMejorCosto, comprasPorProducto, reporte606, txt606, csv606,
 };

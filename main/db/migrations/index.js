@@ -4,6 +4,7 @@
 const MIGRACIONES = [
   require('./001_conciliacion_bancaria'),
   require('./002_notas_compra'),
+  require('./003_gastos_606'),
 ];
 
 function columnasDe(db, tabla) {

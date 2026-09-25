@@ -858,6 +858,12 @@ CREATE TABLE gastos_caja_chica (
   categoria       TEXT,
   monto           REAL NOT NULL,
   comprobante_ruta TEXT, -- ruta local del comprobante adjunto
+  -- Datos fiscales del suplidor para el Formato 606 (DGII)
+  rnc_suplidor    TEXT,
+  ncf             TEXT,
+  tipo_bienes_servicios TEXT, -- 01..11 según la DGII
+  itbis_facturado REAL NOT NULL DEFAULT 0, -- incluido en monto
+  clase_monto     TEXT NOT NULL DEFAULT 'bienes', -- bienes | servicios
   fecha           TEXT NOT NULL,
   estado          TEXT NOT NULL DEFAULT 'confirmado', -- confirmado | anulado
   motivo_anulacion TEXT,
