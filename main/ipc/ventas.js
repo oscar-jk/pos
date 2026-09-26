@@ -76,30 +76,24 @@ function obtenerLimiteDescuentoRol(db, usuarioId) {
   return row || { limite_descuento_pct: 0, puede_exceder: 0 };
 }
 
-function crearFactura(db, payload) {
-  session.requerirPermiso('ventas.factura.crear');
-  const {
-    modoVenta, sucursalId, almacenId, cajaId, clienteId, vendedorId, usuarioId,
-    condicionPago, tipoNcfCodigo, nivelPrecio, monedaId, tasaCambio,
-    lineas, descuentoGlobalPct, pagos, esDelivery, direccionEntrega, repartidorId, cuentaAbiertaId,
-  } = payload;
-
-  if (!lineas || lineas.length === 0) throw new Error('La factura debe tener al menos una línea');
-  const cuentaAbierta = cuentaAbiertaId ? validarCobroCuentaAbierta(db, cuentaAbiertaId, lineas) : null;
-
+// Resuelve productos, precios (ITBIS incluido), descuentos por línea y global, y totales.
+// Lo comparten factura, cotización y conduce para que calculen exactamente igual.
+// validarExistencia: false en cotizaciones (no comprometen mercancía) y en facturas de
+// conduces (la mercancía ya salió con el conduce).
+function prepararLineasVenta(db, { lineas, almacenId, nivelPrecio, usuarioId, descuentoGlobalPct, validarExistencia }) {
   const limiteRol = obtenerLimiteDescuentoRol(db, usuarioId);
   const puedeExceder = Boolean(limiteRol.puede_exceder);
 
-  // --- Resolver producto + calcular cada línea ---
   const lineasCalculadas = lineas.map((l) => {
     const producto = inventario.obtenerProducto(db, l.productoId, almacenId);
     if (!producto) throw new Error(`Producto ${l.productoId} no encontrado`);
+    if (!(l.cantidad > 0)) throw new Error(`La cantidad de "${producto.descripcion}" debe ser mayor a cero`);
 
     if (!puedeExceder && (l.descuentoPct || 0) > limiteRol.limite_descuento_pct) {
       throw new Error(`El descuento de la línea "${producto.descripcion}" excede el límite permitido (${limiteRol.limite_descuento_pct}%)`);
     }
 
-    if (!producto.permite_venta_negativo) {
+    if (validarExistencia && !producto.permite_venta_negativo) {
       const disponible = inventario.existenciaDisponibleParaVenta(db, producto, almacenId);
       if (disponible < l.cantidad) {
         throw new Error(`Existencia insuficiente de "${producto.descripcion}" (disponible: ${disponible}, solicitado: ${l.cantidad})`);
@@ -130,7 +124,29 @@ function crearFactura(db, payload) {
   const factor = totalLineas > 0 ? (totalLineas - descuentoGlobalMonto) / totalLineas : 1;
   const subtotal = redondear(subtotalLineas * factor);
   const itbisTotal = redondear(itbisLineas * factor);
-  const total = redondear(subtotal + itbisTotal);
+  return { lineasCalculadas, descuentoGlobalMonto, subtotal, itbisTotal, total: redondear(subtotal + itbisTotal) };
+}
+
+function crearFactura(db, payload) {
+  session.requerirPermiso('ventas.factura.crear');
+  const {
+    modoVenta, sucursalId, almacenId, cajaId, clienteId, vendedorId, usuarioId,
+    condicionPago, tipoNcfCodigo, nivelPrecio, monedaId, tasaCambio,
+    lineas, descuentoGlobalPct, pagos, esDelivery, direccionEntrega, repartidorId,
+    cuentaAbiertaId, cotizacionId, conduceIds,
+  } = payload;
+
+  if (!lineas || lineas.length === 0) throw new Error('La factura debe tener al menos una línea');
+  if ([cuentaAbiertaId, cotizacionId, conduceIds && conduceIds.length].filter(Boolean).length > 1) {
+    throw new Error('Una factura se genera desde una sola fuente: cuenta abierta, cotización o conduces');
+  }
+  const cuentaAbierta = cuentaAbiertaId ? validarCobroCuentaAbierta(db, cuentaAbiertaId, lineas) : null;
+  const cotizacion = cotizacionId ? validarFacturaDesdeCotizacion(db, cotizacionId, lineas, clienteId) : null;
+  const conduces = conduceIds && conduceIds.length ? validarFacturaDesdeConduces(db, conduceIds, lineas, clienteId) : null;
+
+  const { lineasCalculadas, descuentoGlobalMonto, subtotal, itbisTotal, total } = prepararLineasVenta(db, {
+    lineas, almacenId, nivelPrecio, usuarioId, descuentoGlobalPct, validarExistencia: !conduces,
+  });
 
   // --- Retención (informativa por ahora; no se neta contra el cobro — ver nota en README del módulo) ---
   let retencionIsr = 0;
@@ -201,17 +217,24 @@ function crearFactura(db, payload) {
         tasa_itbis, base_imponible, itbis_monto, total_linea, costo_unitario)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   );
+  // Con conduces, la mercancía ya salió del inventario al entregarse: se usa el costo con el
+  // que salió (promedio por producto entre los conduces) y no se mueve inventario otra vez.
+  const costoConducePorProducto = conduces ? costoPromedioConduces(db, conduces) : null;
   let costoTotal = 0;
   for (const l of lineasCalculadas) {
-    const costoUnitarioLinea = inventario.costoUnitarioVenta(db, l.producto);
+    const costoUnitarioLinea = costoConducePorProducto
+      ? costoConducePorProducto.get(l.producto.id)
+      : inventario.costoUnitarioVenta(db, l.producto);
     insertDetalle.run(
       crypto.randomUUID(), documentoId, l.producto.id, l.cantidad, l.precioUnitario, l.descuentoPct,
       l.descuentoMonto, l.tasaItbis, l.baseImponible, l.itbisMonto, l.totalLinea, costoUnitarioLinea
     );
-    inventario.moverInventarioPorVenta(db, {
-      producto: l.producto, almacenId, cantidad: -l.cantidad, documentoOrigenTipo: 'documentos_venta',
-      documentoOrigenId: documentoId, usuarioId,
-    });
+    if (!conduces) {
+      inventario.moverInventarioPorVenta(db, {
+        producto: l.producto, almacenId, cantidad: -l.cantidad, documentoOrigenTipo: 'documentos_venta',
+        documentoOrigenId: documentoId, usuarioId,
+      });
+    }
     costoTotal += costoUnitarioLinea * l.cantidad;
   }
   costoTotal = redondear(costoTotal);
@@ -248,7 +271,9 @@ function crearFactura(db, payload) {
       origenDocumentoTipo: 'documentos_venta', origenDocumentoId: documentoId, usuarioId,
       lineas: [
         { cuentaCodigo: '5100', debe: costoTotal, descripcion: 'Costo de ventas' },
-        { cuentaCodigo: '1300', haber: costoTotal, descripcion: 'Salida de inventario' },
+        conduces
+          ? { cuentaCodigo: CUENTA_MERCANCIA_ENTREGADA, haber: costoTotal, descripcion: 'Mercancía entregada con conduce, ya facturada' }
+          : { cuentaCodigo: '1300', haber: costoTotal, descripcion: 'Salida de inventario' },
       ],
     });
   }
@@ -278,8 +303,230 @@ function crearFactura(db, payload) {
       usuarioId, modulo: 'ventas', entidad: 'cuentas_abiertas', entidadId: cuentaAbierta.id, accion: 'cobrar', detalle: { numero: cuentaAbierta.numero, factura: numero, total },
     });
   }
+  for (const origen of [cotizacion, ...(conduces || [])].filter(Boolean)) {
+    db.prepare(
+      "UPDATE documentos_venta SET estado = 'facturado', facturado_en_id = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?"
+    ).run(documentoId, origen.id);
+    configuracion.registrarAuditoria(db, {
+      usuarioId, modulo: 'ventas', entidad: 'documentos_venta', entidadId: origen.id, accion: 'facturar', detalle: { tipo: origen.tipo, numero: origen.numero, factura: numero },
+    });
+  }
 
   return documentoId;
+}
+
+// =========================================================================
+// Cotizaciones y conduces
+// =========================================================================
+//
+// Cotización: sin compromiso; no mueve inventario ni CxC ni contabilidad. Mientras esté
+// vigente se puede facturar respetando sus precios.
+// Conduce: entrega mercancía antes de facturar. Saca el inventario y lo pasa a la cuenta
+// puente "Mercancía entregada por facturar" (1350); al facturar, de ahí a Costo de Ventas.
+// Uno o varios conduces del mismo cliente se facturan juntos, cada uno completo.
+
+const CUENTA_MERCANCIA_ENTREGADA = '1350';
+
+function hoyLocal() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function detalleDocumento(db, documentoId) {
+  return db.prepare('SELECT * FROM documentos_venta_detalle WHERE documento_id = ? AND deleted_at IS NULL').all(documentoId);
+}
+
+function validarFacturaDesdeCotizacion(db, cotizacionId, lineasFactura, clienteId) {
+  const cot = db.prepare("SELECT * FROM documentos_venta WHERE id = ? AND tipo = 'cotizacion' AND deleted_at IS NULL").get(cotizacionId);
+  if (!cot) throw new Error('Cotización no encontrada');
+  if (cot.estado !== 'abierto') throw new Error(`La cotización ${cot.numero} ya está ${cot.estado === 'facturado' ? 'facturada' : 'anulada'}`);
+  if (cot.valida_hasta && cot.valida_hasta < hoyLocal()) throw new Error(`La cotización ${cot.numero} venció el ${cot.valida_hasta}. Haz una nueva con los precios actuales.`);
+  if (cot.cliente_id && cot.cliente_id !== clienteId) throw new Error('La factura debe ser para el mismo cliente de la cotización');
+  const clave = (productoId, cantidad, precio) => `${productoId}|${redondear(Number(cantidad))}|${redondear(Number(precio))}`;
+  const enCotizacion = detalleDocumento(db, cotizacionId).map((l) => clave(l.producto_id, l.cantidad, l.precio_unitario)).sort();
+  const enFactura = lineasFactura.map((l) => clave(l.productoId, l.cantidad, l.precioUnitario)).sort();
+  if (enCotizacion.join() !== enFactura.join()) {
+    throw new Error('Los productos, cantidades o precios no coinciden con la cotización. Para cambiarlos, haz una nueva cotización.');
+  }
+  return cot;
+}
+
+function validarFacturaDesdeConduces(db, conduceIds, lineasFactura, clienteId) {
+  if (!clienteId) throw new Error('Facturar conduces requiere el cliente al que se entregaron');
+  const conduces = [...new Set(conduceIds)].map((id) => {
+    const c = db.prepare("SELECT * FROM documentos_venta WHERE id = ? AND tipo = 'conduce' AND deleted_at IS NULL").get(id);
+    if (!c) throw new Error('Conduce no encontrado');
+    if (c.estado !== 'entregado') throw new Error(`El conduce ${c.numero} ya está ${c.estado === 'facturado' ? 'facturado' : 'anulado'}`);
+    if (c.cliente_id !== clienteId) throw new Error(`El conduce ${c.numero} es de otro cliente`);
+    return c;
+  });
+  const enConduces = new Map();
+  for (const c of conduces) {
+    for (const l of detalleDocumento(db, c.id)) enConduces.set(l.producto_id, redondear((enConduces.get(l.producto_id) || 0) + l.cantidad));
+  }
+  const enFactura = new Map();
+  for (const l of lineasFactura) enFactura.set(l.productoId, redondear((enFactura.get(l.productoId) || 0) + Number(l.cantidad)));
+  const iguales = enConduces.size === enFactura.size && [...enConduces].every(([p, cant]) => Math.abs((enFactura.get(p) || 0) - cant) < 0.001);
+  if (!iguales) throw new Error('Los productos o cantidades no coinciden con los conduces. Cada conduce se factura completo.');
+  return conduces;
+}
+
+function costoPromedioConduces(db, conduces) {
+  const acumulado = new Map();
+  for (const c of conduces) {
+    for (const l of detalleDocumento(db, c.id)) {
+      const a = acumulado.get(l.producto_id) || { cantidad: 0, costo: 0 };
+      a.cantidad += l.cantidad;
+      a.costo += l.cantidad * l.costo_unitario;
+      acumulado.set(l.producto_id, a);
+    }
+  }
+  return new Map([...acumulado].map(([p, a]) => [p, a.cantidad > 0 ? redondear(a.costo / a.cantidad) : 0]));
+}
+
+function insertarDocumentoSinFiscal(db, { tipo, estado, sucursalId, almacenId, clienteId, vendedorId, modoVenta, calculo, concepto, validaHasta, usuarioId }) {
+  const documentoId = crypto.randomUUID();
+  const numero = siguienteNumero(db, tipo);
+  const fechaIso = new Date().toISOString();
+  const sucursal = sucursalId || db.prepare('SELECT id FROM sucursales WHERE es_principal = 1').get().id;
+  const monedaLocal = db.prepare('SELECT id FROM monedas WHERE es_local = 1').get().id;
+  db.prepare(
+    `INSERT INTO documentos_venta
+       (id, tipo, numero, sucursal_id, almacen_id, cliente_id, vendedor_id, modo_venta, condicion_pago, moneda_id, fecha,
+        subtotal, descuento_total, itbis_total, total, estado, concepto, valida_hasta, usuario_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'credito', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(
+    documentoId, tipo, numero, sucursal, almacenId, clienteId || null, vendedorId || null, modoVenta || 'completa', monedaLocal, fechaIso,
+    calculo.subtotal, calculo.descuentoGlobalMonto, calculo.itbisTotal, calculo.total, estado, concepto || null, validaHasta || null, usuarioId
+  );
+  const insertDetalle = db.prepare(
+    `INSERT INTO documentos_venta_detalle
+       (id, documento_id, producto_id, cantidad, precio_unitario, descuento_pct, descuento_monto,
+        tasa_itbis, base_imponible, itbis_monto, total_linea, costo_unitario)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  );
+  const lineas = calculo.lineasCalculadas.map((l) => {
+    const costoUnitario = inventario.costoUnitarioVenta(db, l.producto);
+    insertDetalle.run(
+      crypto.randomUUID(), documentoId, l.producto.id, l.cantidad, l.precioUnitario, l.descuentoPct,
+      l.descuentoMonto, l.tasaItbis, l.baseImponible, l.itbisMonto, l.totalLinea, costoUnitario
+    );
+    return { ...l, costoUnitario };
+  });
+  return { documentoId, numero, fechaIso, lineas };
+}
+
+function crearCotizacion(db, { sucursalId, almacenId, clienteId, vendedorId, usuarioId, nivelPrecio, lineas, descuentoGlobalPct, diasValidez, concepto }) {
+  session.requerirPermiso('ventas.cotizacion.crear');
+  if (!lineas || lineas.length === 0) throw new Error('La cotización debe tener al menos un producto');
+  const dias = Math.round(Number(diasValidez ?? 15));
+  if (!(dias >= 1 && dias <= 365)) throw new Error('La validez de la cotización debe estar entre 1 y 365 días');
+  if (clienteId && !cxc.obtenerCliente(db, clienteId)) throw new Error('Cliente no encontrado');
+  const calculo = prepararLineasVenta(db, { lineas, almacenId, nivelPrecio, usuarioId, descuentoGlobalPct, validarExistencia: false });
+  const vence = new Date();
+  vence.setDate(vence.getDate() + dias);
+  const validaHasta = `${vence.getFullYear()}-${String(vence.getMonth() + 1).padStart(2, '0')}-${String(vence.getDate()).padStart(2, '0')}`;
+  const { documentoId, numero } = insertarDocumentoSinFiscal(db, {
+    tipo: 'cotizacion', estado: 'abierto', sucursalId, almacenId, clienteId, vendedorId, calculo, concepto, validaHasta, usuarioId,
+  });
+  configuracion.registrarAuditoria(db, { usuarioId, modulo: 'ventas', entidad: 'documentos_venta', entidadId: documentoId, accion: 'crear', detalle: { tipo: 'cotizacion', numero, total: calculo.total } });
+  return documentoId;
+}
+
+function crearConduce(db, { sucursalId, almacenId, clienteId, vendedorId, usuarioId, nivelPrecio, lineas, descuentoGlobalPct, concepto }) {
+  session.requerirPermiso('ventas.conduce.crear');
+  if (!lineas || lineas.length === 0) throw new Error('El conduce debe tener al menos un producto');
+  if (!clienteId) throw new Error('El conduce requiere el cliente al que se entrega la mercancía');
+  const cliente = cxc.obtenerCliente(db, clienteId);
+  if (!cliente) throw new Error('Cliente no encontrado');
+  if (cliente.bloqueado) throw new Error(`El cliente está bloqueado: ${cliente.motivo_bloqueo || 'sin motivo registrado'}`);
+  const calculo = prepararLineasVenta(db, { lineas, almacenId, nivelPrecio, usuarioId, descuentoGlobalPct, validarExistencia: true });
+  const { documentoId, numero, fechaIso, lineas: insertadas } = insertarDocumentoSinFiscal(db, {
+    tipo: 'conduce', estado: 'entregado', sucursalId, almacenId, clienteId, vendedorId, calculo, concepto, usuarioId,
+  });
+  let costoTotal = 0;
+  for (const l of insertadas) {
+    inventario.moverInventarioPorVenta(db, {
+      producto: l.producto, almacenId, cantidad: -l.cantidad, documentoOrigenTipo: 'documentos_venta', documentoOrigenId: documentoId, usuarioId,
+    });
+    costoTotal += l.costoUnitario * l.cantidad;
+  }
+  costoTotal = redondear(costoTotal);
+  if (costoTotal > 0) {
+    contabilidad.generarAsiento(db, {
+      fecha: fechaIso, concepto: `Conduce ${numero} (mercancía entregada por facturar)`, origenModulo: 'ventas',
+      origenDocumentoTipo: 'documentos_venta', origenDocumentoId: documentoId, usuarioId,
+      lineas: [
+        { cuentaCodigo: CUENTA_MERCANCIA_ENTREGADA, debe: costoTotal, descripcion: 'Mercancía entregada por facturar' },
+        { cuentaCodigo: '1300', haber: costoTotal, descripcion: 'Salida de inventario por conduce' },
+      ],
+    });
+  }
+  configuracion.registrarAuditoria(db, { usuarioId, modulo: 'ventas', entidad: 'documentos_venta', entidadId: documentoId, accion: 'crear', detalle: { tipo: 'conduce', numero, costoTotal } });
+  return documentoId;
+}
+
+function revertirAsientosDocumento(db, documentoId, tipoAnulacion, usuarioId) {
+  const codigoPorId = Object.fromEntries(db.prepare('SELECT id, codigo FROM cuentas_contables').all().map((c) => [c.id, c.codigo]));
+  const asientos = db
+    .prepare("SELECT * FROM asientos_contables WHERE origen_documento_tipo = 'documentos_venta' AND origen_documento_id = ? AND estado = 'confirmado'")
+    .all(documentoId);
+  for (const asiento of asientos) {
+    const det = db.prepare('SELECT * FROM asientos_contables_detalle WHERE asiento_id = ?').all(asiento.id);
+    contabilidad.generarAsiento(db, {
+      fecha: new Date().toISOString(), concepto: `Reversión: ${asiento.concepto}`, origenModulo: 'ventas',
+      origenDocumentoTipo: tipoAnulacion, origenDocumentoId: documentoId, usuarioId,
+      lineas: det.map((d) => ({ cuentaCodigo: codigoPorId[d.cuenta_id], debe: d.haber, haber: d.debe, descripcion: `Reversión: ${d.descripcion || ''}` })),
+    });
+  }
+}
+
+function anularCotizacion(db, { documentoId, motivo, usuarioId }) {
+  session.requerirPermiso('ventas.cotizacion.crear');
+  const cot = db.prepare("SELECT * FROM documentos_venta WHERE id = ? AND tipo = 'cotizacion'").get(documentoId);
+  if (!cot) throw new Error('Cotización no encontrada');
+  if (cot.estado !== 'abierto') throw new Error(`La cotización ya está ${cot.estado === 'facturado' ? 'facturada' : 'anulada'}`);
+  if (!motivo || !motivo.trim()) throw new Error('La anulación requiere un motivo');
+  db.prepare("UPDATE documentos_venta SET estado = 'anulado', motivo_anulacion = ?, usuario_anulo_id = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?")
+    .run(motivo.trim(), usuarioId, documentoId);
+  configuracion.registrarAuditoria(db, { usuarioId, modulo: 'ventas', entidad: 'documentos_venta', entidadId: documentoId, accion: 'anular', detalle: { tipo: 'cotizacion', numero: cot.numero, motivo } });
+}
+
+function anularConduce(db, { documentoId, motivo, usuarioId }) {
+  session.requerirPermiso('ventas.factura.anular');
+  const conduce = db.prepare("SELECT * FROM documentos_venta WHERE id = ? AND tipo = 'conduce'").get(documentoId);
+  if (!conduce) throw new Error('Conduce no encontrado');
+  if (conduce.estado === 'facturado') throw new Error('El conduce ya está facturado. Para revertirlo, anula la factura.');
+  if (conduce.estado === 'anulado') throw new Error('El conduce ya está anulado');
+  if (!motivo || !motivo.trim()) throw new Error('La anulación requiere un motivo');
+  db.prepare("UPDATE documentos_venta SET estado = 'anulado', motivo_anulacion = ?, usuario_anulo_id = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?")
+    .run(motivo.trim(), usuarioId, documentoId);
+  for (const l of detalleDocumento(db, documentoId)) {
+    const producto = db.prepare('SELECT * FROM productos WHERE id = ?').get(l.producto_id);
+    inventario.moverInventarioPorVenta(db, {
+      producto, almacenId: conduce.almacen_id, cantidad: l.cantidad, documentoOrigenTipo: 'documentos_venta_anulacion', documentoOrigenId: documentoId, usuarioId,
+    });
+  }
+  revertirAsientosDocumento(db, documentoId, 'documentos_venta_anulacion', usuarioId);
+  configuracion.registrarAuditoria(db, { usuarioId, modulo: 'ventas', entidad: 'documentos_venta', entidadId: documentoId, accion: 'anular', detalle: { tipo: 'conduce', numero: conduce.numero, motivo } });
+}
+
+function listarDocumentosVenta(db, { tipo, estado, clienteId, limite = 100 } = {}) {
+  if (!['cotizacion', 'conduce'].includes(tipo)) throw new Error('Tipo de documento inválido');
+  const condiciones = ['dv.tipo = ?', 'dv.deleted_at IS NULL'];
+  const params = [tipo];
+  if (estado) { condiciones.push('dv.estado = ?'); params.push(estado); }
+  if (clienteId) { condiciones.push('dv.cliente_id = ?'); params.push(clienteId); }
+  params.push(limite);
+  const hoy = hoyLocal();
+  return db
+    .prepare(
+      `SELECT dv.*, COALESCE(c.nombre, 'Consumidor final') AS cliente_nombre, f.numero AS factura_numero, f.ncf AS factura_ncf
+       FROM documentos_venta dv LEFT JOIN clientes c ON c.id = dv.cliente_id LEFT JOIN documentos_venta f ON f.id = dv.facturado_en_id
+       WHERE ${condiciones.join(' AND ')} ORDER BY dv.fecha DESC LIMIT ?`
+    )
+    .all(...params)
+    .map((d) => ({ ...d, vencida: d.tipo === 'cotizacion' && d.estado === 'abierto' && Boolean(d.valida_hasta) && d.valida_hasta < hoy }));
 }
 
 // =========================================================================
@@ -434,7 +681,7 @@ function anularCuentaAbierta(db, { cuentaId, motivo, usuarioId }) {
 
 function anularFactura(db, { documentoId, motivo, usuarioId }) {
   session.requerirPermiso('ventas.factura.anular');
-  const documento = db.prepare('SELECT * FROM documentos_venta WHERE id = ?').get(documentoId);
+  const documento = db.prepare("SELECT * FROM documentos_venta WHERE id = ? AND tipo = 'factura'").get(documentoId);
   if (!documento) throw new Error('Factura no encontrada');
   if (documento.estado === 'anulado') throw new Error('La factura ya está anulada');
   if (!motivo || !motivo.trim()) throw new Error('La anulación requiere un motivo');
@@ -444,9 +691,22 @@ function anularFactura(db, { documentoId, motivo, usuarioId }) {
        updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?`
   ).run(motivo, usuarioId, documentoId);
 
-  // Revertir inventario: reingresa cada línea vendida (a los componentes, si era un kit).
+  // Documentos que originaron esta factura: vuelven a quedar pendientes de facturar.
+  const origenes = db.prepare("SELECT * FROM documentos_venta WHERE facturado_en_id = ? AND tipo IN ('cotizacion', 'conduce')").all(documentoId);
+  const deConduces = origenes.some((o) => o.tipo === 'conduce');
+  for (const o of origenes) {
+    db.prepare(`UPDATE documentos_venta SET estado = ?, facturado_en_id = NULL, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?`)
+      .run(o.tipo === 'conduce' ? 'entregado' : 'abierto', o.id);
+  }
+  db.prepare(
+    `UPDATE cuentas_abiertas SET estado = 'abierta', documento_venta_id = NULL, fecha_cierre = NULL,
+       updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE documento_venta_id = ?`
+  ).run(documentoId);
+
+  // Revertir inventario: reingresa cada línea vendida (a los componentes, si era un kit). Si la
+  // factura venía de conduces, la mercancía salió con el conduce, que sigue vigente: no se toca.
   const detalle = db.prepare('SELECT * FROM documentos_venta_detalle WHERE documento_id = ?').all(documentoId);
-  for (const l of detalle) {
+  for (const l of deConduces ? [] : detalle) {
     const producto = db.prepare('SELECT * FROM productos WHERE id = ?').get(l.producto_id);
     inventario.moverInventarioPorVenta(db, {
       producto, almacenId: documento.almacen_id, cantidad: l.cantidad,
@@ -854,7 +1114,7 @@ function ventasPorPeriodo(db, { desde, hasta, sucursalId, vendedorId, clienteId,
 
   return db
     .prepare(
-      `SELECT strftime('${formato}', dv.fecha) AS periodo, COUNT(*) AS num_facturas,
+      `SELECT strftime('${formato}', dv.fecha, 'localtime') AS periodo, COUNT(*) AS num_facturas,
               SUM(dv.subtotal) AS subtotal, SUM(dv.descuento_total) AS descuento,
               SUM(dv.itbis_total) AS itbis, SUM(dv.total) AS total
        FROM documentos_venta dv LEFT JOIN tipos_ncf tn ON tn.id = dv.tipo_ncf_id
@@ -948,15 +1208,15 @@ function margenPorFactura(db, { desde, hasta, limite = 100 } = {}) {
 }
 
 function resumenCobrosDelDia(db, { fecha } = {}) {
-  const dia = fecha || new Date().toISOString().slice(0, 10);
+  const dia = fecha || hoyLocal();
   const facturado = db
-    .prepare("SELECT COALESCE(SUM(total), 0) AS total FROM documentos_venta WHERE tipo = 'factura' AND estado != 'anulado' AND deleted_at IS NULL AND date(fecha) = date(?)")
+    .prepare("SELECT COALESCE(SUM(total), 0) AS total FROM documentos_venta WHERE tipo = 'factura' AND estado != 'anulado' AND deleted_at IS NULL AND date(fecha, 'localtime') = date(?)")
     .get(dia).total;
   const filasPago = db
     .prepare(
       `SELECT pv.forma_pago, COALESCE(SUM(pv.monto), 0) AS total
        FROM pagos_venta pv JOIN documentos_venta dv ON dv.id = pv.documento_id
-       WHERE dv.estado != 'anulado' AND dv.deleted_at IS NULL AND date(dv.fecha) = date(?)
+       WHERE dv.estado != 'anulado' AND dv.deleted_at IS NULL AND date(dv.fecha, 'localtime') = date(?)
        GROUP BY pv.forma_pago`
     )
     .all(dia);
@@ -1018,6 +1278,17 @@ function register(ipcMain, getDb) {
   escrituraCuenta('cuentas:agregarProducto', agregarProductoCuenta, (db, p) => p.cuentaId);
   escrituraCuenta('cuentas:quitarLinea', quitarLineaCuenta, (db, p) => (db.prepare('SELECT cuenta_id FROM cuentas_abiertas_detalle WHERE id = ?').get(p.lineaId) || {}).cuenta_id);
   escrituraCuenta('cuentas:anular', anularCuentaAbierta, (db, p) => p.cuentaId);
+
+  const crearYObtener = (canal, fn) => ipcMain.handle(canal, (event, payload) => {
+    const db = getDb();
+    const id = db.transaction(() => fn(db, payload))();
+    return obtenerFactura(db, id);
+  });
+  crearYObtener('ventas:crearCotizacion', crearCotizacion);
+  crearYObtener('ventas:crearConduce', crearConduce);
+  ipcMain.handle('ventas:anularCotizacion', (event, payload) => { const db = getDb(); db.transaction(() => anularCotizacion(db, payload))(); return obtenerFactura(db, payload.documentoId); });
+  ipcMain.handle('ventas:anularConduce', (event, payload) => { const db = getDb(); db.transaction(() => anularConduce(db, payload))(); return obtenerFactura(db, payload.documentoId); });
+  ipcMain.handle('ventas:listarDocumentos', (event, filtros) => listarDocumentosVenta(getDb(), filtros || {}));
 
   ipcMain.handle('ventas:crearFactura', (event, payload) => {
     const db = getDb();
@@ -1100,6 +1371,7 @@ function register(ipcMain, getDb) {
 module.exports = {
   register, calcularLinea, crearFactura, anularFactura, listarFacturas, obtenerFactura,
   abrirCuenta, agregarProductoCuenta, quitarLineaCuenta, anularCuentaAbierta, obtenerCuentaAbierta, listarCuentasAbiertas,
+  crearCotizacion, crearConduce, anularCotizacion, anularConduce, listarDocumentosVenta,
   crearNotaCredito, anularNotaCredito, crearNotaDebito, anularNotaDebito, listarNotas,
   ventasPorPeriodo, ventasPorVendedor, ventasPorArticulo, comisionesPorVendedor,
   marcarComisionPagada, margenPorFactura, resumenCobrosDelDia, itbisGeneradoVentas,

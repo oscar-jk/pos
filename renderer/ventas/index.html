@@ -17,15 +17,18 @@
           <h1>Nueva factura</h1>
           <p id="subtitulo-venta">Cargando...</p>
         </div>
-        <div class="modo-venta-toggle" style="width:260px;">
-          <button class="toggle-btn is-active" data-modo="rapida" id="btn-modo-rapida">Venta rápida</button>
-          <button class="toggle-btn" data-modo="completa" id="btn-modo-completa">Venta completa</button>
+        <div style="display:flex; align-items:center; gap:14px;">
+          <a href="./documentos.html" id="link-documentos" style="font-size:13px; font-weight:700; color:var(--color-accent); white-space:nowrap;" data-permiso="ventas.cotizacion.crear,ventas.conduce.crear,ventas.factura.crear">Cotizaciones y conduces</a>
+          <div class="modo-venta-toggle" style="width:260px;">
+            <button class="toggle-btn is-active" data-modo="rapida" id="btn-modo-rapida">Venta rápida</button>
+            <button class="toggle-btn" data-modo="completa" id="btn-modo-completa">Venta completa</button>
+          </div>
         </div>
       </div>
 
       <div id="mensaje-error" class="mensaje-error" style="display:none;"></div>
       <div id="factura-exito" class="factura-exito" style="display:none;"></div>
-      <div id="aviso-cuenta" class="factura-exito" style="display:none;"></div>
+      <div id="aviso-origen" class="factura-exito" style="display:none;"></div>
 
       <div class="ventas-layout">
         <div class="ventas-col-izq">
@@ -78,7 +81,23 @@
             </select>
           </div>
 
-          <div>
+          <div id="bloque-documento" style="display:none;">
+            <label class="campo-label">Documento</label>
+            <select id="select-documento" class="input-normal">
+              <option value="factura">Factura</option>
+            </select>
+          </div>
+
+          <div id="bloque-extra-documento" style="display:none;">
+            <div id="campo-validez" style="margin-bottom:10px;">
+              <label class="campo-label">Válida por (días)</label>
+              <input id="input-validez" class="input-normal" type="number" min="1" max="365" step="1" value="15" />
+            </div>
+            <label class="campo-label" id="label-concepto">Nota</label>
+            <input id="input-concepto" class="input-normal" type="text" />
+          </div>
+
+          <div id="bloque-ncf">
             <label class="campo-label">Comprobante fiscal</label>
             <select id="select-ncf" class="input-normal">
               <option value="consumo">B02 — Consumo</option>
@@ -100,7 +119,7 @@
             <div class="totales__fila totales__fila--total"><span>Total</span><span id="total-total">RD$ 0.00</span></div>
           </div>
 
-          <div>
+          <div id="bloque-pagos">
             <label class="campo-label">Pago</label>
             <div class="pagos-grid">
               <div><label>Efectivo</label><input id="pago-efectivo" type="number" min="0" step="0.01" value="0" /></div>

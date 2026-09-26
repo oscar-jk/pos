@@ -141,6 +141,7 @@ const CUENTAS_CONTABLES = [
   ['1100', 'Caja', 'activo', '1000', 1],
   ['1200', 'Bancos', 'activo', '1000', 1],
   ['1300', 'Inventario', 'activo', '1000', 1],
+  ['1350', 'Mercancía entregada por facturar', 'activo', '1000', 1],
   ['1400', 'Clientes (CxC)', 'activo', '1000', 1],
   ['1500', 'ITBIS Pagado (crédito fiscal)', 'activo', '1000', 1],
   ['2000', 'PASIVO', 'pasivo', null, 0],
@@ -339,6 +340,18 @@ function sincronizarPermisosFaltantes(db) {
     const ahora = new Date().toISOString();
     for (const [clave, valorDefault, descripcion] of PARAMETROS_NEGOCIO_NUEVOS) {
       if (!parametrosExistentes.has(clave)) insertParametroFaltante.run(clave, valorDefault, descripcion, ahora);
+    }
+
+    // Cuentas contables del catálogo mínimo agregadas en versiones posteriores (p. ej. 1350).
+    const cuentaIdPorCodigo = new Map(db.prepare('SELECT id, codigo FROM cuentas_contables').all().map((c) => [c.codigo, c.id]));
+    const insertCuentaFaltante = db.prepare(
+      'INSERT INTO cuentas_contables (id, codigo, nombre, tipo, cuenta_padre_id, es_movimiento) VALUES (?, ?, ?, ?, ?, ?)'
+    );
+    for (const [codigo, nombre, tipo, codigoPadre, esMovimiento] of CUENTAS_CONTABLES) {
+      if (cuentaIdPorCodigo.has(codigo)) continue;
+      const id = uuid();
+      insertCuentaFaltante.run(id, codigo, nombre, tipo, codigoPadre ? cuentaIdPorCodigo.get(codigoPadre) || null : null, esMovimiento);
+      cuentaIdPorCodigo.set(codigo, id);
     }
   })();
 }

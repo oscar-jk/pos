@@ -533,6 +533,8 @@ CREATE TABLE documentos_venta (
   moneda_id               TEXT NOT NULL REFERENCES monedas(id),
   tasa_cambio             REAL NOT NULL DEFAULT 1, -- congelada al momento de facturar
   documento_referencia_id TEXT REFERENCES documentos_venta(id), -- factura que origina una nota_credito/nota_debito, o pedido que origina una factura
+  facturado_en_id         TEXT REFERENCES documentos_venta(id), -- factura que cobró esta cotización o este conduce
+  valida_hasta            TEXT, -- cotización: fecha (AAAA-MM-DD) hasta la que se respeta el precio
   fecha                   TEXT NOT NULL,
   subtotal                REAL NOT NULL DEFAULT 0,     -- suma de base_imponible de las líneas
   descuento_total         REAL NOT NULL DEFAULT 0,     -- descuento global adicional a factura

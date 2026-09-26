@@ -330,8 +330,10 @@ const CUENTA_BANCOS = '1200';
 const CUENTA_GASTOS_BANCARIOS = '6100';
 const DIAS_TOLERANCIA_AUTOMATICA = 7;
 
+// Las fechas de corte son días locales; los asientos se guardan en UTC. Sin la conversión, lo
+// registrado después de las 8 p. m. (UTC-4) quedaría fuera del día.
 function finDelDia(fecha) {
-  return `${fecha.slice(0, 10)}T23:59:59.999Z`;
+  return new Date(`${fecha.slice(0, 10)}T23:59:59.999`).toISOString();
 }
 
 function exigirLecturaConciliacion() {

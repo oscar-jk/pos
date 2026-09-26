@@ -47,10 +47,21 @@ function encabezadoNegocio(negocio) {
   `;
 }
 
+// Mismo formato carta para factura, cotización y conduce: cambian título, datos de cabecera y pie.
+const TITULO_DOCUMENTO = { factura: 'FACTURA', cotizacion: 'COTIZACIÓN', conduce: 'CONDUCE' };
+const ESTADO_DOCUMENTO = {
+  factura: { anulado: 'ANULADA' },
+  cotizacion: { abierto: 'Vigente', facturado: 'Facturada', anulado: 'ANULADA' },
+  conduce: { entregado: 'Entregado, pendiente de facturar', facturado: 'Facturado', anulado: 'ANULADO' },
+};
+
 function plantillaFactura(factura, negocio) {
   const itbisPorTasa = desglosarItbisPorTasa(factura.lineas);
+  const tipo = factura.tipo || 'factura';
+  const titulo = TITULO_DOCUMENTO[tipo] || 'FACTURA';
+  const estado = (ESTADO_DOCUMENTO[tipo] || {})[factura.estado] || 'Vigente';
   return `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8" />
-    <title>Factura ${escapar(factura.numero)}</title>
+    <title>${titulo.charAt(0)}${titulo.slice(1).toLowerCase()} ${escapar(factura.numero)}</title>
     <style>
       ${ESTILO_BASE}
       @page { size: letter; margin: 14mm; }
@@ -72,16 +83,18 @@ function plantillaFactura(factura, negocio) {
     <div class="doc-header">
       ${encabezadoNegocio(negocio)}
       <div class="doc-header__meta">
-        <div class="numero">FACTURA No. ${escapar(factura.numero)}</div>
+        <div class="numero">${titulo} No. ${escapar(factura.numero)}</div>
         ${factura.ncf ? `<div>NCF: ${escapar(factura.ncf)}</div>` : ''}
         <div>Fecha: ${fmtFecha(factura.fecha)}</div>
-        <div>Estado: ${factura.estado === 'anulado' ? 'ANULADA' : 'Vigente'}</div>
+        ${tipo === 'cotizacion' && factura.valida_hasta ? `<div>Válida hasta: ${factura.valida_hasta.split('-').reverse().join('/')}</div>` : ''}
+        <div>Estado: ${estado}</div>
       </div>
     </div>
 
     <div class="cliente">
       <strong>Cliente:</strong> ${escapar(factura.cliente_nombre)}
       ${factura.vendedor_nombre ? ` &nbsp;·&nbsp; <strong>Vendedor:</strong> ${escapar(factura.vendedor_nombre)}` : ''}
+      ${factura.concepto ? `<div style="margin-top:4px;"><strong>${tipo === 'conduce' ? 'Entrega / observaciones' : 'Nota'}:</strong> ${escapar(factura.concepto)}</div>` : ''}
     </div>
 
     <table>
@@ -113,10 +126,18 @@ function plantillaFactura(factura, negocio) {
       <tr class="total-final"><td>Total</td><td class="num">RD$ ${fmtMoneda(factura.total)}</td></tr>
     </table>
 
+    ${tipo === 'factura' ? `
     <div class="pagos">
       <strong>Forma de pago:</strong>
       ${(factura.pagos || []).map((p) => `${FORMAS_PAGO_LABEL[p.forma_pago] || p.forma_pago}: RD$ ${fmtMoneda(p.monto)}`).join(' &nbsp;·&nbsp; ') || '—'}
-    </div>
+    </div>` : ''}
+    ${tipo === 'cotizacion' ? '<div class="pagos">Precios con ITBIS incluido. Esta cotización no es una factura ni comprobante fiscal.</div>' : ''}
+    ${tipo === 'conduce' ? `
+    <div class="pagos">Mercancía entregada, pendiente de facturar. Este conduce no es comprobante fiscal.</div>
+    <div style="display:flex; gap:40px; margin-top:50px;">
+      <div style="flex:1; border-top:1px solid #111; padding-top:4px; text-align:center;">Entregado por</div>
+      <div style="flex:1; border-top:1px solid #111; padding-top:4px; text-align:center;">Recibido por (nombre, cédula y firma)</div>
+    </div>` : ''}
 
     <div class="pie">Documento generado por Punto X</div>
   </body></html>`;

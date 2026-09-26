@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <title>Punto X — Cotizaciones y conduces</title>
+  <link rel="stylesheet" href="../shared/styles.css" />
+  <link rel="stylesheet" href="./ventas.css" />
+  <style>
+    .tab-panel { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-lg); padding: 18px 20px; }
+    .enlace-accion { color: var(--color-accent); font-size: 12px; font-weight: 700; cursor: pointer; }
+    .pill-estado { font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 20px; color: #fff; white-space: nowrap; }
+    .barra-conduces { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <div id="sidebar-container"></div>
+    <div class="main-area">
+      <div id="topbar-container"></div>
+
+      <div class="page-header">
+        <div>
+          <h1>Cotizaciones y conduces</h1>
+          <p>Cotizaciones sin compromiso y mercancía entregada pendiente de facturar.</p>
+        </div>
+        <div id="acciones-pagina" style="display:flex; gap:8px;">
+          <a class="btn btn-secundario" href="./index.html?documento=cotizacion" data-permiso="ventas.cotizacion.crear">+ Nueva cotización</a>
+          <a class="btn btn-secundario" href="./index.html?documento=conduce" data-permiso="ventas.conduce.crear">+ Nuevo conduce</a>
+        </div>
+      </div>
+
+      <div id="mensaje-error" class="mensaje-error" style="display:none;"></div>
+
+      <div class="tabs">
+        <button class="tab-btn is-active" data-tab="cotizaciones">Cotizaciones</button>
+        <button class="tab-btn" data-tab="conduces">Conduces</button>
+      </div>
+
+      <div id="tab-cotizaciones" class="tab-panel">
+        <table class="data-table">
+          <thead><tr><th>Número</th><th>Cliente</th><th>Fecha</th><th>Válida hasta</th><th style="text-align:right;">Total</th><th>Estado</th><th></th></tr></thead>
+          <tbody id="cotizaciones-tbody"></tbody>
+        </table>
+        <div id="cotizaciones-vacio" class="empty-state" style="display:none;">Aún no hay cotizaciones.</div>
+      </div>
+
+      <div id="tab-conduces" class="tab-panel" style="display:none;">
+        <div class="barra-conduces">
+          <div style="font-size:12px; color:var(--color-text-muted);">Marca los conduces pendientes de un mismo cliente para facturarlos juntos.</div>
+          <button class="btn btn-primario btn-chico" id="btn-facturar-conduces" data-permiso="ventas.factura.crear" disabled>Facturar seleccionados</button>
+        </div>
+        <table class="data-table">
+          <thead><tr><th style="width:30px;"></th><th>Número</th><th>Cliente</th><th>Fecha</th><th>Entrega / observaciones</th><th style="text-align:right;">Total</th><th>Estado</th><th></th></tr></thead>
+          <tbody id="conduces-tbody"></tbody>
+        </table>
+        <div id="conduces-vacio" class="empty-state" style="display:none;">Aún no hay conduces.</div>
+      </div>
+    </div>
+  </div>
+
+  <script src="../shared/web/store.js"></script>
+  <script src="../shared/web/api-auth-app.js"></script>
+  <script src="../shared/web/api-contabilidad.js"></script>
+  <script src="../shared/web/api-inventario.js"></script>
+  <script src="../shared/web/api-caja.js"></script>
+  <script src="../shared/web/api-cxc.js"></script>
+  <script src="../shared/web/api-compras.js"></script>
+  <script src="../shared/web/api-cxp.js"></script>
+  <script src="../shared/web/api-ventas.js"></script>
+  <script src="../shared/web/api-config.js"></script>
+  <script src="../shared/web/web-banner.js"></script>
+  <script src="../shared/sidebar.js"></script>
+  <script src="../shared/topbar.js"></script>
+  <script src="../shared/shell.js"></script>
+  <script src="../shared/modal.js"></script>
+  <script src="./documentos.js"></script>
+</body>
+</html>

@@ -95,7 +95,8 @@ function htmlFactura(db, documentoId, formato) {
   const factura = ventas.obtenerFactura(db, documentoId);
   if (!factura) throw new Error('Factura no encontrada');
   const negocio = datosNegocio(db);
-  return formato === 'tique' ? plantillaTique(factura, negocio) : plantillaFactura(factura, negocio);
+  // Cotizaciones y conduces siempre en carta: el tique es solo para facturas.
+  return formato === 'tique' && factura.tipo === 'factura' ? plantillaTique(factura, negocio) : plantillaFactura(factura, negocio);
 }
 
 function htmlArqueo(db, turnoId) {

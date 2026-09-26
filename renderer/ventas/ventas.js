@@ -1,9 +1,11 @@
 const state = {
   info: null,
   modoVenta: 'rapida',
+  documento: 'factura', // factura | cotizacion | conduce
+  origen: null, // { tipo: 'cuenta' | 'cotizacion' | 'conduces', ids, ... } al facturar desde otro documento
   cliente: null,
   nivelPrecio: 'detalle',
-  carrito: [], // { producto, cantidad, descuentoPct }
+  carrito: [], // { producto, cantidad, descuentoPct, precioFijo? }
 };
 
 function fmt(n) {
@@ -18,6 +20,11 @@ function precioPorNivel(producto, nivel) {
   if (nivel === 'mayorista') return producto.precio_mayorista || producto.precio_detalle;
   if (nivel === 'distribuidor') return producto.precio_distribuidor || producto.precio_detalle;
   return producto.precio_detalle;
+}
+
+// Una línea que viene de una cotización o un conduce conserva el precio de ese documento.
+function precioLinea(linea) {
+  return linea.precioFijo ?? precioPorNivel(linea.producto, state.nivelPrecio);
 }
 
 // Réplica de main/ipc/ventas.js:calcularLinea para previsualizar en vivo antes de guardar.
@@ -104,8 +111,10 @@ function renderCarrito() {
   const vacio = document.getElementById('carrito-vacio');
   vacio.style.display = state.carrito.length === 0 ? 'block' : 'none';
 
+  const bloqueado = Boolean(state.origen);
+  const descuentoBloqueado = state.origen && state.origen.tipo === 'cotizacion';
   tbody.innerHTML = state.carrito.map((linea, i) => {
-    const precioUnitario = precioPorNivel(linea.producto, state.nivelPrecio);
+    const precioUnitario = precioLinea(linea);
     const calc = calcularLinea({
       cantidad: linea.cantidad, precioUnitario, descuentoPct: linea.descuentoPct,
       tasaItbisPct: linea.producto.tasa_itbis_pct,
@@ -113,11 +122,11 @@ function renderCarrito() {
     return `
       <tr data-index="${i}">
         <td>${linea.producto.descripcion}</td>
-        <td style="text-align:center;"><input type="number" min="0.01" step="0.01" value="${linea.cantidad}" class="cant-input" ${state.cuentaAbierta ? 'disabled' : ''} /></td>
-        <td style="text-align:center;"><input type="number" min="0" max="100" step="0.01" value="${linea.descuentoPct}" class="desc-input" /></td>
+        <td style="text-align:center;"><input type="number" min="0.01" step="0.01" value="${linea.cantidad}" class="cant-input" ${bloqueado ? 'disabled' : ''} /></td>
+        <td style="text-align:center;"><input type="number" min="0" max="100" step="0.01" value="${linea.descuentoPct}" class="desc-input" ${descuentoBloqueado ? 'disabled' : ''} /></td>
         <td style="text-align:right;">${fmt(precioUnitario)}</td>
         <td style="text-align:right; font-weight:700;">${fmt(calc.totalLinea)}</td>
-        <td class="carrito-quitar" style="${state.cuentaAbierta ? 'visibility:hidden;' : ''}">✕</td>
+        <td class="carrito-quitar" style="${bloqueado ? 'visibility:hidden;' : ''}">✕</td>
       </tr>
     `;
   }).join('');
@@ -135,7 +144,7 @@ function renderCarrito() {
       renderCarrito();
     });
     tr.querySelector('.carrito-quitar').addEventListener('click', () => {
-      if (state.cuentaAbierta) return;
+      if (state.origen) return;
       state.carrito.splice(i, 1);
       renderCarrito();
     });
@@ -150,7 +159,7 @@ function calcularTotalesCarrito() {
   let subtotalLineas = 0;
   let itbisLineas = 0;
   for (const linea of state.carrito) {
-    const precioUnitario = precioPorNivel(linea.producto, state.nivelPrecio);
+    const precioUnitario = precioLinea(linea);
     const calc = calcularLinea({
       cantidad: linea.cantidad, precioUnitario, descuentoPct: linea.descuentoPct,
       tasaItbisPct: linea.producto.tasa_itbis_pct,
@@ -180,7 +189,8 @@ function renderTotales() {
   document.getElementById('total-total').textContent = fmt(total);
 
   actualizarPagoCredito(total);
-  document.getElementById('btn-cobrar').textContent = `Cobrar ${fmt(total)}`;
+  const etiqueta = { factura: 'Cobrar', cotizacion: 'Guardar cotización', conduce: 'Registrar conduce' }[state.documento];
+  document.getElementById('btn-cobrar').textContent = `${etiqueta} ${fmt(total)}`;
 }
 
 function actualizarPagoCredito(total) {
@@ -191,8 +201,12 @@ function actualizarPagoCredito(total) {
   document.getElementById('pago-credito').value = credito.toFixed(2);
 
   const btn = document.getElementById('btn-cobrar');
-  const habilitado = state.carrito.length > 0 && (credito === 0 || state.cliente);
-  btn.disabled = !habilitado;
+  const requisito = {
+    factura: credito === 0 || Boolean(state.cliente),
+    cotizacion: true,
+    conduce: Boolean(state.cliente),
+  }[state.documento];
+  btn.disabled = !(state.carrito.length > 0 && requisito);
 }
 
 ['input-descuento-global'].forEach((id) => {
@@ -213,6 +227,7 @@ document.getElementById('select-nivel-precio').addEventListener('change', (e) =>
 // --- Modo de venta ---
 
 function setModoVenta(modo) {
+  if (modo === 'rapida' && (state.documento === 'conduce' || state.origen)) return; // requieren el cliente ya elegido
   state.modoVenta = modo;
   document.getElementById('btn-modo-rapida').classList.toggle('is-active', modo === 'rapida');
   document.getElementById('btn-modo-completa').classList.toggle('is-active', modo === 'completa');
@@ -307,49 +322,50 @@ document.getElementById('btn-cobrar').addEventListener('click', async () => {
   const credito = parseFloat(document.getElementById('pago-credito').value) || 0;
 
   const condicionPago = credito > 0 ? (efectivo + tarjeta + transferencia > 0 ? 'mixto' : 'credito') : 'contado';
+  const origen = state.origen;
 
-  const payload = {
+  const base = {
     modoVenta: state.modoVenta,
     sucursalId: state.info.sucursalId,
     almacenId: state.info.almacenId,
-    cajaId: state.info.cajaId,
     clienteId: state.cliente ? state.cliente.id : null,
     vendedorId: state.info.usuario ? state.info.usuario.id : null,
     usuarioId: state.info.usuario ? state.info.usuario.id : null,
-    condicionPago,
-    tipoNcfCodigo: document.getElementById('select-ncf').value,
     nivelPrecio: state.nivelPrecio,
-    monedaId: state.info.monedaId,
-    tasaCambio: 1,
     descuentoGlobalPct: parseFloat(document.getElementById('input-descuento-global').value) || 0,
     lineas: state.carrito.map((l) => ({
-      productoId: l.producto.id, cantidad: l.cantidad,
-      precioUnitario: precioPorNivel(l.producto, state.nivelPrecio), descuentoPct: l.descuentoPct,
+      productoId: l.producto.id, cantidad: l.cantidad, precioUnitario: precioLinea(l), descuentoPct: l.descuentoPct,
     })),
-    pagos: [
-      { formaPago: 'efectivo', monto: efectivo },
-      { formaPago: 'tarjeta', monto: tarjeta },
-      { formaPago: 'transferencia', monto: transferencia },
-      { formaPago: 'credito', monto: credito },
-    ].filter((p) => p.monto > 0),
-    cuentaAbiertaId: state.cuentaAbierta ? state.cuentaAbierta.id : null,
   };
+  const concepto = document.getElementById('input-concepto').value.trim() || null;
 
   try {
-    const factura = await window.puntoXVentas.crearFactura(payload);
-    const exito = document.getElementById('factura-exito');
-    exito.style.display = 'block';
-    exito.innerHTML =
-      `Factura <strong>${factura.numero}</strong> (NCF ${factura.ncf}) guardada. Total ${fmt(factura.total)}.` +
-      (window.puntoXImpresion ? `
-        <span data-permiso="ventas.factura.imprimir" style="margin-left:10px;">
-          <button type="button" class="btn btn-secundario btn-chico" data-imprimir="factura">Imprimir factura</button>
-          <button type="button" class="btn btn-secundario btn-chico" data-imprimir="tique">Imprimir tique</button>
-        </span>` : '');
-    exito.querySelectorAll('[data-imprimir]').forEach((b) => {
-      b.addEventListener('click', () => imprimirFactura(factura.id, b.dataset.imprimir));
-    });
-    if (state.cuentaAbierta) terminarCobroCuenta();
+    let documento;
+    if (state.documento === 'cotizacion') {
+      documento = await window.puntoXVentas.crearCotizacion({ ...base, concepto, diasValidez: parseInt(document.getElementById('input-validez').value, 10) || 15 });
+    } else if (state.documento === 'conduce') {
+      documento = await window.puntoXVentas.crearConduce({ ...base, concepto });
+    } else {
+      documento = await window.puntoXVentas.crearFactura({
+        ...base,
+        cajaId: state.info.cajaId,
+        condicionPago,
+        tipoNcfCodigo: document.getElementById('select-ncf').value,
+        monedaId: state.info.monedaId,
+        tasaCambio: 1,
+        pagos: [
+          { formaPago: 'efectivo', monto: efectivo },
+          { formaPago: 'tarjeta', monto: tarjeta },
+          { formaPago: 'transferencia', monto: transferencia },
+          { formaPago: 'credito', monto: credito },
+        ].filter((p) => p.monto > 0),
+        cuentaAbiertaId: origen && origen.tipo === 'cuenta' ? origen.id : null,
+        cotizacionId: origen && origen.tipo === 'cotizacion' ? origen.id : null,
+        conduceIds: origen && origen.tipo === 'conduces' ? origen.ids : null,
+      });
+    }
+    mostrarExitoDocumento(documento);
+    if (state.origen) terminarOrigen();
     state.carrito = [];
     state.cliente = null;
     document.getElementById('cliente-nombre').textContent = 'Consumidor final';
@@ -357,6 +373,7 @@ document.getElementById('btn-cobrar').addEventListener('click', async () => {
     document.getElementById('pago-tarjeta').value = 0;
     document.getElementById('pago-transferencia').value = 0;
     document.getElementById('input-descuento-global').value = 0;
+    document.getElementById('input-concepto').value = '';
     renderCarrito();
     cargarHistorial();
   } catch (err) {
@@ -621,34 +638,128 @@ async function cargarNotas() {
 
 // --- Inicialización ---
 
-// --- Cobro de una cuenta abierta (ventas/index.html?cuenta=<id>) ---
-// El carrito se llena con lo de la cuenta y queda bloqueado: los cambios se hacen en la cuenta
-// (donde quitar un producto pide permiso y motivo). El servidor también verifica que coincidan.
+function escHtml(texto) {
+  return String(texto ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+function mostrarExitoDocumento(doc) {
+  const exito = document.getElementById('factura-exito');
+  const titulo = { factura: 'Factura', cotizacion: 'Cotización', conduce: 'Conduce' }[doc.tipo];
+  const detalle = doc.tipo === 'factura' ? ` (NCF ${doc.ncf}) guardada`
+    : doc.tipo === 'cotizacion' ? ` guardada, válida hasta el ${doc.valida_hasta.split('-').reverse().join('/')}` : ' registrado, pendiente de facturar';
+  exito.style.display = 'block';
+  exito.innerHTML = `${titulo} <strong>${doc.numero}</strong>${detalle}. Total ${fmt(doc.total)}.` +
+    (window.puntoXImpresion ? `
+      <span data-permiso="ventas.factura.imprimir" style="margin-left:10px;">
+        <button type="button" class="btn btn-secundario btn-chico" data-imprimir="factura">Imprimir ${titulo.toLowerCase()}</button>
+        ${doc.tipo === 'factura' ? '<button type="button" class="btn btn-secundario btn-chico" data-imprimir="tique">Imprimir tique</button>' : ''}
+      </span>` : '');
+  exito.querySelectorAll('[data-imprimir]').forEach((b) => b.addEventListener('click', () => imprimirFactura(doc.id, b.dataset.imprimir)));
+}
+
+// --- Tipo de documento: factura, cotización o conduce ---
+
+function configurarSelectorDocumento() {
+  const select = document.getElementById('select-documento');
+  if (!window.puntoXVentas.crearCotizacion) return; // versión web de prueba: solo facturas
+  if (state.info.tienePermiso('ventas.cotizacion.crear')) select.insertAdjacentHTML('beforeend', '<option value="cotizacion">Cotización</option>');
+  if (state.info.tienePermiso('ventas.conduce.crear')) select.insertAdjacentHTML('beforeend', '<option value="conduce">Conduce (entregar sin facturar)</option>');
+  if (select.options.length > 1) document.getElementById('bloque-documento').style.display = 'block';
+  select.addEventListener('change', (e) => setDocumento(e.target.value));
+}
+
+function setDocumento(tipo) {
+  state.documento = tipo;
+  document.getElementById('select-documento').value = tipo;
+  const esFactura = tipo === 'factura';
+  document.getElementById('bloque-ncf').style.display = esFactura ? '' : 'none';
+  document.getElementById('bloque-pagos').style.display = esFactura ? '' : 'none';
+  document.getElementById('bloque-extra-documento').style.display = esFactura ? 'none' : 'block';
+  document.getElementById('campo-validez').style.display = tipo === 'cotizacion' ? 'block' : 'none';
+  document.getElementById('label-concepto').textContent = tipo === 'conduce' ? 'Entrega / observaciones' : 'Nota (opcional)';
+  document.getElementById('input-concepto').placeholder = tipo === 'conduce' ? 'Dirección de entrega, quién recibe...' : '';
+  if (tipo === 'conduce' && state.modoVenta !== 'completa') setModoVenta('completa'); // el conduce siempre es a un cliente
+  document.querySelector('.page-header h1').textContent = { factura: 'Nueva factura', cotizacion: 'Nueva cotización', conduce: 'Nuevo conduce' }[tipo];
+  renderTotales();
+}
+
+// --- Facturar desde otro documento (cuenta abierta, cotización o conduces) ---
+// El carrito se llena con lo del documento y queda bloqueado; el servidor también verifica
+// que la factura coincida con el documento de origen.
+
+async function productoParaCarrito(productoId) {
+  return window.puntoXInventario.obtenerProducto({ productoId, almacenId: state.info.almacenId });
+}
+
+function mostrarAvisoOrigen(html) {
+  const aviso = document.getElementById('aviso-origen');
+  aviso.innerHTML = html;
+  aviso.style.display = 'block';
+}
+
+function aplicarOrigen(origen, carrito) {
+  state.origen = origen;
+  state.carrito = carrito;
+  setDocumento('factura');
+  document.getElementById('bloque-documento').style.display = 'none';
+  document.getElementById('input-buscar-producto').disabled = true;
+  renderCarrito();
+}
 
 async function cargarCuentaParaCobro(cuentaId) {
-  let cuenta;
-  try { cuenta = await window.puntoXCuentas.obtener({ cuentaId }); } catch (err) { mostrarError(err.message.replace(/^Error invoking remote method '.*?': Error: /, '')); return; }
-  if (!cuenta || cuenta.estado !== 'abierta') { mostrarError('La cuenta ya no está abierta.'); return; }
+  const cuenta = await window.puntoXCuentas.obtener({ cuentaId });
+  if (!cuenta || cuenta.estado !== 'abierta') throw new Error('La cuenta ya no está abierta.');
   const porProducto = new Map();
   for (const l of cuenta.lineas) {
     const actual = porProducto.get(l.producto_id);
     if (actual) actual.cantidad = redondear(actual.cantidad + l.cantidad);
     else porProducto.set(l.producto_id, { producto: l.producto, cantidad: l.cantidad, descuentoPct: 0 });
   }
-  state.cuentaAbierta = cuenta;
-  state.carrito = [...porProducto.values()];
-  document.getElementById('input-buscar-producto').disabled = true;
-  const aviso = document.getElementById('aviso-cuenta');
-  const nombre = cuenta.nombre.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-  aviso.innerHTML = `Cobrando la cuenta <strong>${nombre}</strong> (${cuenta.lineas.length} línea(s)). Los productos se cambian en la cuenta. <a href="./cuentas-abiertas.html?cuenta=${encodeURIComponent(cuenta.id)}" style="font-weight:700; color:var(--color-accent);">Volver a la cuenta</a>`;
-  aviso.style.display = 'block';
-  renderCarrito();
+  aplicarOrigen({ tipo: 'cuenta', id: cuenta.id }, [...porProducto.values()]);
+  mostrarAvisoOrigen(`Cobrando la cuenta <strong>${escHtml(cuenta.nombre)}</strong> (${cuenta.lineas.length} línea(s)). Los productos se cambian en la cuenta. <a href="./cuentas-abiertas.html?cuenta=${encodeURIComponent(cuenta.id)}" style="font-weight:700; color:var(--color-accent);">Volver a la cuenta</a>`);
 }
 
-function terminarCobroCuenta() {
-  state.cuentaAbierta = null;
+async function seleccionarClientePorId(clienteId) {
+  setModoVenta('completa');
+  seleccionarCliente(await window.puntoXCxc.obtenerCliente({ clienteId }));
+}
+
+async function cargarCotizacionParaFacturar(cotizacionId) {
+  const cot = await window.puntoXVentas.obtenerFactura({ documentoId: cotizacionId });
+  if (!cot || cot.tipo !== 'cotizacion' || cot.estado !== 'abierto') throw new Error('La cotización ya no está abierta.');
+  const carrito = await Promise.all(cot.lineas.map(async (l) => ({
+    producto: await productoParaCarrito(l.producto_id), cantidad: l.cantidad, descuentoPct: l.descuento_pct || 0, precioFijo: l.precio_unitario,
+  })));
+  if (cot.cliente_id) await seleccionarClientePorId(cot.cliente_id);
+  const brutoLineas = cot.lineas.reduce((a, l) => a + l.total_linea, 0);
+  document.getElementById('input-descuento-global').value = brutoLineas > 0 ? redondear((cot.descuento_total / brutoLineas) * 100) : 0;
+  aplicarOrigen({ tipo: 'cotizacion', id: cot.id }, carrito);
+  mostrarAvisoOrigen(`Facturando la cotización <strong>${cot.numero}</strong> con sus precios. Para cambiar productos o precios, haz una nueva cotización. <a href="./documentos.html" style="font-weight:700; color:var(--color-accent);">Volver</a>`);
+}
+
+async function cargarConducesParaFacturar(ids) {
+  const conduces = await Promise.all(ids.map((id) => window.puntoXVentas.obtenerFactura({ documentoId: id })));
+  if (conduces.some((c) => !c || c.tipo !== 'conduce' || c.estado !== 'entregado')) throw new Error('Algún conduce ya no está pendiente de facturar.');
+  if (new Set(conduces.map((c) => c.cliente_id)).size !== 1) throw new Error('Los conduces seleccionados son de clientes distintos.');
+  const porProducto = new Map();
+  for (const c of conduces) {
+    for (const l of c.lineas) {
+      const actual = porProducto.get(l.producto_id);
+      if (actual) actual.cantidad = redondear(actual.cantidad + l.cantidad);
+      else porProducto.set(l.producto_id, { productoId: l.producto_id, cantidad: l.cantidad, descuentoPct: 0, precioFijo: l.precio_unitario });
+    }
+  }
+  const carrito = await Promise.all([...porProducto.values()].map(async (l) => ({ ...l, producto: await productoParaCarrito(l.productoId) })));
+  await seleccionarClientePorId(conduces[0].cliente_id);
+  aplicarOrigen({ tipo: 'conduces', ids: conduces.map((c) => c.id) }, carrito);
+  mostrarAvisoOrigen(`Facturando ${conduces.length === 1 ? 'el conduce' : `${conduces.length} conduces`} <strong>${conduces.map((c) => c.numero).join(', ')}</strong> de ${escHtml(conduces[0].cliente_nombre)}. La mercancía ya se entregó. <a href="./documentos.html#conduces" style="font-weight:700; color:var(--color-accent);">Volver</a>`);
+}
+
+function terminarOrigen() {
+  state.origen = null;
   document.getElementById('input-buscar-producto').disabled = false;
-  document.getElementById('aviso-cuenta').style.display = 'none';
+  document.getElementById('aviso-origen').style.display = 'none';
+  if (document.getElementById('select-documento').options.length > 1) document.getElementById('bloque-documento').style.display = 'block';
   window.history.replaceState(null, '', window.location.pathname);
 }
 
@@ -656,11 +767,19 @@ async function init() {
   state.info = await window.PuntoXShell.initPuntoXShell('ventas');
   state.categorias = await window.puntoXCxc.listarCategorias();
   actualizarSubtitulo();
+  configurarSelectorDocumento();
   renderCarrito();
   cargarHistorial();
   cargarNotas();
-  const cuentaId = new URLSearchParams(window.location.search).get('cuenta');
-  if (cuentaId && window.puntoXCuentas) cargarCuentaParaCobro(cuentaId);
+  const params = new URLSearchParams(window.location.search);
+  try {
+    if (params.get('cuenta') && window.puntoXCuentas) await cargarCuentaParaCobro(params.get('cuenta'));
+    else if (params.get('cotizacion')) await cargarCotizacionParaFacturar(params.get('cotizacion'));
+    else if (params.get('conduces')) await cargarConducesParaFacturar(params.get('conduces').split(',').filter(Boolean));
+    else if ([...document.getElementById('select-documento').options].some((o) => o.value === params.get('documento'))) setDocumento(params.get('documento'));
+  } catch (err) {
+    mostrarError(err.message.replace(/^Error invoking remote method '.*?': Error: /, ''));
+  }
 }
 
 init();
