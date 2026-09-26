@@ -133,6 +133,7 @@ const PARAMETROS_NEGOCIO_NUEVOS = [
   ['negocio_direccion', '', 'Dirección del negocio, impresa en el encabezado de factura'],
   ['negocio_telefono', '', 'Teléfono del negocio, impreso en el encabezado de factura'],
   ['modulo_cuentas_abiertas', '0', 'Módulo opcional: cuentas abiertas tipo bar/mesa (1 = activo)'],
+  ['metodo_valoracion', 'promedio_ponderado', 'Método de valoración de inventario para los productos que no definen uno propio'],
 ];
 
 // Catálogo de cuentas contables mínimas exigido por el Módulo 7.

@@ -156,19 +156,6 @@
   background: transparent;
 }
 
-select.input-normal, input.input-normal {
-  width: 100%;
-  box-sizing: border-box;
-  padding: 10px 12px;
-  border: 1px solid var(--color-border-input);
-  border-radius: var(--radius-sm);
-  font-family: inherit;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--color-text);
-  background: var(--color-surface);
-}
-
 .totales {
   border-top: 1px solid #eef1ec;
   padding-top: 14px;

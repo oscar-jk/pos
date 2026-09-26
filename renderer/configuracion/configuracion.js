@@ -331,7 +331,19 @@ const ETIQUETA_PARAMETRO = {
   dias_credito_default: 'Días de crédito por defecto para clientes nuevos',
   ventana_alerta_vencimiento_dias: 'Días de anticipación para alertar productos próximos a vencer',
   dias_mora_bloqueo_credito: 'Días de mora para bloquear el crédito de un cliente automáticamente',
+  metodo_valoracion: 'Método de valoración de inventario (para los productos que no definen uno propio)',
 };
+
+// Parámetros que no son números: se eligen de una lista.
+const OPCIONES_PARAMETRO = {
+  metodo_valoracion: [['promedio_ponderado', 'Promedio ponderado'], ['peps', 'PEPS (primero en entrar, primero en salir)']],
+};
+
+function campoParametro(p) {
+  const opciones = OPCIONES_PARAMETRO[p.clave];
+  if (!opciones) return `<input class="input-normal" type="number" data-clave="${p.clave}" value="${p.valor}" />`;
+  return `<select class="input-normal" data-clave="${p.clave}">${opciones.map(([valor, etiqueta]) => `<option value="${valor}" ${p.valor === valor ? 'selected' : ''}>${etiqueta}</option>`).join('')}</select>`;
+}
 
 async function cargarParametros() {
   const parametros = await window.puntoXConfig.listarParametrosNegocio();
@@ -339,13 +351,13 @@ async function cargarParametros() {
     <div class="form-field" style="max-width:500px; margin-bottom:14px;">
       <label>${ETIQUETA_PARAMETRO[p.clave] || p.descripcion || p.clave}</label>
       <div style="display:flex; gap:8px;">
-        <input class="input-normal" type="number" data-clave="${p.clave}" value="${p.valor}" />
+        ${campoParametro(p)}
         <button class="btn btn-secundario btn-chico" data-permiso="configuracion.gestionar" data-guardar-parametro="${p.clave}">Guardar</button>
       </div>
     </div>
   `).join('');
   document.querySelectorAll('[data-guardar-parametro]').forEach((btn) => btn.addEventListener('click', async () => {
-    const input = document.querySelector(`input[data-clave="${btn.dataset.guardarParametro}"]`);
+    const input = document.querySelector(`[data-clave="${btn.dataset.guardarParametro}"]`);
     try {
       await window.puntoXConfig.actualizarParametro({ clave: btn.dataset.guardarParametro, valor: input.value, usuarioId: state.info.usuario.id });
       mostrarExito('Parámetro actualizado.');

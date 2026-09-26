@@ -142,6 +142,13 @@ function listarProductos(db, { texto = '', soloActivos = true, limite = 100 } = 
   return filas;
 }
 
+// 'heredado' = usa el método general de Configuración.
+function metodoValoracionValido(metodo) {
+  if (!metodo) return 'heredado';
+  if (!['heredado', 'promedio_ponderado', 'peps'].includes(metodo)) throw new Error('Método de valoración inválido');
+  return metodo;
+}
+
 function guardarProducto(db, payload, productoIdExistente) {
   session.requerirPermiso(productoIdExistente ? 'inventario.producto.editar' : 'inventario.producto.crear');
   const {
@@ -169,7 +176,7 @@ function guardarProducto(db, payload, productoIdExistente) {
     ).run(
       codigoInterno.trim(), descripcion.trim(), categoriaId || null, unidadMedidaBaseId, tasaItbisId,
       precioDetalle || 0, precioMayorista || 0, precioDistribuidor || 0,
-      metodoValoracion || 'promedio_ponderado', esKit ? 1 : 0, permiteVentaNegativo ? 1 : 0,
+      metodoValoracionValido(metodoValoracion), esKit ? 1 : 0, permiteVentaNegativo ? 1 : 0,
       controlaLote ? 1 : 0, stockMinimo || 0, stockMaximo || null, diasAlertaVencimiento || null,
       activo === false ? 0 : 1, productoId
     );
@@ -183,7 +190,7 @@ function guardarProducto(db, payload, productoIdExistente) {
     ).run(
       productoId, codigoInterno.trim(), descripcion.trim(), categoriaId || null, unidadMedidaBaseId, tasaItbisId,
       precioDetalle || 0, precioMayorista || 0, precioDistribuidor || 0, costoPromedio || 0,
-      metodoValoracion || 'promedio_ponderado', esKit ? 1 : 0, permiteVentaNegativo ? 1 : 0,
+      metodoValoracionValido(metodoValoracion), esKit ? 1 : 0, permiteVentaNegativo ? 1 : 0,
       controlaLote ? 1 : 0, stockMinimo || 0, stockMaximo || null, diasAlertaVencimiento || null
     );
   }
@@ -251,8 +258,9 @@ function existenciaDisponibleParaVenta(db, producto, almacenId) {
   return Math.min(...componentes.map((c) => Math.floor(existenciaDisponible(db, c.componente_producto_id, almacenId) / c.cantidad)));
 }
 
-// Costo de una unidad vendida: para un producto normal es su costo_promedio; para un kit,
-// la suma del costo de sus componentes.
+// Costo estimado de una unidad (cotizaciones, márgenes): para un producto normal es su
+// costo_promedio; para un kit, la suma del costo de sus componentes. El costo real de una
+// salida lo devuelve registrarMovimientoInventario (con PEPS depende de las capas consumidas).
 function costoUnitarioVenta(db, producto) {
   if (!producto.es_kit) return producto.costo_promedio;
   const componentes = componentesKit(db, producto.id);
@@ -264,24 +272,184 @@ function costoUnitarioVenta(db, producto) {
   );
 }
 
-// Registra un movimiento de kardex y actualiza la existencia consolidada.
+// =========================================================================
+// Valoración (promedio ponderado o PEPS) y lotes con vencimiento
+// =========================================================================
+//
+// Un producto que controla lote, o que se valora por PEPS, lleva su existencia en capas (tabla
+// lotes): cada entrada crea una capa con su cantidad, su costo y, si aplica, número de lote y
+// vencimiento. Las salidas consumen capas: primero la que vence antes si el producto controla
+// lote, o la más antigua si solo es PEPS. El costo de una salida es el de las capas que consume
+// (PEPS) o el costo promedio del producto (promedio ponderado, aunque controle lote).
+// Por producto y almacén, la suma de las capas es igual a la existencia (cuando es positiva).
+
+const EPS = 0.00001;
+
+function redondearCantidad(n) {
+  return Math.round((n + Number.EPSILON) * 10000) / 10000;
+}
+
+const METODOS_VALORACION = ['promedio_ponderado', 'peps'];
+
+function metodoValoracionGlobal(db) {
+  const fila = db.prepare("SELECT valor FROM parametros_negocio WHERE clave = 'metodo_valoracion'").get();
+  return fila && fila.valor === 'peps' ? 'peps' : 'promedio_ponderado';
+}
+
+function metodoValoracion(db, producto) {
+  return METODOS_VALORACION.includes(producto.metodo_valoracion) ? producto.metodo_valoracion : metodoValoracionGlobal(db);
+}
+
+function usaCapas(db, producto) {
+  return !producto.es_kit && (Boolean(producto.controla_lote) || metodoValoracion(db, producto) === 'peps');
+}
+
+function capasDisponibles(db, producto, almacenId) {
+  const orden = producto.controla_lote
+    ? 'ORDER BY fecha_vencimiento IS NULL, fecha_vencimiento, created_at, rowid'
+    : 'ORDER BY created_at, rowid';
+  return db
+    .prepare(`SELECT * FROM lotes WHERE producto_id = ? AND almacen_id = ? AND deleted_at IS NULL AND cantidad > 0 ${orden}`)
+    .all(producto.id, almacenId);
+}
+
+function insertarCapa(db, { productoId, almacenId, numeroLote, fechaVencimiento, cantidad, costoUnitario }) {
+  const id = crypto.randomUUID();
+  db.prepare('INSERT INTO lotes (id, producto_id, almacen_id, numero_lote, fecha_vencimiento, cantidad, costo_unitario) VALUES (?, ?, ?, ?, ?, ?, ?)')
+    .run(id, productoId, almacenId, numeroLote || '', fechaVencimiento || null, redondearCantidad(cantidad), costoUnitario || 0);
+  return id;
+}
+
+function sumarACapa(db, loteId, cantidad) {
+  db.prepare("UPDATE lotes SET cantidad = ROUND(cantidad + ?, 4), updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?")
+    .run(cantidad, loteId);
+}
+
+// Repara el invariante antes de mover: al activar el control de lote o PEPS en un producto que
+// ya tenía existencia, esa existencia entra como una capa inicial ("SIN LOTE") a su costo promedio.
+function sincronizarCapas(db, producto, almacenId, existencia) {
+  const objetivo = Math.max(0, existencia);
+  const capas = capasDisponibles(db, producto, almacenId);
+  const total = capas.reduce((a, c) => a + c.cantidad, 0);
+  if (total < objetivo - EPS) {
+    insertarCapa(db, {
+      productoId: producto.id, almacenId, numeroLote: producto.controla_lote ? 'SIN LOTE' : '',
+      cantidad: objetivo - total, costoUnitario: producto.costo_promedio,
+    });
+  } else if (total > objetivo + EPS) {
+    let sobra = total - objetivo;
+    for (const c of capas) {
+      if (sobra <= EPS) break;
+      const toma = Math.min(c.cantidad, sobra);
+      sumarACapa(db, c.id, -toma);
+      sobra -= toma;
+    }
+  }
+}
+
+// Las unidades vendidas en negativo no tienen capa: la entrada que las repone primero las cubre.
+// Con PEPS esas unidades salieron valoradas al costo de referencia (costoDescubierto); la capa
+// que queda absorbe la diferencia con su costo real, igual que lo hace el promedio ponderado,
+// para que el valor del inventario siga cuadrando con la contabilidad.
+function entrarCapas(db, producto, almacenId, existenciaAntes, capas, costoDescubierto = null) {
+  let descubierto = Math.max(0, -existenciaAntes);
+  return capas.map((c) => {
+    const cubre = Math.min(descubierto, c.cantidad);
+    descubierto -= cubre;
+    const resto = redondearCantidad(c.cantidad - cubre);
+    const costoCapa = cubre > 0 && costoDescubierto !== null && resto > EPS
+      ? Math.max(0, Math.round(((c.cantidad * (c.costoUnitario || 0) - cubre * costoDescubierto) / resto) * 10000) / 10000)
+      : c.costoUnitario;
+    let loteId = null;
+    if (resto > EPS) {
+      const existente = c.loteId && db.prepare('SELECT id FROM lotes WHERE id = ? AND producto_id = ? AND almacen_id = ?').get(c.loteId, producto.id, almacenId);
+      if (existente && costoCapa === c.costoUnitario) {
+        sumarACapa(db, c.loteId, resto);
+        loteId = c.loteId;
+      } else {
+        loteId = insertarCapa(db, {
+          productoId: producto.id, almacenId, numeroLote: c.numeroLote, fechaVencimiento: c.fechaVencimiento,
+          cantidad: resto, costoUnitario: costoCapa,
+        });
+      }
+    }
+    return { loteId, cantidad: c.cantidad, costoUnitario: c.costoUnitario || 0 };
+  });
+}
+
+// loteId: el usuario eligió el lote (debe alcanzar). preferirLotes: se consumen primero esos
+// (p. ej. los que entró una compra que se está devolviendo) y luego el orden normal.
+function salirCapas(db, producto, almacenId, cantidad, { loteId, preferirLotes } = {}) {
+  let capas = capasDisponibles(db, producto, almacenId);
+  if (loteId) {
+    // Un lote (número + vencimiento) puede tener varias capas, p. ej. si entró en dos compras.
+    const ref = db.prepare('SELECT numero_lote, fecha_vencimiento FROM lotes WHERE id = ?').get(loteId);
+    const grupo = ref ? capas.filter((c) => c.numero_lote === ref.numero_lote && (c.fecha_vencimiento || '') === (ref.fecha_vencimiento || '')) : [];
+    if (grupo.length === 0) throw new Error(`El lote elegido de "${producto.descripcion}" no tiene existencia en este almacén`);
+    const disponible = redondearCantidad(grupo.reduce((a, c) => a + c.cantidad, 0));
+    if (disponible < cantidad - EPS) {
+      throw new Error(`El lote ${ref.numero_lote} de "${producto.descripcion}" solo tiene ${disponible} unidades`);
+    }
+    capas = grupo;
+  } else if (preferirLotes && preferirLotes.length > 0) {
+    const preferidas = preferirLotes.map((id) => capas.find((c) => c.id === id)).filter(Boolean);
+    capas = [...new Set([...preferidas, ...capas])];
+  }
+  const piezas = [];
+  let pendiente = cantidad;
+  for (const c of capas) {
+    if (pendiente <= EPS) break;
+    const toma = redondearCantidad(Math.min(c.cantidad, pendiente));
+    sumarACapa(db, c.id, -toma);
+    piezas.push({ loteId: c.id, cantidad: -toma, costoUnitario: c.costo_unitario });
+    pendiente = redondearCantidad(pendiente - toma);
+  }
+  if (pendiente > EPS) piezas.push({ loteId: null, cantidad: -pendiente, costoUnitario: producto.costo_promedio || 0 });
+  return piezas;
+}
+
+function costoPromedioDeCapas(db, productoId) {
+  const fila = db
+    .prepare('SELECT SUM(cantidad * costo_unitario) AS valor, SUM(cantidad) AS cantidad FROM lotes WHERE producto_id = ? AND deleted_at IS NULL AND cantidad > 0')
+    .get(productoId);
+  return fila.cantidad > EPS ? redondear(fila.valor / fila.cantidad) : null;
+}
+
+// Registra un movimiento de inventario (kardex + existencia + capas + costo del producto).
 // cantidad: positiva = entrada, negativa = salida. Debe llamarse dentro de una transacción.
+//   Entrada: `lote` { numeroLote, fechaVencimiento } si el producto controla lote, o `capas`
+//            [{ loteId?, numeroLote, fechaVencimiento, cantidad, costoUnitario }] para reingresar
+//            exactamente lo que salió (reversiones, transferencias).
+//   Salida:  `loteId` para sacar de un lote específico; si no, el orden normal.
+// Devuelve { saldo, costoTotal, costoUnitario, piezas }: el costo real de lo que entró o salió.
 function registrarMovimientoInventario(db, {
-  productoId, almacenId, loteId = null, tipoMovimiento, cantidad, costoUnitario,
+  productoId, almacenId, loteId = null, preferirLotes = null, lote = null, capas = null, tipoMovimiento, cantidad, costoUnitario,
   documentoOrigenTipo, documentoOrigenId, usuarioId,
 }) {
-  const existenciaActual = existenciaDisponible(db, productoId, almacenId);
-  const saldoCantidad = existenciaActual + cantidad;
+  const producto = db.prepare('SELECT * FROM productos WHERE id = ?').get(productoId);
+  if (!producto) throw new Error('Producto no encontrado');
+  const existenciaAntes = existenciaDisponible(db, productoId, almacenId);
+  const saldoCantidad = redondearCantidad(existenciaAntes + cantidad);
+  const peps = metodoValoracion(db, producto) === 'peps';
+  const capasEntrada = cantidad > 0
+    ? (capas || [{ numeroLote: lote && lote.numeroLote, fechaVencimiento: lote && lote.fechaVencimiento, cantidad, costoUnitario }])
+    : null;
+  const costoEntrada = capasEntrada
+    ? redondear(capasEntrada.reduce((a, c) => a + c.cantidad * (c.costoUnitario || 0), 0) / cantidad)
+    : null;
 
-  db.prepare(
-    `INSERT INTO kardex_movimientos
-       (id, producto_id, almacen_id, lote_id, tipo_movimiento, documento_origen_tipo,
-        documento_origen_id, cantidad, costo_unitario, saldo_cantidad, saldo_costo, usuario_id)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-  ).run(
-    crypto.randomUUID(), productoId, almacenId, loteId, tipoMovimiento, documentoOrigenTipo,
-    documentoOrigenId, cantidad, costoUnitario, saldoCantidad, costoUnitario, usuarioId
-  );
+  let piezas;
+  if (cantidad !== 0 && usaCapas(db, producto)) {
+    sincronizarCapas(db, producto, almacenId, existenciaAntes);
+    piezas = cantidad > 0
+      ? entrarCapas(db, producto, almacenId, existenciaAntes, capasEntrada, peps ? (producto.costo_promedio || 0) : null)
+      : salirCapas(db, producto, almacenId, -cantidad, { loteId, preferirLotes });
+    // Promedio ponderado con lotes: las capas llevan la cantidad; la salida se valora al promedio.
+    if (cantidad < 0 && !peps) piezas.forEach((p) => { p.costoUnitario = costoUnitario ?? producto.costo_promedio; });
+  } else {
+    const costo = cantidad > 0 ? costoEntrada : (costoUnitario ?? producto.costo_promedio ?? 0);
+    piezas = [{ loteId: null, cantidad, costoUnitario: costo }];
+  }
 
   const existeFila = db.prepare('SELECT 1 FROM existencias WHERE producto_id = ? AND almacen_id = ?').get(productoId, almacenId);
   if (existeFila) {
@@ -296,41 +464,183 @@ function registrarMovimientoInventario(db, {
     ).run(crypto.randomUUID(), productoId, almacenId, saldoCantidad);
   }
 
-  // Recalcula el costo promedio ponderado del producto cuando entra mercancía con costo propio.
-  if (cantidad > 0 && costoUnitario > 0) {
-    const producto = db.prepare('SELECT costo_promedio FROM productos WHERE id = ?').get(productoId);
-    if (producto && producto.metodo_valoracion !== 'peps') {
-      const existenciaTotal = db.prepare('SELECT COALESCE(SUM(cantidad_disponible),0) AS total FROM existencias WHERE producto_id = ?').get(productoId).total;
-      const costoActual = producto.costo_promedio || 0;
-      const existenciaPrevia = existenciaTotal - cantidad;
-      const nuevoPromedio = existenciaTotal > 0
-        ? redondear(((costoActual * existenciaPrevia) + (costoUnitario * cantidad)) / existenciaTotal)
-        : costoUnitario;
-      db.prepare("UPDATE productos SET costo_promedio = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?")
-        .run(nuevoPromedio, productoId);
-    }
+  // Costo del producto: PEPS = promedio de las capas que quedan (referencia para márgenes y
+  // cotizaciones); promedio ponderado = se recalcula cuando entra mercancía con costo propio.
+  let costoVigente = producto.costo_promedio || 0;
+  if (cantidad !== 0 && peps && usaCapas(db, producto)) {
+    const promedioCapas = costoPromedioDeCapas(db, productoId);
+    if (promedioCapas !== null) costoVigente = promedioCapas;
+  } else if (cantidad > 0 && costoEntrada > 0) {
+    const existenciaTotal = db.prepare('SELECT COALESCE(SUM(cantidad_disponible),0) AS total FROM existencias WHERE producto_id = ?').get(productoId).total;
+    const existenciaPrevia = existenciaTotal - cantidad;
+    costoVigente = existenciaTotal > 0
+      ? redondear(((costoVigente * existenciaPrevia) + (costoEntrada * cantidad)) / existenciaTotal)
+      : costoEntrada;
+  }
+  if (costoVigente !== producto.costo_promedio) {
+    db.prepare("UPDATE productos SET costo_promedio = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?").run(costoVigente, productoId);
   }
 
-  return saldoCantidad;
+  const insertKardex = db.prepare(
+    `INSERT INTO kardex_movimientos
+       (id, producto_id, almacen_id, lote_id, tipo_movimiento, documento_origen_tipo,
+        documento_origen_id, cantidad, costo_unitario, saldo_cantidad, saldo_costo, usuario_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  );
+  let saldo = existenciaAntes;
+  for (const p of piezas) {
+    saldo = redondearCantidad(saldo + p.cantidad);
+    insertKardex.run(
+      crypto.randomUUID(), productoId, almacenId, p.loteId, tipoMovimiento, documentoOrigenTipo, documentoOrigenId,
+      p.cantidad, p.costoUnitario, saldo, cantidad === 0 ? p.costoUnitario : costoVigente, usuarioId
+    );
+  }
+
+  const costoTotal = redondear(piezas.reduce((a, p) => a + Math.abs(p.cantidad) * p.costoUnitario, 0));
+  return { saldo: saldoCantidad, costoTotal, costoUnitario: cantidad !== 0 ? redondear(costoTotal / Math.abs(cantidad)) : 0, piezas };
 }
 
-// Vende (o revierte una venta de) un producto, resolviendo automáticamente los componentes si es un kit.
+// Un kit mueve sus componentes; cualquier otro producto se mueve a sí mismo.
+function productosAMover(db, producto, cantidad) {
+  if (!producto.es_kit) return [{ productoId: producto.id, cantidad }];
+  return componentesKit(db, producto.id).map((c) => ({ productoId: c.componente_producto_id, cantidad: cantidad * c.cantidad }));
+}
+
+// Saca del inventario lo vendido (a los componentes, si es un kit). Devuelve el costo total real.
 function moverInventarioPorVenta(db, { producto, almacenId, cantidad, documentoOrigenTipo, documentoOrigenId, usuarioId }) {
-  if (producto.es_kit) {
-    for (const c of componentesKit(db, producto.id)) {
-      const comp = db.prepare('SELECT costo_promedio FROM productos WHERE id = ?').get(c.componente_producto_id);
-      registrarMovimientoInventario(db, {
-        productoId: c.componente_producto_id, almacenId, tipoMovimiento: cantidad < 0 ? 'salida_venta' : 'ajuste_entrada',
-        cantidad: cantidad * c.cantidad, costoUnitario: comp.costo_promedio,
-        documentoOrigenTipo, documentoOrigenId, usuarioId,
-      });
-    }
-  } else {
-    registrarMovimientoInventario(db, {
-      productoId: producto.id, almacenId, tipoMovimiento: cantidad < 0 ? 'salida_venta' : 'ajuste_entrada',
-      cantidad, costoUnitario: producto.costo_promedio, documentoOrigenTipo, documentoOrigenId, usuarioId,
+  let costoTotal = 0;
+  for (const m of productosAMover(db, producto, cantidad)) {
+    costoTotal += registrarMovimientoInventario(db, {
+      productoId: m.productoId, almacenId, tipoMovimiento: cantidad < 0 ? 'salida_venta' : 'ajuste_entrada',
+      cantidad: m.cantidad, documentoOrigenTipo, documentoOrigenId, usuarioId,
+    }).costoTotal;
+  }
+  return redondear(costoTotal);
+}
+
+// Reingresa lo que uno o varios documentos (origenIds) sacaron del inventario: a los mismos
+// lotes y al mismo costo con que salió. `cantidad` null = todo; si es parcial, se reparte en
+// proporción entre lo que salió. Devuelve el costo total reingresado.
+function reingresarSalidas(db, {
+  origenTipo, origenId, origenIds, productoId, almacenId, cantidad = null, tipoMovimiento, documentoOrigenTipo, documentoOrigenId, usuarioId,
+}) {
+  const ids = origenIds || [origenId];
+  const salidas = db
+    .prepare(
+      `SELECT k.cantidad, k.costo_unitario, k.lote_id, l.numero_lote, l.fecha_vencimiento
+       FROM kardex_movimientos k LEFT JOIN lotes l ON l.id = k.lote_id
+       WHERE k.documento_origen_tipo = ? AND k.documento_origen_id IN (${ids.map(() => '?').join(',')})
+         AND k.producto_id = ? AND k.almacen_id = ? AND k.cantidad < 0
+       ORDER BY k.rowid`
+    )
+    .all(origenTipo, ...ids, productoId, almacenId);
+  const totalSalido = redondearCantidad(salidas.reduce((a, s) => a - s.cantidad, 0));
+  const objetivo = redondearCantidad(cantidad ?? totalSalido);
+  if (objetivo <= EPS) return 0;
+  if (totalSalido <= EPS) {
+    const { costo_promedio: costoPromedio } = db.prepare('SELECT costo_promedio FROM productos WHERE id = ?').get(productoId);
+    return registrarMovimientoInventario(db, { productoId, almacenId, tipoMovimiento, cantidad: objetivo, costoUnitario: costoPromedio, documentoOrigenTipo, documentoOrigenId, usuarioId }).costoTotal;
+  }
+  const factor = Math.min(1, objetivo / totalSalido);
+  const capas = salidas.map((s) => ({
+    loteId: s.lote_id, numeroLote: s.numero_lote, fechaVencimiento: s.fecha_vencimiento,
+    cantidad: redondearCantidad(-s.cantidad * factor), costoUnitario: s.costo_unitario,
+  }));
+  const diferencia = redondearCantidad(objetivo - capas.reduce((a, c) => a + c.cantidad, 0));
+  capas[capas.length - 1].cantidad = redondearCantidad(capas[capas.length - 1].cantidad + diferencia);
+  return registrarMovimientoInventario(db, {
+    productoId, almacenId, tipoMovimiento, cantidad: objetivo, capas: capas.filter((c) => c.cantidad > EPS),
+    documentoOrigenTipo, documentoOrigenId, usuarioId,
+  }).costoTotal;
+}
+
+// Reingresa todo lo que un documento sacó, producto por producto. Devuelve el costo total.
+function reingresarDocumento(db, { origenTipo, origenId, almacenId, tipoMovimiento, documentoOrigenTipo, documentoOrigenId, usuarioId }) {
+  const productos = db
+    .prepare(
+      `SELECT DISTINCT producto_id FROM kardex_movimientos
+       WHERE documento_origen_tipo = ? AND documento_origen_id = ? AND almacen_id = ? AND cantidad < 0`
+    )
+    .all(origenTipo, origenId, almacenId);
+  let costoTotal = 0;
+  for (const p of productos) {
+    costoTotal += reingresarSalidas(db, {
+      origenTipo, origenId, productoId: p.producto_id, almacenId, tipoMovimiento, documentoOrigenTipo, documentoOrigenId, usuarioId,
     });
   }
+  return redondear(costoTotal);
+}
+
+// Reingresa parte de una línea vendida (devolución): resuelve los componentes si es un kit.
+function reingresarVenta(db, { producto, cantidad, origenIds, almacenId, documentoOrigenTipo, documentoOrigenId, usuarioId }) {
+  let costoTotal = 0;
+  for (const m of productosAMover(db, producto, cantidad)) {
+    costoTotal += reingresarSalidas(db, {
+      origenTipo: 'documentos_venta', origenIds, productoId: m.productoId, almacenId, cantidad: m.cantidad,
+      tipoMovimiento: 'devolucion_venta', documentoOrigenTipo, documentoOrigenId, usuarioId,
+    });
+  }
+  return redondear(costoTotal);
+}
+
+// Saca lo que entró con un documento (anular una compra o una devolución), empezando por los
+// lotes que ese documento creó. Devuelve el resultado de registrarMovimientoInventario.
+function retirarEntradas(db, {
+  origenTipo, origenId, productoId, almacenId, cantidad, costoUnitario, tipoMovimiento, documentoOrigenTipo, documentoOrigenId, usuarioId,
+}) {
+  const lotes = db
+    .prepare(
+      `SELECT DISTINCT lote_id FROM kardex_movimientos
+       WHERE documento_origen_tipo = ? AND documento_origen_id = ? AND producto_id = ? AND almacen_id = ? AND cantidad > 0 AND lote_id IS NOT NULL`
+    )
+    .all(origenTipo, origenId, productoId, almacenId)
+    .map((f) => f.lote_id);
+  return registrarMovimientoInventario(db, {
+    productoId, almacenId, tipoMovimiento, cantidad: -cantidad, costoUnitario, preferirLotes: lotes,
+    documentoOrigenTipo, documentoOrigenId, usuarioId,
+  });
+}
+
+// Lotes que entró un documento (p. ej. una factura de compra) y que aún tienen existencia.
+function lotesCreadosPor(db, { origenTipo, origenId, productoId }) {
+  return db
+    .prepare(
+      `SELECT DISTINCT l.* FROM kardex_movimientos k JOIN lotes l ON l.id = k.lote_id
+       WHERE k.documento_origen_tipo = ? AND k.documento_origen_id = ? AND k.producto_id = ? AND k.cantidad > 0`
+    )
+    .all(origenTipo, origenId, productoId);
+}
+
+function actualizarCostoCapa(db, loteId, costo) {
+  db.prepare("UPDATE lotes SET costo_unitario = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?").run(costo, loteId);
+}
+
+// Recalcula el costo de referencia de un producto PEPS después de cambiar el costo de sus capas.
+function refrescarCostoPeps(db, productoId) {
+  const promedio = costoPromedioDeCapas(db, productoId);
+  if (promedio !== null) {
+    db.prepare("UPDATE productos SET costo_promedio = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?").run(promedio, productoId);
+  }
+  return promedio;
+}
+
+function listarLotes(db, { productoId, almacenId, soloConExistencia = true } = {}) {
+  const condiciones = ["l.deleted_at IS NULL", "p.controla_lote = 1"];
+  const params = [];
+  if (productoId) { condiciones.push('l.producto_id = ?'); params.push(productoId); }
+  if (almacenId) { condiciones.push('l.almacen_id = ?'); params.push(almacenId); }
+  if (soloConExistencia) condiciones.push('l.cantidad > 0');
+  return db
+    .prepare(
+      `SELECT l.numero_lote, l.fecha_vencimiento, l.producto_id, l.almacen_id, p.descripcion, p.codigo_interno,
+              a.nombre AS almacen_nombre, ROUND(SUM(l.cantidad), 4) AS cantidad, MIN(l.id) AS lote_id,
+              CAST(julianday(l.fecha_vencimiento) - julianday('now', 'localtime', 'start of day') AS INTEGER) AS dias_restantes
+       FROM lotes l JOIN productos p ON p.id = l.producto_id JOIN almacenes a ON a.id = l.almacen_id
+       WHERE ${condiciones.join(' AND ')}
+       GROUP BY l.producto_id, l.almacen_id, l.numero_lote, l.fecha_vencimiento
+       ORDER BY p.descripcion, l.fecha_vencimiento IS NULL, l.fecha_vencimiento`
+    )
+    .all(...params);
 }
 
 function kardexPorProducto(db, { productoId, almacenId, desde, hasta, limite = 200 }) {
@@ -342,10 +652,11 @@ function kardexPorProducto(db, { productoId, almacenId, desde, hasta, limite = 2
   params.push(limite);
   return db
     .prepare(
-      `SELECT k.*, a.nombre AS almacen_nombre, u.nombre_completo AS usuario_nombre
+      `SELECT k.*, a.nombre AS almacen_nombre, u.nombre_completo AS usuario_nombre, l.numero_lote, l.fecha_vencimiento
        FROM kardex_movimientos k JOIN almacenes a ON a.id = k.almacen_id
        LEFT JOIN usuarios u ON u.id = k.usuario_id
-       WHERE ${condiciones.join(' AND ')} ORDER BY k.created_at DESC LIMIT ?`
+       LEFT JOIN lotes l ON l.id = k.lote_id
+       WHERE ${condiciones.join(' AND ')} ORDER BY k.created_at DESC, k.rowid DESC LIMIT ?`
     )
     .all(...params);
 }
@@ -368,17 +679,15 @@ function existenciasConsolidadas(db, { almacenId, soloBajoMinimo = false } = {})
   return db.prepare(sql).all(...params);
 }
 
-function productosPorVencer(db, { diasDefault = 30 } = {}) {
-  return db
-    .prepare(
-      `SELECT l.*, p.descripcion, p.codigo_interno, a.nombre AS almacen_nombre,
-              CAST(julianday(l.fecha_vencimiento) - julianday('now') AS INTEGER) AS dias_restantes
-       FROM lotes l JOIN productos p ON p.id = l.producto_id JOIN almacenes a ON a.id = l.almacen_id
-       WHERE l.deleted_at IS NULL AND l.cantidad > 0 AND l.fecha_vencimiento IS NOT NULL
-         AND julianday(l.fecha_vencimiento) - julianday('now') <= COALESCE(p.dias_alerta_vencimiento, ?)
-       ORDER BY l.fecha_vencimiento ASC`
-    )
-    .all(diasDefault);
+// Lotes con existencia dentro de la ventana de alerta (la del producto o la general), incluidos
+// los ya vencidos, del más urgente al menos urgente.
+function productosPorVencer(db) {
+  const parametro = db.prepare("SELECT valor FROM parametros_negocio WHERE clave = 'ventana_alerta_vencimiento_dias'").get();
+  const ventanaGeneral = Number(parametro && parametro.valor) || 30;
+  const ventanaProducto = db.prepare('SELECT dias_alerta_vencimiento FROM productos WHERE id = ?');
+  return listarLotes(db)
+    .filter((l) => l.fecha_vencimiento && l.dias_restantes <= (ventanaProducto.get(l.producto_id).dias_alerta_vencimiento || ventanaGeneral))
+    .sort((a, b) => a.dias_restantes - b.dias_restantes);
 }
 
 // =========================================================================
@@ -388,6 +697,19 @@ function productosPorVencer(db, { diasDefault = 30 } = {}) {
 function siguienteNumeroDocumento(db, tabla) {
   const row = db.prepare(`SELECT MAX(CAST(numero AS INTEGER)) AS maximo FROM ${tabla}`).get();
   return String((row.maximo || 0) + 1).padStart(6, '0');
+}
+
+// Lote de una entrada manual o de compra: el número es obligatorio si el producto controla
+// lote; el vencimiento es opcional (hay lotes que no vencen).
+function loteDeEntrada(producto, linea) {
+  if (!producto.controla_lote) return null;
+  const numeroLote = String(linea.numeroLote || '').trim();
+  if (!numeroLote) throw new Error(`Indique el número de lote de "${producto.descripcion}"`);
+  const fechaVencimiento = linea.fechaVencimiento ? String(linea.fechaVencimiento).slice(0, 10) : null;
+  if (fechaVencimiento && !/^\d{4}-\d{2}-\d{2}$/.test(fechaVencimiento)) {
+    throw new Error(`La fecha de vencimiento del lote de "${producto.descripcion}" no es válida`);
+  }
+  return { numeroLote, fechaVencimiento };
 }
 
 function crearAjuste(db, { almacenId, tipo, motivo, motivoDetalle, lineas, usuarioId }) {
@@ -403,13 +725,14 @@ function crearAjuste(db, { almacenId, tipo, motivo, motivoDetalle, lineas, usuar
   ).run(ajusteId, numero, almacenId, tipo, motivo, motivoDetalle || null, usuarioId);
 
   const insertDetalle = db.prepare(
-    `INSERT INTO ajustes_inventario_detalle (id, ajuste_id, producto_id, cantidad, costo_unitario) VALUES (?, ?, ?, ?, ?)`
+    `INSERT INTO ajustes_inventario_detalle (id, ajuste_id, producto_id, lote_id, cantidad, costo_unitario) VALUES (?, ?, ?, ?, ?, ?)`
   );
   for (const l of lineas) {
     const producto = obtenerProducto(db, l.productoId, almacenId);
     if (!producto) throw new Error(`Producto ${l.productoId} no encontrado`);
-    const costoUnitario = l.costoUnitario ?? producto.costo_promedio;
+    if (producto.es_kit) throw new Error(`"${producto.descripcion}" es un kit: ajuste sus componentes`);
     const cantidadFirmada = tipo === 'salida' ? -Math.abs(l.cantidad) : Math.abs(l.cantidad);
+    const lote = tipo === 'salida' ? null : loteDeEntrada(producto, l);
 
     if (tipo === 'salida' && !producto.permite_venta_negativo) {
       const disponible = existenciaDisponible(db, l.productoId, almacenId);
@@ -418,12 +741,14 @@ function crearAjuste(db, { almacenId, tipo, motivo, motivoDetalle, lineas, usuar
       }
     }
 
-    insertDetalle.run(crypto.randomUUID(), ajusteId, l.productoId, cantidadFirmada, costoUnitario);
-    registrarMovimientoInventario(db, {
+    // En una salida con PEPS el costo lo dan las capas consumidas; el que se guarda es el real.
+    const movimiento = registrarMovimientoInventario(db, {
       productoId: l.productoId, almacenId, tipoMovimiento: tipo === 'salida' ? 'ajuste_salida' : 'ajuste_entrada',
-      cantidad: cantidadFirmada, costoUnitario, documentoOrigenTipo: 'ajustes_inventario',
-      documentoOrigenId: ajusteId, usuarioId,
+      cantidad: cantidadFirmada, costoUnitario: l.costoUnitario ?? producto.costo_promedio, lote,
+      loteId: tipo === 'salida' ? (l.loteId || null) : null,
+      documentoOrigenTipo: 'ajustes_inventario', documentoOrigenId: ajusteId, usuarioId,
     });
+    insertDetalle.run(crypto.randomUUID(), ajusteId, l.productoId, movimiento.piezas[0].loteId, cantidadFirmada, movimiento.costoUnitario);
   }
 
   auditoria().registrarAuditoria(db, { usuarioId, modulo: 'inventario', entidad: 'ajustes_inventario', entidadId: ajusteId, accion: 'crear', detalle: { numero, tipo, motivo } });
@@ -445,26 +770,26 @@ function listarAjustes(db, { limite = 50 } = {}) {
 // Mermas y averías
 // =========================================================================
 
-function crearMerma(db, { almacenId, productoId, cantidad, costoUnitario, motivo, usuarioId }) {
+function crearMerma(db, { almacenId, productoId, loteId, cantidad, costoUnitario, motivo, usuarioId }) {
   session.requerirPermiso('inventario.merma.crear');
   if (!motivo) throw new Error('El motivo de la merma es obligatorio');
   const producto = obtenerProducto(db, productoId, almacenId);
   if (!producto) throw new Error('Producto no encontrado');
+  if (producto.es_kit) throw new Error(`"${producto.descripcion}" es un kit: registre la merma de sus componentes`);
   const disponible = existenciaDisponible(db, productoId, almacenId);
   if (disponible < cantidad) throw new Error(`Existencia insuficiente de "${producto.descripcion}" para registrar la merma`);
 
   const mermaId = crypto.randomUUID();
   const numero = siguienteNumeroDocumento(db, 'mermas_averias');
-  const costo = costoUnitario ?? producto.costo_promedio;
-  db.prepare(
-    `INSERT INTO mermas_averias (id, numero, almacen_id, producto_id, cantidad, costo_unitario, motivo, fecha, usuario_id)
-     VALUES (?, ?, ?, ?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%fZ','now'), ?)`
-  ).run(mermaId, numero, almacenId, productoId, cantidad, costo, motivo, usuarioId);
-
-  registrarMovimientoInventario(db, {
-    productoId, almacenId, tipoMovimiento: 'merma', cantidad: -Math.abs(cantidad), costoUnitario: costo,
-    documentoOrigenTipo: 'mermas_averias', documentoOrigenId: mermaId, usuarioId,
+  // Primero el movimiento: con PEPS o lote elegido, el costo real sale de las capas consumidas.
+  const movimiento = registrarMovimientoInventario(db, {
+    productoId, almacenId, tipoMovimiento: 'merma', cantidad: -Math.abs(cantidad), costoUnitario: costoUnitario ?? producto.costo_promedio,
+    loteId: loteId || null, documentoOrigenTipo: 'mermas_averias', documentoOrigenId: mermaId, usuarioId,
   });
+  db.prepare(
+    `INSERT INTO mermas_averias (id, numero, almacen_id, producto_id, lote_id, cantidad, costo_unitario, motivo, fecha, usuario_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%fZ','now'), ?)`
+  ).run(mermaId, numero, almacenId, productoId, movimiento.piezas[0].loteId, cantidad, movimiento.costoUnitario, motivo, usuarioId);
 
   auditoria().registrarAuditoria(db, { usuarioId, modulo: 'inventario', entidad: 'mermas_averias', entidadId: mermaId, accion: 'crear', detalle: { numero, motivo, cantidad } });
   return mermaId;
@@ -473,8 +798,9 @@ function crearMerma(db, { almacenId, productoId, cantidad, costoUnitario, motivo
 function listarMermas(db, { limite = 50 } = {}) {
   return db
     .prepare(
-      `SELECT m.*, p.descripcion AS producto_descripcion, al.nombre AS almacen_nombre
+      `SELECT m.*, p.descripcion AS producto_descripcion, al.nombre AS almacen_nombre, l.numero_lote
        FROM mermas_averias m JOIN productos p ON p.id = m.producto_id JOIN almacenes al ON al.id = m.almacen_id
+       LEFT JOIN lotes l ON l.id = m.lote_id
        ORDER BY m.fecha DESC LIMIT ?`
     )
     .all(limite);
@@ -507,16 +833,22 @@ function crearTransferencia(db, { almacenOrigenId, almacenDestinoId, lineas, usu
       throw new Error(`Existencia insuficiente de "${producto.descripcion}" en el almacén de origen (disponible: ${disponible})`);
     }
 
+    if (producto.es_kit) throw new Error(`"${producto.descripcion}" es un kit: transfiera sus componentes`);
+
     insertDetalle.run(crypto.randomUUID(), transferenciaId, l.productoId, l.cantidad);
-    registrarMovimientoInventario(db, {
+    const salida = registrarMovimientoInventario(db, {
       productoId: l.productoId, almacenId: almacenOrigenId, tipoMovimiento: 'transferencia_salida',
-      cantidad: -l.cantidad, costoUnitario: producto.costo_promedio, documentoOrigenTipo: 'transferencias_almacen',
-      documentoOrigenId: transferenciaId, usuarioId,
+      cantidad: -l.cantidad, costoUnitario: producto.costo_promedio, loteId: l.loteId || null,
+      documentoOrigenTipo: 'transferencias_almacen', documentoOrigenId: transferenciaId, usuarioId,
     });
+    // Entra al destino con los mismos lotes, vencimientos y costos con que salió del origen.
     registrarMovimientoInventario(db, {
       productoId: l.productoId, almacenId: almacenDestinoId, tipoMovimiento: 'transferencia_entrada',
-      cantidad: l.cantidad, costoUnitario: producto.costo_promedio, documentoOrigenTipo: 'transferencias_almacen',
-      documentoOrigenId: transferenciaId, usuarioId,
+      cantidad: l.cantidad, capas: salida.piezas.map((p) => {
+        const capa = p.loteId ? db.prepare('SELECT numero_lote, fecha_vencimiento FROM lotes WHERE id = ?').get(p.loteId) : null;
+        return { numeroLote: capa && capa.numero_lote, fechaVencimiento: capa && capa.fecha_vencimiento, cantidad: -p.cantidad, costoUnitario: p.costoUnitario };
+      }),
+      documentoOrigenTipo: 'transferencias_almacen', documentoOrigenId: transferenciaId, usuarioId,
     });
   }
 
@@ -560,6 +892,7 @@ function register(ipcMain, getDb) {
   ipcMain.handle('inventario:existencias', (event, filtros) => existenciasConsolidadas(getDb(), filtros || {}));
   ipcMain.handle('inventario:kardex', (event, filtros) => kardexPorProducto(getDb(), filtros));
   ipcMain.handle('inventario:vencimientos', () => productosPorVencer(getDb()));
+  ipcMain.handle('inventario:lotes', (event, filtros) => listarLotes(getDb(), filtros || {}));
 
   ipcMain.handle('inventario:crearAjuste', (event, payload) => {
     const db = getDb();
@@ -584,6 +917,8 @@ module.exports = {
   register, buscarProductos, obtenerProducto, obtenerProductoCompleto, listarProductos, guardarProducto,
   existenciaDisponible, existenciaDisponibleParaVenta, costoUnitarioVenta, registrarMovimientoInventario,
   moverInventarioPorVenta, kardexPorProducto, existenciasConsolidadas, productosPorVencer,
+  metodoValoracion, usaCapas, loteDeEntrada, reingresarSalidas, reingresarDocumento, reingresarVenta, retirarEntradas,
+  lotesCreadosPor, actualizarCostoCapa, refrescarCostoPeps, listarLotes,
   listarCategorias, listarUnidadesMedida, listarTasasItbis, listarAlmacenes, crearAlmacen,
   crearAjuste, listarAjustes, crearMerma, listarMermas, crearTransferencia, listarTransferencias,
 };

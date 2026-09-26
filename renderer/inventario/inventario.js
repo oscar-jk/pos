@@ -20,6 +20,29 @@ function fechaCorta(iso) {
   return new Date(iso).toLocaleDateString('es-DO', { day: '2-digit', month: '2-digit', year: 'numeric' });
 }
 
+// Fechas sin hora (vencimientos): new Date('2026-12-31') sería medianoche UTC y en RD
+// mostraría el día anterior.
+function fechaSimple(aaaammdd) {
+  return aaaammdd ? aaaammdd.slice(0, 10).split('-').reverse().join('/') : '—';
+}
+
+function esc(texto) {
+  return String(texto ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+// --- Lotes ---
+
+async function lotesDe(productoId, almacenId) {
+  return window.puntoXInventario.lotes ? window.puntoXInventario.lotes({ productoId, almacenId }) : [];
+}
+
+function selectorLote(lotes, seleccionado, atributos) {
+  return `<select ${atributos}>
+    <option value="">Automático (el que vence primero)</option>
+    ${lotes.map((l) => `<option value="${l.lote_id}" ${l.lote_id === seleccionado ? 'selected' : ''}>${esc(l.numero_lote)}${l.fecha_vencimiento ? ` · vence ${fechaSimple(l.fecha_vencimiento)}` : ''} · ${l.cantidad} disp.</option>`).join('')}
+  </select>`;
+}
+
 // --- Pestañas ---
 
 const ACCIONES_TAB = {
@@ -101,8 +124,9 @@ async function abrirFormularioProducto(productoId) {
       <div class="form-field"><label>Tasa de ITBIS *</label><select id="f-tasa">${opciones(state.tasas, producto ? producto.tasa_itbis_id : state.tasas.find((t) => t.es_default)?.id, (t) => `${t.nombre} (${(t.porcentaje * 100).toFixed(0)}%)`)}</select></div>
       <div class="form-field"><label>Método de valoración</label>
         <select id="f-metodo">
+          <option value="heredado" ${!producto || producto.metodo_valoracion === 'heredado' ? 'selected' : ''}>Según la configuración general</option>
           <option value="promedio_ponderado" ${producto?.metodo_valoracion === 'promedio_ponderado' ? 'selected' : ''}>Promedio ponderado</option>
-          <option value="peps" ${producto?.metodo_valoracion === 'peps' ? 'selected' : ''}>PEPS (no implementado aún — se usa promedio)</option>
+          <option value="peps" ${producto?.metodo_valoracion === 'peps' ? 'selected' : ''}>PEPS (primero en entrar, primero en salir)</option>
         </select>
       </div>
       <div class="form-field"><label>Precio detalle (ITBIS incluido) *</label><input id="f-precio-detalle" type="number" step="0.01" value="${producto ? producto.precio_detalle : ''}" /></div>
@@ -280,14 +304,15 @@ async function verKardex(productoId, nombre) {
   const movimientos = await window.puntoXInventario.kardex({ productoId });
   window.PuntoXModal.abrirModal(`Kardex — ${nombre}`, `
     <table class="data-table">
-      <thead><tr><th>Fecha</th><th>Tipo</th><th>Almacén</th><th>Cantidad</th><th>Costo</th><th>Saldo</th></tr></thead>
+      <thead><tr><th>Fecha</th><th>Tipo</th><th>Almacén</th><th>Lote</th><th>Cantidad</th><th>Costo</th><th>Saldo</th></tr></thead>
       <tbody>
-        ${movimientos.length === 0 ? '<tr><td colspan="6" style="text-align:center; color:var(--color-text-faint);">Sin movimientos</td></tr>' : ''}
+        ${movimientos.length === 0 ? '<tr><td colspan="7" style="text-align:center; color:var(--color-text-faint);">Sin movimientos</td></tr>' : ''}
         ${movimientos.map((m) => `
           <tr>
             <td>${new Date(m.created_at).toLocaleString('es-DO', { dateStyle: 'short', timeStyle: 'short' })}</td>
             <td>${m.tipo_movimiento}</td>
             <td>${m.almacen_nombre}</td>
+            <td>${m.numero_lote ? esc(m.numero_lote) : '—'}</td>
             <td style="color:${m.cantidad < 0 ? 'var(--color-danger)' : 'var(--color-success)'};">${m.cantidad > 0 ? '+' : ''}${m.cantidad}</td>
             <td>RD$ ${fmt(m.costo_unitario)}</td>
             <td>${m.saldo_cantidad}</td>
@@ -358,19 +383,40 @@ async function abrirFormularioAjuste() {
     </div>
   `);
 
+  // Productos con lote: en una entrada se indica el lote (y su vencimiento); en una salida se
+  // puede elegir de qué lote sale.
+  function campoLote(l, i) {
+    if (!l.controlaLote) return '';
+    if (document.getElementById('fa-tipo').value === 'entrada') {
+      return `<input placeholder="Lote *" data-lote="${i}" value="${esc(l.numeroLote || '')}" style="width:110px;" />
+        <input type="date" data-vence="${i}" value="${l.fechaVencimiento || ''}" title="Vencimiento" style="width:140px;" />`;
+    }
+    return selectorLote(l.lotes || [], l.loteId, `data-lote-sel="${i}" style="width:230px;"`);
+  }
   function renderLineas() {
     document.getElementById('fa-lineas').innerHTML = lineas.length === 0
       ? '<div class="empty-state" style="padding:10px;">Agrega productos con el buscador de arriba.</div>'
       : lineas.map((l, i) => `
         <div class="linea-dinamica">
           <span style="flex-grow:1; font-size:13px;">${l.descripcion}</span>
+          ${campoLote(l, i)}
           <input type="number" step="0.01" value="${l.cantidad}" data-i="${i}" style="width:80px;" />
           <span class="carrito-quitar" data-quitar="${i}">✕</span>
         </div>
       `).join('');
-    contenido.querySelectorAll('#fa-lineas input').forEach((inp) => inp.addEventListener('input', (e) => { lineas[Number(e.target.dataset.i)].cantidad = parseFloat(e.target.value) || 1; }));
+    contenido.querySelectorAll('#fa-lineas input[data-i]').forEach((inp) => inp.addEventListener('input', (e) => { lineas[Number(e.target.dataset.i)].cantidad = parseFloat(e.target.value) || 1; }));
+    contenido.querySelectorAll('#fa-lineas [data-lote]').forEach((inp) => inp.addEventListener('input', (e) => { lineas[Number(e.target.dataset.lote)].numeroLote = e.target.value; }));
+    contenido.querySelectorAll('#fa-lineas [data-vence]').forEach((inp) => inp.addEventListener('input', (e) => { lineas[Number(e.target.dataset.vence)].fechaVencimiento = e.target.value; }));
+    contenido.querySelectorAll('#fa-lineas [data-lote-sel]').forEach((sel) => sel.addEventListener('change', (e) => { lineas[Number(e.target.dataset.loteSel)].loteId = e.target.value || null; }));
     contenido.querySelectorAll('[data-quitar]').forEach((el) => el.addEventListener('click', () => { lineas.splice(Number(el.dataset.quitar), 1); renderLineas(); }));
   }
+  async function recargarLotes() {
+    const almacenId = document.getElementById('fa-almacen').value;
+    for (const l of lineas.filter((x) => x.controlaLote)) { l.lotes = await lotesDe(l.productoId, almacenId); l.loteId = null; }
+    renderLineas();
+  }
+  document.getElementById('fa-tipo').addEventListener('change', renderLineas);
+  document.getElementById('fa-almacen').addEventListener('change', recargarLotes);
   renderLineas();
 
   let timeoutBuscar = null;
@@ -382,9 +428,10 @@ async function abrirFormularioAjuste() {
     timeoutBuscar = setTimeout(async () => {
       const encontrados = await window.puntoXInventario.buscarProductos({ texto, almacenId: document.getElementById('fa-almacen').value, limite: 10 });
       resultados.innerHTML = encontrados.map((p, i) => `<div class="buscador-resultados__item" data-i="${i}"><div class="buscador-resultados__nombre">${p.descripcion}</div><div class="buscador-resultados__meta">${p.codigo_interno} · Disp: ${p.cantidad_disponible}</div></div>`).join('') || '<div class="buscador-resultados__vacio">Sin resultados</div>';
-      resultados.querySelectorAll('[data-i]').forEach((el) => el.addEventListener('click', () => {
+      resultados.querySelectorAll('[data-i]').forEach((el) => el.addEventListener('click', async () => {
         const p = encontrados[Number(el.dataset.i)];
-        lineas.push({ productoId: p.id, descripcion: p.descripcion, cantidad: 1, costoUnitario: p.costo_promedio });
+        const lotes = p.controla_lote ? await lotesDe(p.id, document.getElementById('fa-almacen').value) : [];
+        lineas.push({ productoId: p.id, descripcion: p.descripcion, cantidad: 1, costoUnitario: p.costo_promedio, controlaLote: Boolean(p.controla_lote), lotes });
         renderLineas();
         resultados.style.display = 'none';
         e.target.value = '';
@@ -401,7 +448,10 @@ async function abrirFormularioAjuste() {
         tipo: document.getElementById('fa-tipo').value,
         motivo: document.getElementById('fa-motivo').value,
         motivoDetalle: document.getElementById('fa-motivo-detalle').value || null,
-        lineas: lineas.map((l) => ({ productoId: l.productoId, cantidad: l.cantidad, costoUnitario: l.costoUnitario })),
+        lineas: lineas.map((l) => ({
+          productoId: l.productoId, cantidad: l.cantidad, costoUnitario: l.costoUnitario,
+          numeroLote: l.numeroLote || null, fechaVencimiento: l.fechaVencimiento || null, loteId: l.loteId || null,
+        })),
         usuarioId: state.info.usuario.id,
       });
       window.PuntoXModal.cerrarModal();
@@ -418,7 +468,7 @@ async function cargarMermas() {
   const mermas = await window.puntoXInventario.listarMermas({});
   document.getElementById('mermas-vacio').style.display = mermas.length === 0 ? 'block' : 'none';
   document.getElementById('mermas-tbody').innerHTML = mermas.map((m) => `
-    <tr><td>${m.numero}</td><td>${m.producto_descripcion}</td><td>${m.almacen_nombre}</td><td>${m.cantidad}</td><td>${m.motivo}</td><td>${fechaCorta(m.fecha)}</td></tr>
+    <tr><td>${m.numero}</td><td>${m.producto_descripcion}${m.numero_lote ? ` <span style="color:var(--color-text-muted);">· lote ${esc(m.numero_lote)}</span>` : ''}</td><td>${m.almacen_nombre}</td><td>${m.cantidad}</td><td>${m.motivo}</td><td>${fechaCorta(m.fecha)}</td></tr>
   `).join('');
 }
 
@@ -437,6 +487,7 @@ async function abrirFormularioMerma() {
       </div>
       <div id="fm-seleccionado" style="margin-top:6px; font-size:13px; font-weight:600;"></div>
     </div>
+    <div class="form-field" id="fm-campo-lote" style="margin-top:10px; display:none;"><label>Lote</label><div id="fm-lote"></div></div>
     <div class="form-field" style="margin-top:10px;"><label>Motivo *</label><input id="fm-motivo" placeholder="Ej: caja dañada en almacén" /></div>
     <div class="form-seccion" style="display:flex; justify-content:flex-end; gap:8px;">
       <button type="button" class="btn btn-secundario" id="fm-cancelar">Cancelar</button>
@@ -458,10 +509,21 @@ async function abrirFormularioMerma() {
         document.getElementById('fm-seleccionado').textContent = `Seleccionado: ${productoSel.descripcion}`;
         resultados.style.display = 'none';
         e.target.value = '';
+        mostrarLotesMerma();
       }));
       resultados.style.display = 'block';
     }, 200);
   });
+
+  // Con lote: se elige cuál se daña o vence (p. ej. el lote vencido que se descarta).
+  async function mostrarLotesMerma() {
+    const campo = document.getElementById('fm-campo-lote');
+    campo.style.display = productoSel && productoSel.controla_lote ? 'block' : 'none';
+    if (!productoSel || !productoSel.controla_lote) return;
+    const lotes = await lotesDe(productoSel.id, document.getElementById('fm-almacen').value);
+    document.getElementById('fm-lote').innerHTML = selectorLote(lotes, null, 'id="fm-lote-sel" class="input-normal"');
+  }
+  document.getElementById('fm-almacen').addEventListener('change', mostrarLotesMerma);
 
   document.getElementById('fm-cancelar').addEventListener('click', window.PuntoXModal.cerrarModal);
   document.getElementById('fm-guardar').addEventListener('click', async () => {
@@ -470,6 +532,7 @@ async function abrirFormularioMerma() {
       await window.puntoXInventario.crearMerma({
         almacenId: document.getElementById('fm-almacen').value,
         productoId: productoSel.id,
+        loteId: document.getElementById('fm-lote-sel')?.value || null,
         cantidad: parseFloat(document.getElementById('fm-cantidad').value) || 1,
         costoUnitario: productoSel.costo_promedio,
         motivo: document.getElementById('fm-motivo').value,
@@ -521,13 +584,20 @@ async function abrirFormularioTransferencia() {
       : lineas.map((l, i) => `
         <div class="linea-dinamica">
           <span style="flex-grow:1; font-size:13px;">${l.descripcion}</span>
+          ${l.controlaLote ? selectorLote(l.lotes || [], l.loteId, `data-lote-sel="${i}" style="width:230px;"`) : ''}
           <input type="number" step="0.01" value="${l.cantidad}" data-i="${i}" style="width:80px;" />
           <span class="carrito-quitar" data-quitar="${i}">✕</span>
         </div>
       `).join('');
-    contenido.querySelectorAll('#ft-lineas input').forEach((inp) => inp.addEventListener('input', (e) => { lineas[Number(e.target.dataset.i)].cantidad = parseFloat(e.target.value) || 1; }));
+    contenido.querySelectorAll('#ft-lineas input[data-i]').forEach((inp) => inp.addEventListener('input', (e) => { lineas[Number(e.target.dataset.i)].cantidad = parseFloat(e.target.value) || 1; }));
+    contenido.querySelectorAll('#ft-lineas [data-lote-sel]').forEach((sel) => sel.addEventListener('change', (e) => { lineas[Number(e.target.dataset.loteSel)].loteId = e.target.value || null; }));
     contenido.querySelectorAll('[data-quitar]').forEach((el) => el.addEventListener('click', () => { lineas.splice(Number(el.dataset.quitar), 1); renderLineas(); }));
   }
+  document.getElementById('ft-origen').addEventListener('change', async () => {
+    const almacenId = document.getElementById('ft-origen').value;
+    for (const l of lineas.filter((x) => x.controlaLote)) { l.lotes = await lotesDe(l.productoId, almacenId); l.loteId = null; }
+    renderLineas();
+  });
   renderLineas();
 
   let timeoutBuscar = null;
@@ -539,9 +609,10 @@ async function abrirFormularioTransferencia() {
     timeoutBuscar = setTimeout(async () => {
       const encontrados = await window.puntoXInventario.buscarProductos({ texto, almacenId: document.getElementById('ft-origen').value, limite: 10 });
       resultados.innerHTML = encontrados.map((p, i) => `<div class="buscador-resultados__item" data-i="${i}"><div class="buscador-resultados__nombre">${p.descripcion}</div><div class="buscador-resultados__meta">${p.codigo_interno} · Disp: ${p.cantidad_disponible}</div></div>`).join('') || '<div class="buscador-resultados__vacio">Sin resultados</div>';
-      resultados.querySelectorAll('[data-i]').forEach((el) => el.addEventListener('click', () => {
+      resultados.querySelectorAll('[data-i]').forEach((el) => el.addEventListener('click', async () => {
         const p = encontrados[Number(el.dataset.i)];
-        lineas.push({ productoId: p.id, descripcion: p.descripcion, cantidad: 1 });
+        const lotes = p.controla_lote ? await lotesDe(p.id, document.getElementById('ft-origen').value) : [];
+        lineas.push({ productoId: p.id, descripcion: p.descripcion, cantidad: 1, controlaLote: Boolean(p.controla_lote), lotes });
         renderLineas();
         resultados.style.display = 'none';
         e.target.value = '';
@@ -556,7 +627,7 @@ async function abrirFormularioTransferencia() {
       await window.puntoXInventario.crearTransferencia({
         almacenOrigenId: document.getElementById('ft-origen').value,
         almacenDestinoId: document.getElementById('ft-destino').value,
-        lineas: lineas.map((l) => ({ productoId: l.productoId, cantidad: l.cantidad })),
+        lineas: lineas.map((l) => ({ productoId: l.productoId, cantidad: l.cantidad, loteId: l.loteId || null })),
         usuarioId: state.info.usuario.id,
       });
       window.PuntoXModal.cerrarModal();
@@ -569,17 +640,33 @@ async function abrirFormularioTransferencia() {
 
 // --- Vencimientos ---
 
+function diasRestantes(l) {
+  if (!l.fecha_vencimiento) return '<span style="color:var(--color-text-faint);">No vence</span>';
+  if (l.dias_restantes < 0) return `<span style="color:var(--color-danger); font-weight:700;">Vencido hace ${-l.dias_restantes} días</span>`;
+  if (l.dias_restantes === 0) return '<span style="color:var(--color-danger); font-weight:700;">Vence hoy</span>';
+  return `<span style="color:${l.dias_restantes <= 30 ? 'var(--color-warning)' : 'inherit'};">${l.dias_restantes} días</span>`;
+}
+
 async function cargarVencimientos() {
-  const lotes = await window.puntoXInventario.vencimientos();
-  document.getElementById('vencimientos-vacio').style.display = lotes.length === 0 ? 'block' : 'none';
+  const vista = document.getElementById('lotes-vista').value;
+  const filtro = document.getElementById('lotes-buscar').value.trim().toLowerCase();
+  const todos = vista === 'todos' && window.puntoXInventario.lotes
+    ? await window.puntoXInventario.lotes({})
+    : await window.puntoXInventario.vencimientos();
+  const lotes = todos.filter((l) => !filtro || `${l.descripcion} ${l.codigo_interno || ''} ${l.numero_lote}`.toLowerCase().includes(filtro));
+  const vacio = document.getElementById('vencimientos-vacio');
+  vacio.textContent = vista === 'todos' ? 'No hay lotes con existencia.' : 'No hay productos próximos a vencer.';
+  vacio.style.display = lotes.length === 0 ? 'block' : 'none';
   document.getElementById('vencimientos-tbody').innerHTML = lotes.map((l) => `
     <tr>
-      <td>${l.descripcion}</td><td>${l.numero_lote}</td><td>${l.almacen_nombre}</td><td>${l.cantidad}</td>
-      <td>${fechaCorta(l.fecha_vencimiento)}</td>
-      <td style="color:${l.dias_restantes < 0 ? 'var(--color-danger)' : 'var(--color-warning)'};">${l.dias_restantes < 0 ? 'Vencido' : l.dias_restantes + ' días'}</td>
+      <td>${esc(l.descripcion)}</td><td>${esc(l.numero_lote)}</td><td>${esc(l.almacen_nombre)}</td><td>${l.cantidad}</td>
+      <td>${fechaSimple(l.fecha_vencimiento)}</td>
+      <td>${diasRestantes(l)}</td>
     </tr>
   `).join('');
 }
+document.getElementById('lotes-vista').addEventListener('change', cargarVencimientos);
+document.getElementById('lotes-buscar').addEventListener('input', cargarVencimientos);
 
 // --- Inicialización ---
 

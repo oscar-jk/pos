@@ -28,7 +28,7 @@
         <button class="tab-btn" data-tab="ajustes">Ajustes</button>
         <button class="tab-btn" data-tab="mermas">Mermas y averías</button>
         <button class="tab-btn" data-tab="transferencias">Transferencias</button>
-        <button class="tab-btn" data-tab="vencimientos">Vencimientos</button>
+        <button class="tab-btn" data-tab="vencimientos">Lotes y vencimientos</button>
       </div>
 
       <div id="tab-productos" class="tab-panel">
@@ -82,6 +82,13 @@
       </div>
 
       <div id="tab-vencimientos" class="tab-panel" style="display:none;">
+        <div style="display:flex; gap:8px; margin-bottom:12px;">
+          <select id="lotes-vista" class="input-normal" style="max-width:260px;">
+            <option value="alerta">Próximos a vencer y vencidos</option>
+            <option value="todos">Todos los lotes con existencia</option>
+          </select>
+          <input id="lotes-buscar" class="input-normal" type="text" placeholder="Filtrar por producto o lote..." style="max-width:280px;" />
+        </div>
         <table class="data-table">
           <thead>
             <tr><th>Producto</th><th>Lote</th><th>Almacén</th><th>Cantidad</th><th>Vence</th><th>Días restantes</th></tr>

@@ -222,20 +222,18 @@ function crearFactura(db, payload) {
   const costoConducePorProducto = conduces ? costoPromedioConduces(db, conduces) : null;
   let costoTotal = 0;
   for (const l of lineasCalculadas) {
-    const costoUnitarioLinea = costoConducePorProducto
-      ? costoConducePorProducto.get(l.producto.id)
-      : inventario.costoUnitarioVenta(db, l.producto);
-    insertDetalle.run(
-      crypto.randomUUID(), documentoId, l.producto.id, l.cantidad, l.precioUnitario, l.descuentoPct,
-      l.descuentoMonto, l.tasaItbis, l.baseImponible, l.itbisMonto, l.totalLinea, costoUnitarioLinea
-    );
-    if (!conduces) {
-      inventario.moverInventarioPorVenta(db, {
+    // El costo de la línea es el real de lo que salió (con PEPS, el de las capas consumidas).
+    const costoLinea = costoConducePorProducto
+      ? costoConducePorProducto.get(l.producto.id) * l.cantidad
+      : inventario.moverInventarioPorVenta(db, {
         producto: l.producto, almacenId, cantidad: -l.cantidad, documentoOrigenTipo: 'documentos_venta',
         documentoOrigenId: documentoId, usuarioId,
       });
-    }
-    costoTotal += costoUnitarioLinea * l.cantidad;
+    insertDetalle.run(
+      crypto.randomUUID(), documentoId, l.producto.id, l.cantidad, l.precioUnitario, l.descuentoPct,
+      l.descuentoMonto, l.tasaItbis, l.baseImponible, l.itbisMonto, l.totalLinea, redondear(costoLinea / l.cantidad)
+    );
+    costoTotal += costoLinea;
   }
   costoTotal = redondear(costoTotal);
 
@@ -407,11 +405,12 @@ function insertarDocumentoSinFiscal(db, { tipo, estado, sucursalId, almacenId, c
   );
   const lineas = calculo.lineasCalculadas.map((l) => {
     const costoUnitario = inventario.costoUnitarioVenta(db, l.producto);
+    const detalleId = crypto.randomUUID();
     insertDetalle.run(
-      crypto.randomUUID(), documentoId, l.producto.id, l.cantidad, l.precioUnitario, l.descuentoPct,
+      detalleId, documentoId, l.producto.id, l.cantidad, l.precioUnitario, l.descuentoPct,
       l.descuentoMonto, l.tasaItbis, l.baseImponible, l.itbisMonto, l.totalLinea, costoUnitario
     );
-    return { ...l, costoUnitario };
+    return { ...l, costoUnitario, detalleId };
   });
   return { documentoId, numero, fechaIso, lineas };
 }
@@ -445,11 +444,13 @@ function crearConduce(db, { sucursalId, almacenId, clienteId, vendedorId, usuari
     tipo: 'conduce', estado: 'entregado', sucursalId, almacenId, clienteId, vendedorId, calculo, concepto, usuarioId,
   });
   let costoTotal = 0;
+  const guardarCosto = db.prepare('UPDATE documentos_venta_detalle SET costo_unitario = ? WHERE id = ?');
   for (const l of insertadas) {
-    inventario.moverInventarioPorVenta(db, {
+    const costoLinea = inventario.moverInventarioPorVenta(db, {
       producto: l.producto, almacenId, cantidad: -l.cantidad, documentoOrigenTipo: 'documentos_venta', documentoOrigenId: documentoId, usuarioId,
     });
-    costoTotal += l.costoUnitario * l.cantidad;
+    guardarCosto.run(redondear(costoLinea / l.cantidad), l.detalleId);
+    costoTotal += costoLinea;
   }
   costoTotal = redondear(costoTotal);
   if (costoTotal > 0) {
@@ -501,12 +502,10 @@ function anularConduce(db, { documentoId, motivo, usuarioId }) {
   if (!motivo || !motivo.trim()) throw new Error('La anulación requiere un motivo');
   db.prepare("UPDATE documentos_venta SET estado = 'anulado', motivo_anulacion = ?, usuario_anulo_id = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?")
     .run(motivo.trim(), usuarioId, documentoId);
-  for (const l of detalleDocumento(db, documentoId)) {
-    const producto = db.prepare('SELECT * FROM productos WHERE id = ?').get(l.producto_id);
-    inventario.moverInventarioPorVenta(db, {
-      producto, almacenId: conduce.almacen_id, cantidad: l.cantidad, documentoOrigenTipo: 'documentos_venta_anulacion', documentoOrigenId: documentoId, usuarioId,
-    });
-  }
+  inventario.reingresarDocumento(db, {
+    origenTipo: 'documentos_venta', origenId: documentoId, almacenId: conduce.almacen_id, tipoMovimiento: 'ajuste_entrada',
+    documentoOrigenTipo: 'documentos_venta_anulacion', documentoOrigenId: documentoId, usuarioId,
+  });
   revertirAsientosDocumento(db, documentoId, 'documentos_venta_anulacion', usuarioId);
   configuracion.registrarAuditoria(db, { usuarioId, modulo: 'ventas', entidad: 'documentos_venta', entidadId: documentoId, accion: 'anular', detalle: { tipo: 'conduce', numero: conduce.numero, motivo } });
 }
@@ -685,6 +684,14 @@ function anularFactura(db, { documentoId, motivo, usuarioId }) {
   if (!documento) throw new Error('Factura no encontrada');
   if (documento.estado === 'anulado') throw new Error('La factura ya está anulada');
   if (!motivo || !motivo.trim()) throw new Error('La anulación requiere un motivo');
+  // Una devolución ya reingresó mercancía y acreditó al cliente: anular la factura encima la
+  // devolvería dos veces.
+  const notas = db
+    .prepare("SELECT numero FROM documentos_venta WHERE documento_referencia_id = ? AND tipo = 'nota_credito' AND estado != 'anulado' AND deleted_at IS NULL")
+    .all(documentoId);
+  if (notas.length > 0) {
+    throw new Error(`La factura tiene devoluciones activas (nota de crédito ${notas.map((n) => n.numero).join(', ')}). Anúlelas primero.`);
+  }
 
   db.prepare(
     `UPDATE documentos_venta SET estado = 'anulado', motivo_anulacion = ?, usuario_anulo_id = ?,
@@ -703,13 +710,11 @@ function anularFactura(db, { documentoId, motivo, usuarioId }) {
        updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE documento_venta_id = ?`
   ).run(documentoId);
 
-  // Revertir inventario: reingresa cada línea vendida (a los componentes, si era un kit). Si la
+  // Revertir inventario: reingresa lo que salió, a los mismos lotes y al mismo costo. Si la
   // factura venía de conduces, la mercancía salió con el conduce, que sigue vigente: no se toca.
-  const detalle = db.prepare('SELECT * FROM documentos_venta_detalle WHERE documento_id = ?').all(documentoId);
-  for (const l of deConduces ? [] : detalle) {
-    const producto = db.prepare('SELECT * FROM productos WHERE id = ?').get(l.producto_id);
-    inventario.moverInventarioPorVenta(db, {
-      producto, almacenId: documento.almacen_id, cantidad: l.cantidad,
+  if (!deConduces) {
+    inventario.reingresarDocumento(db, {
+      origenTipo: 'documentos_venta', origenId: documentoId, almacenId: documento.almacen_id, tipoMovimiento: 'ajuste_entrada',
       documentoOrigenTipo: 'documentos_venta_anulacion', documentoOrigenId: documentoId, usuarioId,
     });
   }
@@ -760,6 +765,12 @@ function anularFactura(db, { documentoId, motivo, usuarioId }) {
 // No se le asigna NCF propio — el documento fuente no detalla la secuencia fiscal (B04) para
 // notas de crédito, y CLAUDE.md prohíbe improvisar reglas de NCF/e-CF no explícitas.
 // =========================================================================
+
+// Documentos con los que salió del inventario lo facturado: la factura misma o sus conduces.
+function origenesInventarioFactura(db, facturaId) {
+  const conduces = db.prepare("SELECT id FROM documentos_venta WHERE facturado_en_id = ? AND tipo = 'conduce'").all(facturaId);
+  return conduces.length > 0 ? conduces.map((c) => c.id) : [facturaId];
+}
 
 function crearNotaCredito(db, { facturaOrigenId, lineas, motivo, cajaId, usuarioId }) {
   session.requerirPermiso('ventas.devolucion.crear');
@@ -823,17 +834,19 @@ function crearNotaCredito(db, { facturaOrigenId, lineas, motivo, cajaId, usuario
 
   let costoTotal = 0;
   for (const l of lineasCalculadas) {
-    insertDetalle.run(
-      crypto.randomUUID(), documentoId, l.detalleOriginal.producto_id, l.cantidad,
-      l.detalleOriginal.precio_unitario, l.detalleOriginal.tasa_itbis, l.baseImponible, l.itbisMonto, l.totalLinea, l.costoUnitario
-    );
+    // Reingresa a los lotes y al costo con que salió en la factura (si la factura vino de
+    // conduces, lo que salió fue con los conduces).
     const producto = db.prepare('SELECT * FROM productos WHERE id = ?').get(l.detalleOriginal.producto_id);
-    inventario.moverInventarioPorVenta(db, {
-      producto, almacenId: factura.almacen_id, cantidad: l.cantidad, // positivo = reingresa
+    const costoLinea = inventario.reingresarVenta(db, {
+      producto, cantidad: l.cantidad, origenIds: origenesInventarioFactura(db, facturaOrigenId), almacenId: factura.almacen_id,
       documentoOrigenTipo: 'documentos_venta', documentoOrigenId: documentoId, usuarioId,
     });
+    insertDetalle.run(
+      crypto.randomUUID(), documentoId, l.detalleOriginal.producto_id, l.cantidad,
+      l.detalleOriginal.precio_unitario, l.detalleOriginal.tasa_itbis, l.baseImponible, l.itbisMonto, l.totalLinea, redondear(costoLinea / l.cantidad)
+    );
     sumarDevueltoOriginal.run(l.cantidad, l.detalleOriginal.id);
-    costoTotal += l.costoUnitario * l.cantidad;
+    costoTotal += costoLinea;
   }
   costoTotal = redondear(costoTotal);
 
@@ -899,13 +912,21 @@ function anularNotaCredito(db, { documentoId, motivo, usuarioId }) {
   ).run(motivo, usuarioId, documentoId);
 
   // Revertir: la mercancía devuelta vuelve a salir, y la línea original deja de contarla como devuelta.
+  // Lo que la nota reingresó (componentes, si eran kits) sale de los mismos lotes.
+  const reingresado = db
+    .prepare(
+      `SELECT producto_id, SUM(cantidad) AS cantidad FROM kardex_movimientos
+       WHERE documento_origen_tipo = 'documentos_venta' AND documento_origen_id = ? AND cantidad > 0 GROUP BY producto_id`
+    )
+    .all(documentoId);
+  for (const r of reingresado) {
+    inventario.retirarEntradas(db, {
+      origenTipo: 'documentos_venta', origenId: documentoId, productoId: r.producto_id, almacenId: nota.almacen_id, cantidad: r.cantidad,
+      tipoMovimiento: 'salida_venta', documentoOrigenTipo: 'documentos_venta_anulacion', documentoOrigenId: documentoId, usuarioId,
+    });
+  }
   const detalle = db.prepare('SELECT * FROM documentos_venta_detalle WHERE documento_id = ?').all(documentoId);
   for (const l of detalle) {
-    const producto = db.prepare('SELECT * FROM productos WHERE id = ?').get(l.producto_id);
-    inventario.moverInventarioPorVenta(db, {
-      producto, almacenId: nota.almacen_id, cantidad: -l.cantidad,
-      documentoOrigenTipo: 'documentos_venta_anulacion', documentoOrigenId: documentoId, usuarioId,
-    });
     if (nota.documento_referencia_id) {
       db.prepare('UPDATE documentos_venta_detalle SET cantidad_devuelta = MAX(0, cantidad_devuelta - ?) WHERE documento_id = ? AND producto_id = ?')
         .run(l.cantidad, nota.documento_referencia_id, l.producto_id);

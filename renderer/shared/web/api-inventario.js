@@ -193,6 +193,7 @@
     },
 
     vencimientos: async () => [], // sin control de lotes en la versión web
+    lotes: async () => [],
 
     crearAjuste: async ({ almacenId, tipo, motivo, motivoDetalle, lineas, usuarioId }) => {
       const db = store.cargar();

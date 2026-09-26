@@ -176,7 +176,7 @@ function obtenerOrdenCompra(db, documentoId) {
     .get(documentoId);
   if (!documento) return null;
   documento.lineas = db
-    .prepare(`SELECT dcd.*, pr.descripcion AS producto_descripcion, pr.codigo_interno FROM documentos_compra_detalle dcd JOIN productos pr ON pr.id = dcd.producto_id WHERE dcd.documento_id = ?`)
+    .prepare(`SELECT dcd.*, pr.descripcion AS producto_descripcion, pr.codigo_interno, pr.controla_lote FROM documentos_compra_detalle dcd JOIN productos pr ON pr.id = dcd.producto_id WHERE dcd.documento_id = ?`)
     .all(documentoId)
     .map((l) => ({ ...l, pendiente: redondear(l.cantidad - l.cantidad_recibida) }));
   return documento;
@@ -234,10 +234,12 @@ function crearFacturaCompra(db, payload) {
   const lineasCalculadas = lineas.map((l) => {
     const producto = db.prepare('SELECT p.*, t.porcentaje AS tasa_itbis_pct FROM productos p JOIN tasas_itbis t ON t.id = p.tasa_itbis_id WHERE p.id = ?').get(l.productoId);
     if (!producto) throw new Error(`Producto ${l.productoId} no encontrado`);
+    if (producto.es_kit) throw new Error(`"${producto.descripcion}" es un kit: compre sus componentes`);
+    const lote = inventario.loteDeEntrada(producto, l);
     const baseImponible = redondear(l.costoUnitario * l.cantidad);
     const itbisMonto = redondear(baseImponible * producto.tasa_itbis_pct);
     const totalLinea = redondear(baseImponible + itbisMonto);
-    return { producto, cantidad: l.cantidad, costoUnitario: l.costoUnitario, tasaItbis: producto.tasa_itbis_pct, baseImponible, itbisMonto, totalLinea, ordenDetalleId: l.ordenDetalleId || null };
+    return { producto, lote, cantidad: l.cantidad, costoUnitario: l.costoUnitario, tasaItbis: producto.tasa_itbis_pct, baseImponible, itbisMonto, totalLinea, ordenDetalleId: l.ordenDetalleId || null };
   });
 
   const subtotal = redondear(lineasCalculadas.reduce((acc, l) => acc + l.baseImponible, 0));
@@ -277,16 +279,16 @@ function crearFacturaCompra(db, payload) {
 
   const insertDetalle = db.prepare(
     `INSERT INTO documentos_compra_detalle
-       (id, documento_id, producto_id, cantidad, cantidad_recibida, costo_unitario, tasa_itbis, itbis_monto, total_linea)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+       (id, documento_id, producto_id, lote_id, cantidad, cantidad_recibida, costo_unitario, tasa_itbis, itbis_monto, total_linea)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   );
   const sumarRecibidoOrden = db.prepare('UPDATE documentos_compra_detalle SET cantidad_recibida = cantidad_recibida + ? WHERE id = ?');
   for (const l of lineasCalculadas) {
-    insertDetalle.run(crypto.randomUUID(), documentoId, l.producto.id, l.cantidad, l.cantidad, l.costoUnitario, l.tasaItbis, l.itbisMonto, l.totalLinea);
-    inventario.registrarMovimientoInventario(db, {
-      productoId: l.producto.id, almacenId, tipoMovimiento: 'entrada_compra', cantidad: l.cantidad,
+    const entrada = inventario.registrarMovimientoInventario(db, {
+      productoId: l.producto.id, almacenId, tipoMovimiento: 'entrada_compra', cantidad: l.cantidad, lote: l.lote,
       costoUnitario: l.costoUnitario, documentoOrigenTipo: 'documentos_compra', documentoOrigenId: documentoId, usuarioId,
     });
+    insertDetalle.run(crypto.randomUUID(), documentoId, l.producto.id, entrada.piezas[0].loteId, l.cantidad, l.cantidad, l.costoUnitario, l.tasaItbis, l.itbisMonto, l.totalLinea);
     if (l.ordenDetalleId) sumarRecibidoOrden.run(l.cantidad, l.ordenDetalleId);
   }
   if (ordenCompraId) actualizarEstadoOrdenCompra(db, ordenCompraId);
@@ -344,10 +346,11 @@ function anularFacturaCompra(db, { documentoId, motivo, usuarioId }) {
 
   const detalle = db.prepare('SELECT * FROM documentos_compra_detalle WHERE documento_id = ?').all(documentoId);
   for (const l of detalle) {
-    inventario.registrarMovimientoInventario(db, {
-      productoId: l.producto_id, almacenId: documento.almacen_id, tipoMovimiento: 'ajuste_salida',
-      cantidad: -l.cantidad, costoUnitario: l.costo_unitario, documentoOrigenTipo: 'documentos_compra_anulacion',
-      documentoOrigenId: documentoId, usuarioId,
+    // Sale de los mismos lotes que entró la compra (si alguno ya se vendió, del orden normal).
+    inventario.retirarEntradas(db, {
+      origenTipo: 'documentos_compra', origenId: documentoId, productoId: l.producto_id, almacenId: documento.almacen_id,
+      cantidad: l.cantidad, costoUnitario: l.costo_unitario, tipoMovimiento: 'ajuste_salida',
+      documentoOrigenTipo: 'documentos_compra_anulacion', documentoOrigenId: documentoId, usuarioId,
     });
     // Si esta factura venía contra una orden de compra, revierte lo recibido en esa línea
     // (se empareja por producto dentro de la misma orden; no hay una columna que enlace
@@ -401,7 +404,7 @@ function obtenerFacturaCompra(db, documentoId) {
     .get(documentoId);
   if (!documento) return null;
   documento.lineas = db
-    .prepare(`SELECT dcd.*, p.descripcion AS producto_descripcion FROM documentos_compra_detalle dcd JOIN productos p ON p.id = dcd.producto_id WHERE dcd.documento_id = ?`)
+    .prepare(`SELECT dcd.*, p.descripcion AS producto_descripcion, l.numero_lote, l.fecha_vencimiento FROM documentos_compra_detalle dcd JOIN productos p ON p.id = dcd.producto_id LEFT JOIN lotes l ON l.id = dcd.lote_id WHERE dcd.documento_id = ?`)
     .all(documentoId);
   return documento;
 }
@@ -469,28 +472,69 @@ function actualizarCostoPromedio(db, productoId, costo) {
 // queda existencia, o el promedio quedaría negativo), la diferencia entre el valor que sale
 // del inventario y lo que acredita el proveedor va a Costo de Ventas.
 function aplicarDevolucion(db, { lineaFactura, cantidad, factura, documentoId, usuarioId }) {
-  const producto = db.prepare('SELECT costo_promedio FROM productos WHERE id = ?').get(lineaFactura.producto_id);
+  const producto = db.prepare('SELECT * FROM productos WHERE id = ?').get(lineaFactura.producto_id);
   const base = redondear(cantidad * lineaFactura.costo_unitario);
+  // La mercancía sale primero de los lotes que entró esta factura.
+  const salida = (costoUnitario) => inventario.retirarEntradas(db, {
+    origenTipo: 'documentos_compra', origenId: factura.id, productoId: lineaFactura.producto_id, almacenId: factura.almacen_id,
+    cantidad, costoUnitario, tipoMovimiento: 'devolucion_compra', documentoOrigenTipo: 'documentos_compra', documentoOrigenId: documentoId, usuarioId,
+  });
+
+  // PEPS: sale con el costo de sus capas; si las de esta compra ya se vendieron y salen otras
+  // más caras o más baratas, la diferencia con lo que acredita el proveedor va a Costo de Ventas.
+  if (inventario.metodoValoracion(db, producto) === 'peps') {
+    const valorSalida = salida().costoTotal;
+    return { base, montoInventario: valorSalida, montoCostoVentas: redondear(base - valorSalida) };
+  }
+
   const existenciaAntes = existenciaTotalProducto(db, lineaFactura.producto_id);
   const promedio = producto.costo_promedio || 0;
   const existenciaDespues = redondear(existenciaAntes - cantidad);
   const nuevoPromedio = existenciaDespues > 0 ? Math.max(0, redondear((existenciaAntes * promedio - base) / existenciaDespues)) : promedio;
   const valorSalida = redondear(existenciaAntes * promedio - Math.max(0, existenciaDespues) * nuevoPromedio);
 
-  inventario.registrarMovimientoInventario(db, {
-    productoId: lineaFactura.producto_id, almacenId: factura.almacen_id, tipoMovimiento: 'devolucion_compra',
-    cantidad: -cantidad, costoUnitario: lineaFactura.costo_unitario, documentoOrigenTipo: 'documentos_compra',
-    documentoOrigenId: documentoId, usuarioId,
-  });
+  salida(lineaFactura.costo_unitario);
   if (existenciaDespues > 0) actualizarCostoPromedio(db, lineaFactura.producto_id, nuevoPromedio);
   return { base, montoInventario: valorSalida, montoCostoVentas: redondear(base - valorSalida) };
+}
+
+// PEPS: un ajuste de precio de una compra cambia el costo de lo que queda de sus capas; la parte
+// ya vendida va a Costo de Ventas. montoConSigno > 0 sube el costo. Devuelve lo aplicado a
+// inventario (con signo), que es exactamente lo que cambió el valor de las capas.
+function ajustarCostoCapasCompra(db, { factura, lineaFactura, montoConSigno, proporcional = true, documentoOrigenTipo, documentoId, usuarioId }) {
+  const capas = inventario.lotesCreadosPor(db, { origenTipo: 'documentos_compra', origenId: factura.id, productoId: lineaFactura.producto_id })
+    .filter((c) => c.cantidad > 0);
+  const quedan = capas.reduce((a, c) => a + c.cantidad, 0);
+  const unidadesNetas = redondear(lineaFactura.cantidad - cantidadDevueltaLinea(db, lineaFactura.id));
+  if (quedan <= 0 || unidadesNetas <= 0) return 0;
+  // Al anular la nota se revierte exactamente lo que se aplicó (proporcional = false).
+  const aInventario = proporcional ? montoConSigno * Math.min(1, quedan / unidadesNetas) : montoConSigno;
+  let aplicado = 0;
+  for (const c of capas) {
+    const nuevoCosto = Math.max(0, Math.round((c.costo_unitario + aInventario / quedan) * 10000) / 10000);
+    aplicado += (nuevoCosto - c.costo_unitario) * c.cantidad;
+    inventario.actualizarCostoCapa(db, c.id, nuevoCosto);
+  }
+  const costoVigente = inventario.refrescarCostoPeps(db, lineaFactura.producto_id);
+  inventario.registrarMovimientoInventario(db, {
+    productoId: lineaFactura.producto_id, almacenId: factura.almacen_id, tipoMovimiento: 'ajuste_costo_compra',
+    cantidad: 0, costoUnitario: costoVigente || 0, documentoOrigenTipo, documentoOrigenId: documentoId, usuarioId,
+  });
+  return redondear(aplicado);
 }
 
 // Ajuste de costo (signo +1 nota de débito, −1 nota de crédito). La proporción que sigue en
 // existencia se estima como existencia actual ÷ unidades netas compradas en la factura (con
 // costo promedio no se puede saber qué unidades exactas se vendieron).
 function aplicarAjusteCosto(db, { lineaFactura, base, signo, factura, documentoId, usuarioId }) {
-  const producto = db.prepare('SELECT costo_promedio FROM productos WHERE id = ?').get(lineaFactura.producto_id);
+  const producto = db.prepare('SELECT * FROM productos WHERE id = ?').get(lineaFactura.producto_id);
+  if (inventario.metodoValoracion(db, producto) === 'peps') {
+    const aplicado = ajustarCostoCapasCompra(db, {
+      factura, lineaFactura, montoConSigno: signo * base, documentoOrigenTipo: 'documentos_compra', documentoId, usuarioId,
+    });
+    const montoInventario = Math.abs(aplicado);
+    return { base, montoInventario, montoCostoVentas: redondear(base - montoInventario) };
+  }
   const promedio = producto.costo_promedio || 0;
   const existencia = existenciaTotalProducto(db, lineaFactura.producto_id);
   const unidadesNetas = redondear(lineaFactura.cantidad - cantidadDevueltaLinea(db, lineaFactura.id));
@@ -654,11 +698,22 @@ function anularNotaCompra(db, { documentoId, motivo, usuarioId }) {
   ).run(motivo, usuarioId, documentoId);
 
   const signo = nota.tipo === 'nota_debito' ? 1 : -1;
+  if (nota.tipo_ajuste === 'devolucion') {
+    // Lo devuelto vuelve a los mismos lotes y al costo con que salió.
+    inventario.reingresarDocumento(db, {
+      origenTipo: 'documentos_compra', origenId: documentoId, almacenId: nota.almacen_id, tipoMovimiento: 'ajuste_entrada',
+      documentoOrigenTipo: 'documentos_compra_anulacion', documentoOrigenId: documentoId, usuarioId,
+    });
+  }
+  const facturaNota = db.prepare('SELECT * FROM documentos_compra WHERE id = ?').get(nota.documento_referencia_id);
   for (const l of db.prepare('SELECT * FROM documentos_compra_detalle WHERE documento_id = ?').all(documentoId)) {
-    if (nota.tipo_ajuste === 'devolucion') {
-      inventario.registrarMovimientoInventario(db, {
-        productoId: l.producto_id, almacenId: nota.almacen_id, tipoMovimiento: 'ajuste_entrada', cantidad: l.cantidad,
-        costoUnitario: l.costo_unitario, documentoOrigenTipo: 'documentos_compra_anulacion', documentoOrigenId: documentoId, usuarioId,
+    const producto = db.prepare('SELECT * FROM productos WHERE id = ?').get(l.producto_id);
+    if (nota.tipo_ajuste === 'devolucion') continue;
+    if (l.monto_inventario > 0 && inventario.metodoValoracion(db, producto) === 'peps') {
+      const lineaFactura = db.prepare('SELECT * FROM documentos_compra_detalle WHERE id = ?').get(l.detalle_referencia_id);
+      ajustarCostoCapasCompra(db, {
+        factura: facturaNota, lineaFactura, montoConSigno: -signo * l.monto_inventario, proporcional: false,
+        documentoOrigenTipo: 'documentos_compra_anulacion', documentoId, usuarioId,
       });
     } else if (l.monto_inventario > 0) {
       const existencia = existenciaTotalProducto(db, l.producto_id);

@@ -480,6 +480,7 @@ async function abrirFormularioFacturaCompra(ordenId) {
     ? orden.lineas.filter((l) => l.pendiente > 0).map((l) => ({
         productoId: l.producto_id, descripcion: l.producto_descripcion, cantidad: l.pendiente,
         costoUnitario: l.costo_unitario, tasaItbisPct: l.tasa_itbis, ordenDetalleId: l.id, pendienteMax: l.pendiente,
+        controlaLote: Boolean(l.controla_lote),
       }))
     : [];
 
@@ -543,10 +544,15 @@ async function abrirFormularioFacturaCompra(ordenId) {
           <span style="flex-grow:1; font-size:13px;">${l.descripcion}${l.pendienteMax ? ` (pendiente: ${l.pendienteMax})` : ''}</span>
           <input type="number" step="0.01" min="0.01" ${l.pendienteMax ? `max="${l.pendienteMax}"` : ''} value="${l.cantidad}" data-i="${i}" data-campo="cantidad" style="width:70px;" placeholder="Cant." />
           <input type="number" step="0.01" min="0" value="${l.costoUnitario}" data-i="${i}" data-campo="costoUnitario" style="width:90px;" placeholder="Costo" />
+          ${l.controlaLote ? `
+            <input data-lote="${i}" value="${esc(l.numeroLote || '')}" style="width:100px;" placeholder="Lote *" />
+            <input type="date" data-vence="${i}" value="${l.fechaVencimiento || ''}" style="width:140px;" title="Vencimiento del lote" />` : ''}
           ${orden ? '' : `<span class="carrito-quitar" data-quitar="${i}">✕</span>`}
         </div>
       `).join('');
-    contenido.querySelectorAll('#fc-lineas input').forEach((inp) => inp.addEventListener('input', (e) => {
+    contenido.querySelectorAll('#fc-lineas [data-lote]').forEach((inp) => inp.addEventListener('input', (e) => { lineas[Number(e.target.dataset.lote)].numeroLote = e.target.value; }));
+    contenido.querySelectorAll('#fc-lineas [data-vence]').forEach((inp) => inp.addEventListener('input', (e) => { lineas[Number(e.target.dataset.vence)].fechaVencimiento = e.target.value; }));
+    contenido.querySelectorAll('#fc-lineas input[data-campo]').forEach((inp) => inp.addEventListener('input', (e) => {
       const linea = lineas[Number(e.target.dataset.i)];
       let valor = parseFloat(e.target.value) || 0;
       if (e.target.dataset.campo === 'cantidad' && linea.pendienteMax && valor > linea.pendienteMax) {
@@ -578,7 +584,7 @@ async function abrirFormularioFacturaCompra(ordenId) {
         resultados.innerHTML = encontrados.map((p, i) => `<div class="buscador-resultados__item" data-i="${i}"><div class="buscador-resultados__nombre">${p.descripcion}</div><div class="buscador-resultados__meta">Costo actual: ${fmt(p.costo_promedio)}</div></div>`).join('') || '<div class="buscador-resultados__vacio">Sin resultados</div>';
         resultados.querySelectorAll('[data-i]').forEach((el) => el.addEventListener('click', () => {
           const p = encontrados[Number(el.dataset.i)];
-          lineas.push({ productoId: p.id, descripcion: p.descripcion, cantidad: 1, costoUnitario: p.costo_promedio || 0, tasaItbisPct: p.tasa_itbis_pct });
+          lineas.push({ productoId: p.id, descripcion: p.descripcion, cantidad: 1, costoUnitario: p.costo_promedio || 0, tasaItbisPct: p.tasa_itbis_pct, controlaLote: Boolean(p.controla_lote) });
           renderLineas();
           actualizarTotal();
           resultados.style.display = 'none';
@@ -604,7 +610,10 @@ async function abrirFormularioFacturaCompra(ordenId) {
         proveedorId: proveedorSel.id, almacenId: state.info.almacenId, sucursalId: state.info.sucursalId,
         ncfProveedor: document.getElementById('fc-ncf').value || null, condicionPago: condicion,
         ordenCompraId: ordenId || null,
-        lineas: lineas.map((l) => ({ productoId: l.productoId, cantidad: l.cantidad, costoUnitario: l.costoUnitario, ordenDetalleId: l.ordenDetalleId || null })),
+        lineas: lineas.map((l) => ({
+          productoId: l.productoId, cantidad: l.cantidad, costoUnitario: l.costoUnitario, ordenDetalleId: l.ordenDetalleId || null,
+          numeroLote: l.numeroLote || null, fechaVencimiento: l.fechaVencimiento || null,
+        })),
         pagos, cajaId: state.info.cajaId, usuarioId: state.info.usuario.id,
       });
       window.PuntoXModal.cerrarModal();

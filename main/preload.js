@@ -28,6 +28,7 @@ contextBridge.exposeInMainWorld('puntoXInventario', {
   existencias: invoke('inventario:existencias'),
   kardex: invoke('inventario:kardex'),
   vencimientos: invoke('inventario:vencimientos'),
+  lotes: invoke('inventario:lotes'),
 
   crearAjuste: invoke('inventario:crearAjuste'),
   listarAjustes: invoke('inventario:listarAjustes'),

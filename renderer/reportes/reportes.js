@@ -4,7 +4,10 @@ function fmt(n) {
   return `RD$ ${(n || 0).toLocaleString('es-DO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 function fechaCorta(iso) {
-  return iso ? new Date(iso).toLocaleDateString('es-DO', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '—';
+  if (!iso) return '—';
+  // Una fecha sin hora (p. ej. un vencimiento) no se convierte: sería medianoche UTC, el día anterior en RD.
+  if (/^\d{4}-\d{2}-\d{2}$/.test(iso)) return iso.split('-').reverse().join('/');
+  return new Date(iso).toLocaleDateString('es-DO', { day: '2-digit', month: '2-digit', year: 'numeric' });
 }
 function fechaHora(iso) {
   return iso ? new Date(iso).toLocaleString('es-DO', { dateStyle: 'short', timeStyle: 'short' }) : '—';

@@ -104,8 +104,13 @@ function actualizarModulo(db, { clave, activo, usuarioId }) {
   registrarAuditoria(db, { usuarioId, modulo: 'configuracion', entidad: 'parametros_negocio', entidadId: `modulo_${clave}`, accion: activo ? 'activar_modulo' : 'desactivar_modulo' });
 }
 
+const VALORES_PERMITIDOS = { metodo_valoracion: ['promedio_ponderado', 'peps'] };
+
 function actualizarParametroNegocio(db, clave, valor, usuarioId) {
   session.requerirPermiso('configuracion.gestionar');
+  if (VALORES_PERMITIDOS[clave] && !VALORES_PERMITIDOS[clave].includes(String(valor))) {
+    throw new Error(`Valor inválido para ${clave}: use ${VALORES_PERMITIDOS[clave].join(' o ')}`);
+  }
   db.prepare("UPDATE parametros_negocio SET valor = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE clave = ?").run(String(valor), clave);
   registrarAuditoria(db, { usuarioId, modulo: 'configuracion', entidad: 'parametros_negocio', entidadId: clave, accion: 'editar', detalle: { valor } });
 }
