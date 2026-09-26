@@ -1,5 +1,11 @@
 const crypto = require('node:crypto');
 const session = require('../auth/session');
+const contabilidad = require('./contabilidad');
+
+// Ajustes y mermas: la diferencia con el inventario físico va a gasto, separada por causa.
+const CUENTA_INVENTARIO = '1300';
+const CUENTA_MERMAS = '6200';
+const CUENTA_DIFERENCIAS_INVENTARIO = '6300';
 
 let configuracion;
 function auditoria() {
@@ -727,6 +733,7 @@ function crearAjuste(db, { almacenId, tipo, motivo, motivoDetalle, lineas, usuar
   const insertDetalle = db.prepare(
     `INSERT INTO ajustes_inventario_detalle (id, ajuste_id, producto_id, lote_id, cantidad, costo_unitario) VALUES (?, ?, ?, ?, ?, ?)`
   );
+  let valorTotal = 0;
   for (const l of lineas) {
     const producto = obtenerProducto(db, l.productoId, almacenId);
     if (!producto) throw new Error(`Producto ${l.productoId} no encontrado`);
@@ -749,6 +756,21 @@ function crearAjuste(db, { almacenId, tipo, motivo, motivoDetalle, lineas, usuar
       documentoOrigenTipo: 'ajustes_inventario', documentoOrigenId: ajusteId, usuarioId,
     });
     insertDetalle.run(crypto.randomUUID(), ajusteId, l.productoId, movimiento.piezas[0].loteId, cantidadFirmada, movimiento.costoUnitario);
+    valorTotal += movimiento.costoTotal;
+  }
+
+  // Entrada: sube el inventario contra Diferencias de inventario; salida: al revés.
+  valorTotal = redondear(valorTotal);
+  if (valorTotal > 0) {
+    const entrada = tipo !== 'salida';
+    contabilidad.generarAsiento(db, {
+      fecha: new Date().toISOString(), concepto: `Ajuste de inventario ${numero} (${entrada ? 'entrada' : 'salida'})`, origenModulo: 'inventario',
+      origenDocumentoTipo: 'ajustes_inventario', origenDocumentoId: ajusteId, usuarioId,
+      lineas: [
+        { cuentaCodigo: entrada ? CUENTA_INVENTARIO : CUENTA_DIFERENCIAS_INVENTARIO, debe: valorTotal, descripcion: entrada ? 'Entrada por ajuste' : 'Faltante de inventario' },
+        { cuentaCodigo: entrada ? CUENTA_DIFERENCIAS_INVENTARIO : CUENTA_INVENTARIO, haber: valorTotal, descripcion: entrada ? 'Sobrante de inventario' : 'Salida por ajuste' },
+      ],
+    });
   }
 
   auditoria().registrarAuditoria(db, { usuarioId, modulo: 'inventario', entidad: 'ajustes_inventario', entidadId: ajusteId, accion: 'crear', detalle: { numero, tipo, motivo } });
@@ -790,6 +812,17 @@ function crearMerma(db, { almacenId, productoId, loteId, cantidad, costoUnitario
     `INSERT INTO mermas_averias (id, numero, almacen_id, producto_id, lote_id, cantidad, costo_unitario, motivo, fecha, usuario_id)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%fZ','now'), ?)`
   ).run(mermaId, numero, almacenId, productoId, movimiento.piezas[0].loteId, cantidad, movimiento.costoUnitario, motivo, usuarioId);
+
+  if (movimiento.costoTotal > 0) {
+    contabilidad.generarAsiento(db, {
+      fecha: new Date().toISOString(), concepto: `Merma/avería ${numero}: ${producto.descripcion}`, origenModulo: 'inventario',
+      origenDocumentoTipo: 'mermas_averias', origenDocumentoId: mermaId, usuarioId,
+      lineas: [
+        { cuentaCodigo: CUENTA_MERMAS, debe: movimiento.costoTotal, descripcion: motivo },
+        { cuentaCodigo: CUENTA_INVENTARIO, haber: movimiento.costoTotal, descripcion: 'Salida por merma' },
+      ],
+    });
+  }
 
   auditoria().registrarAuditoria(db, { usuarioId, modulo: 'inventario', entidad: 'mermas_averias', entidadId: mermaId, accion: 'crear', detalle: { numero, motivo, cantidad } });
   return mermaId;

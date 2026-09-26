@@ -156,6 +156,8 @@ const CUENTAS_CONTABLES = [
   ['5100', 'Costo de Ventas', 'costo', '5000', 1],
   ['6000', 'GASTOS', 'gasto', null, 0],
   ['6100', 'Gastos Operativos', 'gasto', '6000', 1],
+  ['6200', 'Pérdida por mermas y averías', 'gasto', '6000', 1],
+  ['6300', 'Diferencias de inventario', 'gasto', '6000', 1],
 ];
 
 function seed(db) {
