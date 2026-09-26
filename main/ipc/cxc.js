@@ -222,7 +222,8 @@ function estadoCuenta(db, clienteId) {
     .all(clienteId);
   const recibos = db
     .prepare(
-      `SELECT ri.id, ri.numero, ri.fecha, ri.monto_total AS total, 'recibo' AS tipo FROM recibos_ingreso ri
+      `SELECT ri.id, ri.numero, ri.fecha, ROUND(ri.monto_total + ri.retencion_isr + ri.retencion_itbis, 2) AS total, ri.retencion_isr, ri.retencion_itbis,
+              'recibo' AS tipo FROM recibos_ingreso ri
        WHERE ri.cliente_id = ? AND ri.estado != 'anulado'`
     )
     .all(clienteId);
@@ -239,12 +240,27 @@ function estadoCuenta(db, clienteId) {
 // Recibos de ingreso (cobros)
 // =========================================================================
 
-function crearRecibo(db, { clienteId, fecha, formaPago, referencia, aplicaciones, cajaId, usuarioId }) {
+// Un cliente agente de retención paga el total menos lo que retiene (ISR/ITBIS); lo retenido
+// también salda la factura y va a "ISR/ITBIS retenido por terceros" (activo: se compensa en la
+// declaración). monto_total del recibo = dinero recibido; aplicado a facturas = dinero + retenciones.
+function crearRecibo(db, { clienteId, fecha, formaPago, referencia, aplicaciones, cajaId, usuarioId, retencionIsr = 0, retencionItbis = 0 }) {
   session.requerirPermiso('cxc.recibo.crear');
   if (!aplicaciones || aplicaciones.length === 0) throw new Error('El recibo debe aplicarse a al menos una factura');
 
-  const montoTotal = redondear(aplicaciones.reduce((acc, a) => acc + a.montoAplicado, 0));
-  if (montoTotal <= 0) throw new Error('El monto del recibo debe ser mayor a cero');
+  const retIsr = redondear(Number(retencionIsr) || 0);
+  const retItbis = redondear(Number(retencionItbis) || 0);
+  if (retIsr < 0 || retItbis < 0) throw new Error('Las retenciones no pueden ser negativas');
+  if (retIsr + retItbis > 0) {
+    const cliente = db.prepare('SELECT nombre, es_agente_retencion FROM clientes WHERE id = ?').get(clienteId);
+    if (!cliente || !cliente.es_agente_retencion) throw new Error('El cliente no está registrado como agente de retención');
+  }
+  const totalAplicado = redondear(aplicaciones.reduce((acc, a) => acc + a.montoAplicado, 0));
+  if (totalAplicado <= 0) throw new Error('El monto del recibo debe ser mayor a cero');
+  const montoTotal = redondear(totalAplicado - retIsr - retItbis);
+  if (montoTotal < 0) throw new Error('Las retenciones no pueden ser mayores que lo aplicado a las facturas');
+  if (aplicaciones.some((a) => db.prepare('SELECT cliente_id FROM documentos_venta WHERE id = ?').get(a.documentoVentaId)?.cliente_id !== clienteId)) {
+    throw new Error('Todas las facturas del recibo deben ser del mismo cliente');
+  }
 
   for (const a of aplicaciones) {
     const saldo = saldoPorFactura(db, a.documentoVentaId);
@@ -264,9 +280,9 @@ function crearRecibo(db, { clienteId, fecha, formaPago, referencia, aplicaciones
   const numero = siguienteNumeroDocumento(db, 'recibos_ingreso');
   const fechaIso = fecha || new Date().toISOString();
   db.prepare(
-    `INSERT INTO recibos_ingreso (id, numero, cliente_id, fecha, forma_pago, monto_total, referencia, usuario_id)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-  ).run(reciboId, numero, clienteId, fechaIso, formaPago, montoTotal, referencia || null, usuarioId);
+    `INSERT INTO recibos_ingreso (id, numero, cliente_id, fecha, forma_pago, monto_total, retencion_isr, retencion_itbis, referencia, usuario_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(reciboId, numero, clienteId, fechaIso, formaPago, montoTotal, retIsr, retItbis, referencia || null, usuarioId);
 
   const insertAplicacion = db.prepare(
     `INSERT INTO recibos_ingreso_aplicaciones (id, recibo_id, documento_venta_id, monto_aplicado) VALUES (?, ?, ?, ?)`
@@ -275,7 +291,7 @@ function crearRecibo(db, { clienteId, fecha, formaPago, referencia, aplicaciones
     insertAplicacion.run(crypto.randomUUID(), reciboId, a.documentoVentaId, a.montoAplicado);
   }
 
-  if (formaPago === 'efectivo') {
+  if (formaPago === 'efectivo' && montoTotal > 0) {
     caja.registrarMovimiento(db, {
       turnoCajaId: turno.id, tipo: 'cobro_cxc', concepto: `Recibo de ingreso ${numero}`, monto: montoTotal,
       documentoOrigenTipo: 'recibos_ingreso', documentoOrigenId: reciboId, usuarioId,
@@ -286,13 +302,15 @@ function crearRecibo(db, { clienteId, fecha, formaPago, referencia, aplicaciones
     fecha: fechaIso, concepto: `Recibo de ingreso ${numero}`, origenModulo: 'cxc',
     origenDocumentoTipo: 'recibos_ingreso', origenDocumentoId: reciboId, usuarioId,
     lineas: [
-      { cuentaCodigo: CUENTA_POR_FORMA_PAGO[formaPago] || '1100', debe: montoTotal, descripcion: 'Cobro recibido' },
-      { cuentaCodigo: '1400', haber: montoTotal, descripcion: 'Aplicado a cuentas por cobrar' },
+      ...(montoTotal > 0 ? [{ cuentaCodigo: CUENTA_POR_FORMA_PAGO[formaPago] || '1100', debe: montoTotal, descripcion: 'Cobro recibido' }] : []),
+      ...(retIsr > 0 ? [{ cuentaCodigo: '1510', debe: retIsr, descripcion: 'ISR retenido por el cliente' }] : []),
+      ...(retItbis > 0 ? [{ cuentaCodigo: '1520', debe: retItbis, descripcion: 'ITBIS retenido por el cliente' }] : []),
+      { cuentaCodigo: '1400', haber: totalAplicado, descripcion: 'Aplicado a cuentas por cobrar' },
     ],
   });
 
   configuracion.registrarAuditoria(db, {
-    usuarioId, modulo: 'cxc', entidad: 'recibos_ingreso', entidadId: reciboId, accion: 'crear', detalle: { numero, montoTotal, formaPago },
+    usuarioId, modulo: 'cxc', entidad: 'recibos_ingreso', entidadId: reciboId, accion: 'crear', detalle: { numero, montoTotal, retencionIsr: retIsr, retencionItbis: retItbis, formaPago },
   });
 
   return reciboId;

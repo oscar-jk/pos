@@ -219,15 +219,40 @@ async function renderCobrar() {
       </div>
       <div class="form-field"><label>Referencia</label><input id="cobrar-referencia" class="input-normal" placeholder="Número de confirmación, cheque, etc." /></div>
     </div>
+    ${state.clienteCobro.es_agente_retencion ? `
+    <div class="form-grid" style="margin-top:6px;">
+      <div class="form-field"><label>ISR retenido por el cliente</label><input id="cobrar-ret-isr" class="input-normal" type="number" step="0.01" min="0" value="0" /></div>
+      <div class="form-field"><label>ITBIS retenido por el cliente</label><input id="cobrar-ret-itbis" class="input-normal" type="number" step="0.01" min="0" value="0" /></div>
+    </div>
+    <div style="font-size:12px; color:var(--color-text-muted);">Agente de retención: se sugiere lo retenido según las facturas elegidas. Corrígelo con lo que diga su comprobante de retención.</div>` : ''}
     <div style="display:flex; justify-content:space-between; align-items:center; margin-top:16px;">
-      <div style="font-size:16px; font-weight:800;">Total a cobrar: <span id="cobrar-total">RD$ 0.00</span></div>
+      <div>
+        <div style="font-size:16px; font-weight:800;">Total a cobrar: <span id="cobrar-total">RD$ 0.00</span></div>
+        <div id="cobrar-desglose" style="font-size:12px; color:var(--color-text-muted);"></div>
+      </div>
       <button class="btn btn-primario" id="btn-guardar-cobro" data-permiso="cxc.recibo.crear">Registrar cobro</button>
     </div>
   `;
 
+  // Retención sugerida: la que se calculó en cada factura, en proporción a lo que se le aplica.
+  const retIsr = document.getElementById('cobrar-ret-isr');
+  const retItbis = document.getElementById('cobrar-ret-itbis');
+  let retencionEditada = false;
+  [retIsr, retItbis].filter(Boolean).forEach((inp) => inp.addEventListener('input', () => { retencionEditada = true; actualizarTotal(); }));
   function actualizarTotal() {
-    const total = Array.from(document.querySelectorAll('.input-aplicacion')).reduce((acc, inp) => acc + (parseFloat(inp.value) || 0), 0);
-    document.getElementById('cobrar-total').textContent = fmt(total);
+    let total = 0;
+    let sugIsr = 0;
+    let sugItbis = 0;
+    document.querySelectorAll('.input-aplicacion').forEach((inp) => {
+      const monto = parseFloat(inp.value) || 0;
+      const f = facturas.find((x) => x.id === inp.dataset.id);
+      total += monto;
+      if (f && f.total > 0) { sugIsr += (f.retencion_isr || 0) * (monto / f.total); sugItbis += (f.retencion_itbis || 0) * (monto / f.total); }
+    });
+    if (retIsr && !retencionEditada) { retIsr.value = sugIsr.toFixed(2); retItbis.value = sugItbis.toFixed(2); }
+    const retenido = retIsr ? (parseFloat(retIsr.value) || 0) + (parseFloat(retItbis.value) || 0) : 0;
+    document.getElementById('cobrar-total').textContent = fmt(total - retenido);
+    document.getElementById('cobrar-desglose').textContent = retenido > 0 ? `Aplicado a facturas ${fmt(total)} − retenido ${fmt(retenido)}` : '';
   }
   document.querySelectorAll('.input-aplicacion').forEach((inp) => inp.addEventListener('input', () => {
     const max = parseFloat(inp.dataset.max);
@@ -244,6 +269,7 @@ async function renderCobrar() {
       await window.puntoXCxc.crearRecibo({
         clienteId: state.clienteCobro.id, formaPago: document.getElementById('cobrar-forma-pago').value,
         referencia: document.getElementById('cobrar-referencia').value || null, aplicaciones,
+        retencionIsr: retIsr ? parseFloat(retIsr.value) || 0 : 0, retencionItbis: retItbis ? parseFloat(retItbis.value) || 0 : 0,
         cajaId: state.info.cajaId, usuarioId: state.info.usuario.id,
       });
       state.clienteCobro = await window.puntoXCxc.obtenerCliente({ clienteId: state.clienteCobro.id });
@@ -258,7 +284,7 @@ async function cargarRecibos() {
   const recibos = await window.puntoXCxc.listarRecibos({});
   document.getElementById('recibos-tbody').innerHTML = recibos.map((r) => `
     <tr>
-      <td>${r.numero}</td><td>${r.cliente_nombre}</td><td>${r.forma_pago}</td><td>${fmt(r.monto_total)}</td><td>${fechaCorta(r.fecha)}</td>
+      <td>${r.numero}</td><td>${r.cliente_nombre}</td><td>${r.forma_pago}</td><td>${fmt(r.monto_total)}${(r.retencion_isr || 0) + (r.retencion_itbis || 0) > 0 ? `<div style="font-size:11px; color:var(--color-text-muted);">+ retenido ${fmt((r.retencion_isr || 0) + (r.retencion_itbis || 0))}</div>` : ''}</td><td>${fechaCorta(r.fecha)}</td>
       <td><span class="pill-estado" style="background:${r.estado === 'anulado' ? 'var(--color-danger)' : 'var(--color-success)'};">${r.estado}</span></td>
       <td>${r.estado !== 'anulado' ? `<span class="enlace-accion" data-permiso="cxc.recibo.anular" data-anular="${r.id}">Anular</span>` : ''}</td>
     </tr>

@@ -656,7 +656,9 @@ CREATE TABLE recibos_ingreso (
   cliente_id        TEXT NOT NULL REFERENCES clientes(id),
   fecha             TEXT NOT NULL,
   forma_pago        TEXT NOT NULL, -- efectivo | tarjeta | transferencia | cheque
-  monto_total       REAL NOT NULL,
+  monto_total       REAL NOT NULL,     -- dinero recibido
+  retencion_isr     REAL NOT NULL DEFAULT 0, -- retenido por el cliente agente de retención
+  retencion_itbis   REAL NOT NULL DEFAULT 0, -- (se aplica a las facturas junto con el dinero)
   referencia        TEXT,
   estado            TEXT NOT NULL DEFAULT 'confirmado', -- confirmado | anulado
   motivo_anulacion  TEXT,

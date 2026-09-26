@@ -146,6 +146,8 @@ const CUENTAS_CONTABLES = [
   ['1350', 'Mercancía entregada por facturar', 'activo', '1000', 1],
   ['1400', 'Clientes (CxC)', 'activo', '1000', 1],
   ['1500', 'ITBIS Pagado (crédito fiscal)', 'activo', '1000', 1],
+  ['1510', 'ISR retenido por terceros', 'activo', '1000', 1],
+  ['1520', 'ITBIS retenido por terceros', 'activo', '1000', 1],
   ['2000', 'PASIVO', 'pasivo', null, 0],
   ['2100', 'Proveedores (CxP)', 'pasivo', '2000', 1],
   ['2200', 'ITBIS por Pagar', 'pasivo', '2000', 1],

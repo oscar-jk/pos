@@ -184,7 +184,8 @@ function crearFactura(db, payload) {
     ...descuentosDeOrigen(db, [cotizacion, pedido, ...(conduces || [])].filter(Boolean)),
   });
 
-  // --- Retención (informativa por ahora; no se neta contra el cobro — ver nota en README del módulo) ---
+  // --- Retención esperada (cliente agente de retención): se guarda en la factura como referencia;
+  // lo que el cliente retiene de verdad se registra al cobrar (recibo de ingreso, cxc.crearRecibo). ---
   let retencionIsr = 0;
   let retencionItbis = 0;
   let cliente = null;
