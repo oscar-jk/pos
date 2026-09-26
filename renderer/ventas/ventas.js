@@ -5,7 +5,7 @@ const state = {
   origen: null, // { tipo: 'cuenta' | 'cotizacion' | 'conduces', ids, ... } al facturar desde otro documento
   cliente: null,
   nivelPrecio: 'detalle',
-  carrito: [], // { producto, cantidad, descuentoPct, precioFijo? }
+  carrito: [], // { producto, cantidad, descuentoPct, descuentoMonto, modoDescuento: 'pct' | 'monto', precioFijo? }
 };
 
 function fmt(n) {
@@ -27,14 +27,33 @@ function precioLinea(linea) {
   return linea.precioFijo ?? precioPorNivel(linea.producto, state.nivelPrecio);
 }
 
-// Réplica de main/ipc/ventas.js:calcularLinea para previsualizar en vivo antes de guardar.
-function calcularLinea({ cantidad, precioUnitario, descuentoPct, tasaItbisPct }) {
-  const bruto = redondear(precioUnitario * cantidad);
-  const descuento = redondear(bruto * ((descuentoPct || 0) / 100));
+// Réplica de main/ipc/ventas.js (descuentoLinea + calcularLinea) para previsualizar en vivo:
+// el descuento de la línea es el mayor entre la promoción vigente y el manual (en % o en RD$).
+function calcularLinea(linea) {
+  const precioUnitario = precioLinea(linea);
+  const bruto = redondear(precioUnitario * linea.cantidad);
+  const manual = linea.modoDescuento === 'monto'
+    ? redondear(linea.descuentoMonto || 0)
+    : redondear(bruto * ((linea.descuentoPct || 0) / 100));
+  const p = linea.producto.promocion;
+  const promo = !p ? 0 : redondear(p.tipo_descuento === 'porcentaje' ? bruto * (p.valor / 100) : Math.min(bruto, p.valor * linea.cantidad));
+  const descuento = promo > manual ? promo : manual;
   const totalLinea = redondear(bruto - descuento);
-  const baseImponible = redondear(totalLinea / (1 + tasaItbisPct));
+  const baseImponible = redondear(totalLinea / (1 + linea.producto.tasa_itbis_pct));
   const itbisMonto = redondear(totalLinea - baseImponible);
-  return { bruto, descuento, totalLinea, baseImponible, itbisMonto };
+  return {
+    precioUnitario, bruto, manual, descuento, promocion: promo > manual ? p : null,
+    totalLinea, baseImponible, itbisMonto,
+  };
+}
+
+// Lo que se envía al guardar: el descuento manual tal como se escribió (el servidor aplica la promoción).
+function descuentoManual(l) {
+  return l.modoDescuento === 'monto' ? { descuentoPct: 0, descuentoMonto: l.descuentoMonto || 0 } : { descuentoPct: l.descuentoPct || 0 };
+}
+
+function textoPromocion(p) {
+  return p.tipo_descuento === 'porcentaje' ? `${p.valor}%` : `${fmt(p.valor)} c/u`;
 }
 
 function mostrarError(msg) {
@@ -71,7 +90,7 @@ function renderResultadosProducto(resultados) {
       <div class="buscador-resultados__item" data-index="${i}">
         <div>
           <div class="buscador-resultados__nombre">${p.descripcion}</div>
-          <div class="buscador-resultados__meta">${p.codigo_interno} · Disp: ${p.cantidad_disponible}</div>
+          <div class="buscador-resultados__meta">${p.codigo_interno} · Disp: ${p.cantidad_disponible}${p.promocion ? ` · <span style="color:var(--color-success); font-weight:700;">Promoción ${textoPromocion(p.promocion)}</span>` : ""}</div>
         </div>
         <div class="buscador-resultados__precio">${fmt(precioPorNivel(p, state.nivelPrecio))}</div>
       </div>
@@ -101,7 +120,7 @@ function agregarAlCarrito(producto) {
   if (existente) {
     existente.cantidad += 1;
   } else {
-    state.carrito.push({ producto, cantidad: 1, descuentoPct: 0 });
+    state.carrito.push({ producto, cantidad: 1, descuentoPct: 0, descuentoMonto: 0, modoDescuento: 'pct' });
   }
   renderCarrito();
 }
@@ -114,16 +133,19 @@ function renderCarrito() {
   const bloqueado = Boolean(state.origen);
   const descuentoBloqueado = state.origen && state.origen.tipo === 'cotizacion';
   tbody.innerHTML = state.carrito.map((linea, i) => {
-    const precioUnitario = precioLinea(linea);
-    const calc = calcularLinea({
-      cantidad: linea.cantidad, precioUnitario, descuentoPct: linea.descuentoPct,
-      tasaItbisPct: linea.producto.tasa_itbis_pct,
-    });
+    const calc = calcularLinea(linea);
+    const precioUnitario = calc.precioUnitario;
+    // El descuento manual se escribe en % o en RD$; el otro campo muestra su equivalente.
+    const pctManual = linea.modoDescuento === 'monto' ? (calc.bruto > 0 ? redondear((calc.manual / calc.bruto) * 100) : 0) : linea.descuentoPct;
+    const montoManual = linea.modoDescuento === 'monto' ? linea.descuentoMonto : calc.manual;
     return `
       <tr data-index="${i}">
-        <td>${linea.producto.descripcion}</td>
+        <td>${linea.producto.descripcion}${calc.promocion ? `<div class="linea-promo" title="${escHtml(calc.promocion.nombre || '')}">Promoción −${textoPromocion(calc.promocion)}</div>` : ''}</td>
         <td style="text-align:center;"><input type="number" min="0.01" step="0.01" value="${linea.cantidad}" class="cant-input" ${bloqueado ? 'disabled' : ''} /></td>
-        <td style="text-align:center;"><input type="number" min="0" max="100" step="0.01" value="${linea.descuentoPct}" class="desc-input" ${descuentoBloqueado ? 'disabled' : ''} /></td>
+        <td style="text-align:center; white-space:nowrap;">
+          <input type="number" min="0" max="100" step="0.01" value="${pctManual}" class="desc-input" title="Descuento en %" ${descuentoBloqueado ? 'disabled' : ''} />
+          <input type="number" min="0" step="0.01" value="${montoManual}" class="desc-monto" title="Descuento en RD$" ${descuentoBloqueado ? 'disabled' : ''} />
+        </td>
         <td style="text-align:right;">${fmt(precioUnitario)}</td>
         <td style="text-align:right; font-weight:700;">${fmt(calc.totalLinea)}</td>
         <td class="carrito-quitar" style="${bloqueado ? 'visibility:hidden;' : ''}">✕</td>
@@ -140,7 +162,12 @@ function renderCarrito() {
     });
     tr.querySelector('.desc-input').addEventListener('change', (e) => {
       const v = parseFloat(e.target.value);
-      state.carrito[i].descuentoPct = v >= 0 ? v : 0;
+      Object.assign(state.carrito[i], { descuentoPct: v >= 0 ? v : 0, modoDescuento: 'pct' });
+      renderCarrito();
+    });
+    tr.querySelector('.desc-monto').addEventListener('change', (e) => {
+      const v = parseFloat(e.target.value);
+      Object.assign(state.carrito[i], { descuentoMonto: v >= 0 ? v : 0, modoDescuento: 'monto' });
       renderCarrito();
     });
     tr.querySelector('.carrito-quitar').addEventListener('click', () => {
@@ -159,11 +186,7 @@ function calcularTotalesCarrito() {
   let subtotalLineas = 0;
   let itbisLineas = 0;
   for (const linea of state.carrito) {
-    const precioUnitario = precioLinea(linea);
-    const calc = calcularLinea({
-      cantidad: linea.cantidad, precioUnitario, descuentoPct: linea.descuentoPct,
-      tasaItbisPct: linea.producto.tasa_itbis_pct,
-    });
+    const calc = calcularLinea(linea);
     subtotalLineas += calc.baseImponible;
     itbisLineas += calc.itbisMonto;
   }
@@ -334,7 +357,7 @@ document.getElementById('btn-cobrar').addEventListener('click', async () => {
     nivelPrecio: state.nivelPrecio,
     descuentoGlobalPct: parseFloat(document.getElementById('input-descuento-global').value) || 0,
     lineas: state.carrito.map((l) => ({
-      productoId: l.producto.id, cantidad: l.cantidad, precioUnitario: precioLinea(l), descuentoPct: l.descuentoPct,
+      productoId: l.producto.id, cantidad: l.cantidad, precioUnitario: precioLinea(l), ...descuentoManual(l),
     })),
   };
   const concepto = document.getElementById('input-concepto').value.trim() || null;
@@ -728,7 +751,8 @@ async function cargarCotizacionParaFacturar(cotizacionId) {
   const cot = await window.puntoXVentas.obtenerFactura({ documentoId: cotizacionId });
   if (!cot || cot.tipo !== 'cotizacion' || cot.estado !== 'abierto') throw new Error('La cotización ya no está abierta.');
   const carrito = await Promise.all(cot.lineas.map(async (l) => ({
-    producto: await productoParaCarrito(l.producto_id), cantidad: l.cantidad, descuentoPct: l.descuento_pct || 0, precioFijo: l.precio_unitario,
+    producto: await productoParaCarrito(l.producto_id), cantidad: l.cantidad, precioFijo: l.precio_unitario,
+    descuentoPct: 0, descuentoMonto: l.descuento_monto || 0, modoDescuento: 'monto',
   })));
   if (cot.cliente_id) await seleccionarClientePorId(cot.cliente_id);
   const brutoLineas = cot.lineas.reduce((a, l) => a + l.total_linea, 0);
@@ -745,10 +769,14 @@ async function cargarConducesParaFacturar(ids) {
   for (const c of conduces) {
     for (const l of c.lineas) {
       const actual = porProducto.get(l.producto_id);
-      if (actual) actual.cantidad = redondear(actual.cantidad + l.cantidad);
-      else porProducto.set(l.producto_id, { productoId: l.producto_id, cantidad: l.cantidad, descuentoPct: 0, precioFijo: l.precio_unitario });
+      // Se conserva el descuento con que salió cada conduce (sumado en RD$ por producto).
+      if (actual) Object.assign(actual, { cantidad: redondear(actual.cantidad + l.cantidad), descuentoMonto: redondear(actual.descuentoMonto + (l.descuento_monto || 0)) });
+      else porProducto.set(l.producto_id, { productoId: l.producto_id, cantidad: l.cantidad, descuentoPct: 0, descuentoMonto: l.descuento_monto || 0, modoDescuento: 'monto', precioFijo: l.precio_unitario });
     }
   }
+  const brutoLineas = conduces.reduce((a, c) => a + c.lineas.reduce((b, l) => b + l.total_linea, 0), 0);
+  const descuentoGlobal = conduces.reduce((a, c) => a + (c.descuento_total || 0), 0);
+  document.getElementById('input-descuento-global').value = brutoLineas > 0 ? redondear((descuentoGlobal / brutoLineas) * 100) : 0;
   const carrito = await Promise.all([...porProducto.values()].map(async (l) => ({ ...l, producto: await productoParaCarrito(l.productoId) })));
   await seleccionarClientePorId(conduces[0].cliente_id);
   aplicarOrigen({ tipo: 'conduces', ids: conduces.map((c) => c.id) }, carrito);

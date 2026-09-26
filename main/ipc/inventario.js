@@ -25,6 +25,17 @@ function listarCategorias(db) {
   return db.prepare('SELECT id, nombre FROM categorias_producto WHERE deleted_at IS NULL ORDER BY nombre').all();
 }
 
+function crearCategoria(db, { nombre }) {
+  session.requerirAlgunPermiso('inventario.producto.crear', 'inventario.producto.editar');
+  const limpio = String(nombre || '').trim();
+  if (!limpio) throw new Error('El nombre de la categoría es obligatorio');
+  const existente = db.prepare('SELECT id, nombre FROM categorias_producto WHERE deleted_at IS NULL AND lower(nombre) = lower(?)').get(limpio);
+  if (existente) return existente;
+  const id = crypto.randomUUID();
+  db.prepare('INSERT INTO categorias_producto (id, nombre) VALUES (?, ?)').run(id, limpio);
+  return { id, nombre: limpio };
+}
+
 function listarUnidadesMedida(db) {
   return db.prepare('SELECT id, nombre, abreviatura FROM unidades_medida ORDER BY nombre').all();
 }
@@ -49,11 +60,35 @@ function crearAlmacen(db, { sucursalId, nombre }) {
 // Búsqueda / ficha de producto
 // =========================================================================
 
+function hoyLocal() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+// Promoción vigente hoy para el producto (propia o de su categoría). Si hay varias, la que más
+// descuenta sobre el precio de detalle. Devuelve { id, nombre, tipo_descuento, valor } o null.
+function promocionVigente(db, producto, fecha = hoyLocal()) {
+  const candidatas = db
+    .prepare(
+      `SELECT id, nombre, tipo_descuento, valor, fecha_fin FROM promociones
+       WHERE deleted_at IS NULL AND activo = 1 AND fecha_inicio <= ? AND fecha_fin >= ?
+         AND (producto_id = ? OR (categoria_id IS NOT NULL AND categoria_id = ?))`
+    )
+    .all(fecha, fecha, producto.id, producto.categoria_id || '');
+  const descuentoUnitario = (p) => (p.tipo_descuento === 'porcentaje' ? (producto.precio_detalle || 0) * p.valor / 100 : p.valor);
+  return candidatas.sort((a, b) => descuentoUnitario(b) - descuentoUnitario(a))[0] || null;
+}
+
+function conPromocion(db, producto) {
+  if (producto) producto.promocion = promocionVigente(db, producto);
+  return producto;
+}
+
 function buscarProductos(db, { texto, almacenId, limite = 20 }) {
   const like = `%${texto}%`;
   return db
     .prepare(
-      `SELECT p.id, p.codigo_interno, p.descripcion, p.precio_detalle, p.precio_mayorista,
+      `SELECT p.id, p.codigo_interno, p.descripcion, p.categoria_id, p.precio_detalle, p.precio_mayorista,
               p.precio_distribuidor, p.costo_promedio, p.permite_venta_negativo, p.es_kit,
               p.controla_lote, p.tasa_itbis_id, t.porcentaje AS tasa_itbis_pct,
               COALESCE(e.cantidad_disponible, 0) AS cantidad_disponible,
@@ -68,11 +103,42 @@ function buscarProductos(db, { texto, almacenId, limite = 20 }) {
        ORDER BY p.descripcion
        LIMIT ?`
     )
-    .all(almacenId, like, like, texto, limite);
+    .all(almacenId, like, like, texto, limite)
+    .map((p) => ocultarCostoSinPermiso(conPromocion(db, p)));
+}
+
+// Consulta rápida de precio y existencia (mostrador): los tres precios, la promoción vigente y
+// la existencia de cada almacén, disponible real = existencia − comprometida en pedidos.
+function consultarPrecio(db, { texto, limite = 8 }) {
+  if (!session.obtenerSesion()) throw new Error('Inicie sesión para consultar precios');
+  if (!texto || !texto.trim()) return [];
+  const existencias = db.prepare(
+    `SELECT a.nombre AS almacen_nombre, COALESCE(e.cantidad_disponible, 0) AS existencia, COALESCE(e.cantidad_comprometida, 0) AS comprometida
+     FROM almacenes a LEFT JOIN existencias e ON e.almacen_id = a.id AND e.producto_id = ?
+     WHERE a.deleted_at IS NULL AND a.activo = 1 ORDER BY a.nombre`
+  );
+  return buscarProductos(db, { texto: texto.trim(), almacenId: null, limite }).map((p) => {
+    const porAlmacen = p.es_kit ? [] : existencias.all(p.id).map((e) => ({ ...e, disponible: e.existencia - e.comprometida }));
+    const precioPromocion = p.promocion
+      ? redondear(p.promocion.tipo_descuento === 'porcentaje' ? p.precio_detalle * (1 - p.promocion.valor / 100) : Math.max(0, p.precio_detalle - p.promocion.valor))
+      : null;
+    return {
+      id: p.id, codigo_interno: p.codigo_interno, descripcion: p.descripcion, es_kit: p.es_kit,
+      precio_detalle: p.precio_detalle, precio_mayorista: p.precio_mayorista, precio_distribuidor: p.precio_distribuidor,
+      promocion: p.promocion, precio_promocion: precioPromocion, existencias: porAlmacen,
+      disponible_total: p.es_kit ? null : porAlmacen.reduce((a, e) => a + e.disponible, 0),
+    };
+  });
+}
+
+// El costo es información sensible: el Cajero no lo ve (spec, Roles y Permisos).
+function ocultarCostoSinPermiso(producto) {
+  if (producto && !session.tienePermiso('inventario.costos.ver') && !session.tienePermiso('ventas.costos.ver')) producto.costo_promedio = null;
+  return producto;
 }
 
 function obtenerProducto(db, productoId, almacenId) {
-  return db
+  const producto = db
     .prepare(
       `SELECT p.*, t.porcentaje AS tasa_itbis_pct,
               COALESCE(e.cantidad_disponible, 0) AS cantidad_disponible
@@ -82,6 +148,7 @@ function obtenerProducto(db, productoId, almacenId) {
        WHERE p.id = ? AND p.deleted_at IS NULL`
     )
     .get(almacenId, productoId);
+  return conPromocion(db, producto);
 }
 
 // Ficha completa: producto + códigos de barra + unidades alternativas + componentes (si es kit)
@@ -906,8 +973,9 @@ function listarTransferencias(db, { limite = 50 } = {}) {
 // =========================================================================
 
 function register(ipcMain, getDb) {
+  ipcMain.handle('productos:consultaPrecio', (event, filtros) => consultarPrecio(getDb(), filtros || {}));
   ipcMain.handle('productos:buscar', (event, { texto, almacenId, limite }) => buscarProductos(getDb(), { texto: texto || '', almacenId, limite }));
-  ipcMain.handle('productos:obtener', (event, { productoId, almacenId }) => obtenerProducto(getDb(), productoId, almacenId));
+  ipcMain.handle('productos:obtener', (event, { productoId, almacenId }) => ocultarCostoSinPermiso(obtenerProducto(getDb(), productoId, almacenId)));
   ipcMain.handle('productos:obtenerCompleto', (event, { productoId }) => obtenerProductoCompleto(getDb(), productoId));
   ipcMain.handle('productos:listar', (event, filtros) => listarProductos(getDb(), filtros || {}));
   ipcMain.handle('productos:guardar', (event, { productoId, payload }) => {
@@ -917,6 +985,7 @@ function register(ipcMain, getDb) {
   });
 
   ipcMain.handle('inventario:categorias', () => listarCategorias(getDb()));
+  ipcMain.handle('inventario:crearCategoria', (event, payload) => crearCategoria(getDb(), payload || {}));
   ipcMain.handle('inventario:unidadesMedida', () => listarUnidadesMedida(getDb()));
   ipcMain.handle('inventario:tasasItbis', () => listarTasasItbis(getDb()));
   ipcMain.handle('almacenes:listar', () => listarAlmacenes(getDb()));
@@ -951,7 +1020,7 @@ module.exports = {
   existenciaDisponible, existenciaDisponibleParaVenta, costoUnitarioVenta, registrarMovimientoInventario,
   moverInventarioPorVenta, kardexPorProducto, existenciasConsolidadas, productosPorVencer,
   metodoValoracion, usaCapas, loteDeEntrada, reingresarSalidas, reingresarDocumento, reingresarVenta, retirarEntradas,
-  lotesCreadosPor, actualizarCostoCapa, refrescarCostoPeps, listarLotes,
-  listarCategorias, listarUnidadesMedida, listarTasasItbis, listarAlmacenes, crearAlmacen,
+  lotesCreadosPor, actualizarCostoCapa, refrescarCostoPeps, listarLotes, promocionVigente, consultarPrecio, hoyLocal,
+  listarCategorias, crearCategoria, listarUnidadesMedida, listarTasasItbis, listarAlmacenes, crearAlmacen,
   crearAjuste, listarAjustes, crearMerma, listarMermas, crearTransferencia, listarTransferencias,
 };

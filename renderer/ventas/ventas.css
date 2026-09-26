@@ -1,8 +1,11 @@
+/* El área de venta ocupa la pantalla; las facturas recientes y las notas quedan debajo, con
+   scroll. Sin la altura mínima, esas tarjetas la aplastaban y se montaban encima del carrito. */
 .ventas-layout {
   display: flex;
   gap: 20px;
-  flex-grow: 1;
-  min-height: 0;
+  flex-shrink: 0;
+  height: calc(100vh - 190px);
+  min-height: 520px;
 }
 
 .ventas-col-izq {
@@ -291,4 +294,14 @@
 
 .factura-exito strong {
   color: var(--color-accent);
+}
+
+.carrito-tabla input.desc-input { width: 52px; }
+.carrito-tabla input.desc-monto { width: 70px; margin-left: 4px; }
+
+.linea-promo {
+  margin-top: 3px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--color-success);
 }

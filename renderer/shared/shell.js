@@ -19,6 +19,7 @@ async function initPuntoXShell(moduloActivo) {
   // '*' = todo permitido (lo usa la versión web de prueba, que no tiene matriz de roles).
   info.tienePermiso = (codigo) => permisos.has('*') || permisos.has(codigo);
   activarControlDePermisos(info);
+  window.PuntoXTopbar.enlazarConsultaPrecio(info);
 
   const btnSalir = document.getElementById('topbar-btn-salir');
   if (btnSalir) {

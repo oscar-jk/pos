@@ -22,6 +22,7 @@ contextBridge.exposeInMainWorld('puntoXInventario', {
   listarAlmacenes: invoke('almacenes:listar'),
   crearAlmacen: invoke('almacenes:crear'),
   listarCategorias: invoke('inventario:categorias'),
+  crearCategoria: invoke('inventario:crearCategoria'),
   listarUnidadesMedida: invoke('inventario:unidadesMedida'),
   listarTasasItbis: invoke('inventario:tasasItbis'),
 
@@ -29,6 +30,7 @@ contextBridge.exposeInMainWorld('puntoXInventario', {
   kardex: invoke('inventario:kardex'),
   vencimientos: invoke('inventario:vencimientos'),
   lotes: invoke('inventario:lotes'),
+  consultarPrecio: invoke('productos:consultaPrecio'),
 
   crearAjuste: invoke('inventario:crearAjuste'),
   listarAjustes: invoke('inventario:listarAjustes'),
@@ -224,6 +226,9 @@ contextBridge.exposeInMainWorld('puntoXVentas', {
   anularCotizacion: invoke('ventas:anularCotizacion'),
   anularConduce: invoke('ventas:anularConduce'),
   listarDocumentos: invoke('ventas:listarDocumentos'),
+  listarPromociones: invoke('ventas:listarPromociones'),
+  guardarPromocion: invoke('ventas:guardarPromocion'),
+  desactivarPromocion: invoke('ventas:desactivarPromocion'),
   anularFactura: invoke('ventas:anularFactura'),
   listarFacturas: invoke('ventas:listarFacturas'),
   obtenerFactura: invoke('ventas:obtenerFactura'),

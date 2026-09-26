@@ -7,6 +7,7 @@ const MIGRACIONES = [
   require('./003_gastos_606'),
   require('./004_cuentas_abiertas'),
   require('./005_cotizacion_conduce'),
+  require('./006_promociones'),
 ];
 
 function columnasDe(db, tabla) {

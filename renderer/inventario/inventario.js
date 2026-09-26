@@ -119,7 +119,7 @@ async function abrirFormularioProducto(productoId) {
     <div class="form-grid">
       <div class="form-field"><label>Código interno *</label><input id="f-codigo" value="${producto ? producto.codigo_interno : ''}" /></div>
       <div class="form-field"><label>Descripción *</label><input id="f-descripcion" value="${producto ? producto.descripcion : ''}" /></div>
-      <div class="form-field"><label>Categoría</label><select id="f-categoria"><option value="">— Sin categoría —</option>${opciones(state.categorias, producto ? producto.categoria_id : null, (c) => c.nombre)}</select></div>
+      <div class="form-field"><label>Categoría ${window.puntoXInventario.crearCategoria ? '<span id="f-nueva-categoria" style="float:right; color:var(--color-accent); font-weight:700; cursor:pointer;">+ Nueva</span>' : ''}</label><select id="f-categoria"><option value="">— Sin categoría —</option>${opciones(state.categorias, producto ? producto.categoria_id : null, (c) => c.nombre)}</select></div>
       <div class="form-field"><label>Unidad de medida base *</label><select id="f-unidad">${opciones(state.unidades, producto ? producto.unidad_medida_base_id : state.unidades[0]?.id, (u) => u.nombre)}</select></div>
       <div class="form-field"><label>Tasa de ITBIS *</label><select id="f-tasa">${opciones(state.tasas, producto ? producto.tasa_itbis_id : state.tasas.find((t) => t.es_default)?.id, (t) => `${t.nombre} (${(t.porcentaje * 100).toFixed(0)}%)`)}</select></div>
       <div class="form-field"><label>Método de valoración</label>
@@ -253,6 +253,21 @@ async function abrirFormularioProducto(productoId) {
       resultados.style.display = 'block';
     }, 200);
   });
+
+  const nuevaCategoria = document.getElementById('f-nueva-categoria');
+  if (nuevaCategoria) {
+    nuevaCategoria.addEventListener('click', async () => {
+      const nombre = prompt('Nombre de la nueva categoría:');
+      if (!nombre || !nombre.trim()) return;
+      try {
+        const categoria = await window.puntoXInventario.crearCategoria({ nombre });
+        if (!state.categorias.some((c) => c.id === categoria.id)) state.categorias.push(categoria);
+        const select = document.getElementById('f-categoria');
+        if (![...select.options].some((o) => o.value === categoria.id)) select.add(new Option(categoria.nombre, categoria.id));
+        select.value = categoria.id;
+      } catch (err) { mostrarError(err.message); }
+    });
+  }
 
   document.getElementById('btn-cancelar-producto').addEventListener('click', window.PuntoXModal.cerrarModal);
 

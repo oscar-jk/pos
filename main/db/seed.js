@@ -21,6 +21,7 @@ const PERMISOS = [
   ['ventas', 'ventas.factura.imprimir', 'Imprimir factura o tique de venta'],
   ['ventas', 'ventas.cuenta_abierta.gestionar', 'Abrir cuentas abiertas y agregarles productos'],
   ['ventas', 'ventas.cuenta_abierta.anular', 'Quitar productos de una cuenta abierta o anularla'],
+  ['ventas', 'ventas.promocion.gestionar', 'Crear, editar y desactivar promociones programadas'],
   // Inventario
   ['inventario', 'inventario.ver', 'Consultar inventario (solo lectura)'],
   ['inventario', 'inventario.costos.ver', 'Ver costo de producto en inventario'],

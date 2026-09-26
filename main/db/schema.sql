@@ -502,6 +502,7 @@ CREATE TABLE cxc_empleados_pagos (
 
 CREATE TABLE promociones (
   id                TEXT PRIMARY KEY,
+  nombre            TEXT,
   producto_id       TEXT REFERENCES productos(id),
   categoria_id      TEXT REFERENCES categorias_producto(id),
   tipo_descuento    TEXT NOT NULL, -- porcentaje | monto
@@ -509,6 +510,7 @@ CREATE TABLE promociones (
   fecha_inicio      TEXT NOT NULL,
   fecha_fin         TEXT NOT NULL,
   activo            INTEGER NOT NULL DEFAULT 1,
+  usuario_id        TEXT REFERENCES usuarios(id),
   created_at        TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
   updated_at        TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
   deleted_at        TEXT,
@@ -580,6 +582,7 @@ CREATE TABLE documentos_venta_detalle (
   total_linea       REAL NOT NULL,
   costo_unitario    REAL NOT NULL DEFAULT 0, -- costo al momento de la venta, para margen
   cantidad_devuelta REAL NOT NULL DEFAULT 0, -- acumulado de devoluciones parciales sobre esta línea
+  promocion_id      TEXT REFERENCES promociones(id), -- promoción aplicada a la línea, si alguna
   created_at        TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
   updated_at        TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
   deleted_at        TEXT

@@ -62,6 +62,17 @@ function calcularLinea({ cantidad, precioUnitario, descuentoPct, descuentoMonto,
   return { bruto, descuento, totalLinea, baseImponible, itbisMonto };
 }
 
+// Descuento de una línea: el mayor entre la promoción vigente y el manual (no se suman). El
+// manual puede venir en % o en RD$. Devuelve el descuento aplicado, la promoción si fue ella, y
+// el manual (para validar el tope del rol).
+function descuentoLinea({ bruto, cantidad, promocion, descuentoPct, descuentoMonto }) {
+  const manual = descuentoMonto && !descuentoPct ? redondear(descuentoMonto) : redondear(bruto * ((descuentoPct || 0) / 100));
+  const promo = !promocion ? 0 : redondear(promocion.tipo_descuento === 'porcentaje'
+    ? bruto * (promocion.valor / 100)
+    : Math.min(bruto, promocion.valor * cantidad));
+  return promo > manual ? { descuento: promo, promocionId: promocion.id, manual } : { descuento: manual, promocionId: null, manual };
+}
+
 function obtenerLimiteDescuentoRol(db, usuarioId) {
   const row = db
     .prepare(
@@ -80,7 +91,12 @@ function obtenerLimiteDescuentoRol(db, usuarioId) {
 // Lo comparten factura, cotización y conduce para que calculen exactamente igual.
 // validarExistencia: false en cotizaciones (no comprometen mercancía) y en facturas de
 // conduces (la mercancía ya salió con el conduce).
-function prepararLineasVenta(db, { lineas, almacenId, nivelPrecio, usuarioId, descuentoGlobalPct, validarExistencia }) {
+// descuentosAutorizados (productoId → RD$) y descuentoGlobalAutorizadoPct: lo que ya se autorizó
+// en la cotización o los conduces que se facturan; hasta ahí no se vuelve a aplicar el tope del rol.
+function prepararLineasVenta(db, {
+  lineas, almacenId, nivelPrecio, usuarioId, descuentoGlobalPct, validarExistencia,
+  descuentosAutorizados = new Map(), descuentoGlobalAutorizadoPct = 0,
+}) {
   const limiteRol = obtenerLimiteDescuentoRol(db, usuarioId);
   const puedeExceder = Boolean(limiteRol.puede_exceder);
 
@@ -88,10 +104,6 @@ function prepararLineasVenta(db, { lineas, almacenId, nivelPrecio, usuarioId, de
     const producto = inventario.obtenerProducto(db, l.productoId, almacenId);
     if (!producto) throw new Error(`Producto ${l.productoId} no encontrado`);
     if (!(l.cantidad > 0)) throw new Error(`La cantidad de "${producto.descripcion}" debe ser mayor a cero`);
-
-    if (!puedeExceder && (l.descuentoPct || 0) > limiteRol.limite_descuento_pct) {
-      throw new Error(`El descuento de la línea "${producto.descripcion}" excede el límite permitido (${limiteRol.limite_descuento_pct}%)`);
-    }
 
     if (validarExistencia && !producto.permite_venta_negativo) {
       const disponible = inventario.existenciaDisponibleParaVenta(db, producto, almacenId);
@@ -101,18 +113,23 @@ function prepararLineasVenta(db, { lineas, almacenId, nivelPrecio, usuarioId, de
     }
 
     const precioUnitario = l.precioUnitario ?? precioProducto(producto, nivelPrecio);
-    const calc = calcularLinea({
-      cantidad: l.cantidad, precioUnitario, descuentoPct: l.descuentoPct,
-      descuentoMonto: l.descuentoMonto, tasaItbisPct: producto.tasa_itbis_pct,
-    });
+    const bruto = redondear(precioUnitario * l.cantidad);
+    const d = descuentoLinea({ bruto, cantidad: l.cantidad, promocion: producto.promocion, descuentoPct: l.descuentoPct, descuentoMonto: l.descuentoMonto });
+    if (d.manual > bruto + 0.001) throw new Error(`El descuento de "${producto.descripcion}" es mayor que el importe de la línea`);
+    // El tope del rol limita solo el descuento manual (la promoción la autorizó quien la creó).
+    const yaAutorizado = d.manual <= (descuentosAutorizados.get(producto.id) || 0) + 0.01;
+    if (!d.promocionId && !puedeExceder && !yaAutorizado && bruto > 0 && (d.manual / bruto) * 100 > limiteRol.limite_descuento_pct + 0.01) {
+      throw new Error(`El descuento de la línea "${producto.descripcion}" excede el límite permitido (${limiteRol.limite_descuento_pct}%)`);
+    }
+    const calc = calcularLinea({ cantidad: l.cantidad, precioUnitario, descuentoMonto: d.descuento, tasaItbisPct: producto.tasa_itbis_pct });
 
     return {
-      producto, cantidad: l.cantidad, precioUnitario, descuentoPct: l.descuentoPct || 0,
-      descuentoMonto: calc.descuento, tasaItbis: producto.tasa_itbis_pct, ...calc,
+      producto, cantidad: l.cantidad, precioUnitario, descuentoPct: bruto > 0 ? redondear((d.descuento / bruto) * 100) : 0,
+      descuentoMonto: calc.descuento, tasaItbis: producto.tasa_itbis_pct, promocionId: d.promocionId, ...calc,
     };
   });
 
-  if (!puedeExceder && (descuentoGlobalPct || 0) > limiteRol.limite_descuento_pct) {
+  if (!puedeExceder && (descuentoGlobalPct || 0) > Math.max(limiteRol.limite_descuento_pct, descuentoGlobalAutorizadoPct + 0.01)) {
     throw new Error(`El descuento global excede el límite permitido para su rol (${limiteRol.limite_descuento_pct}%)`);
   }
 
@@ -125,6 +142,21 @@ function prepararLineasVenta(db, { lineas, almacenId, nivelPrecio, usuarioId, de
   const subtotal = redondear(subtotalLineas * factor);
   const itbisTotal = redondear(itbisLineas * factor);
   return { lineasCalculadas, descuentoGlobalMonto, subtotal, itbisTotal, total: redondear(subtotal + itbisTotal) };
+}
+
+// Descuentos que traen la cotización o los conduces que se facturan (ya autorizados al emitirlos).
+function descuentosDeOrigen(db, origenes) {
+  const descuentosAutorizados = new Map();
+  let bruto = 0;
+  let global = 0;
+  for (const o of origenes) {
+    for (const l of db.prepare('SELECT producto_id, descuento_monto, total_linea FROM documentos_venta_detalle WHERE documento_id = ?').all(o.id)) {
+      descuentosAutorizados.set(l.producto_id, (descuentosAutorizados.get(l.producto_id) || 0) + (l.descuento_monto || 0));
+      bruto += l.total_linea;
+    }
+    global += o.descuento_total || 0;
+  }
+  return { descuentosAutorizados, descuentoGlobalAutorizadoPct: bruto > 0 ? (global / bruto) * 100 : 0 };
 }
 
 function crearFactura(db, payload) {
@@ -146,6 +178,7 @@ function crearFactura(db, payload) {
 
   const { lineasCalculadas, descuentoGlobalMonto, subtotal, itbisTotal, total } = prepararLineasVenta(db, {
     lineas, almacenId, nivelPrecio, usuarioId, descuentoGlobalPct, validarExistencia: !conduces,
+    ...descuentosDeOrigen(db, [cotizacion, ...(conduces || [])].filter(Boolean)),
   });
 
   // --- Retención (informativa por ahora; no se neta contra el cobro — ver nota en README del módulo) ---
@@ -214,8 +247,8 @@ function crearFactura(db, payload) {
   const insertDetalle = db.prepare(
     `INSERT INTO documentos_venta_detalle
        (id, documento_id, producto_id, cantidad, precio_unitario, descuento_pct, descuento_monto,
-        tasa_itbis, base_imponible, itbis_monto, total_linea, costo_unitario)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        tasa_itbis, base_imponible, itbis_monto, total_linea, costo_unitario, promocion_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   );
   // Con conduces, la mercancía ya salió del inventario al entregarse: se usa el costo con el
   // que salió (promedio por producto entre los conduces) y no se mueve inventario otra vez.
@@ -231,7 +264,7 @@ function crearFactura(db, payload) {
       });
     insertDetalle.run(
       crypto.randomUUID(), documentoId, l.producto.id, l.cantidad, l.precioUnitario, l.descuentoPct,
-      l.descuentoMonto, l.tasaItbis, l.baseImponible, l.itbisMonto, l.totalLinea, redondear(costoLinea / l.cantidad)
+      l.descuentoMonto, l.tasaItbis, l.baseImponible, l.itbisMonto, l.totalLinea, redondear(costoLinea / l.cantidad), l.promocionId || null
     );
     costoTotal += costoLinea;
   }
@@ -400,15 +433,15 @@ function insertarDocumentoSinFiscal(db, { tipo, estado, sucursalId, almacenId, c
   const insertDetalle = db.prepare(
     `INSERT INTO documentos_venta_detalle
        (id, documento_id, producto_id, cantidad, precio_unitario, descuento_pct, descuento_monto,
-        tasa_itbis, base_imponible, itbis_monto, total_linea, costo_unitario)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        tasa_itbis, base_imponible, itbis_monto, total_linea, costo_unitario, promocion_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   );
   const lineas = calculo.lineasCalculadas.map((l) => {
     const costoUnitario = inventario.costoUnitarioVenta(db, l.producto);
     const detalleId = crypto.randomUUID();
     insertDetalle.run(
       detalleId, documentoId, l.producto.id, l.cantidad, l.precioUnitario, l.descuentoPct,
-      l.descuentoMonto, l.tasaItbis, l.baseImponible, l.itbisMonto, l.totalLinea, costoUnitario
+      l.descuentoMonto, l.tasaItbis, l.baseImponible, l.itbisMonto, l.totalLinea, costoUnitario, l.promocionId || null
     );
     return { ...l, costoUnitario, detalleId };
   });
@@ -508,6 +541,90 @@ function anularConduce(db, { documentoId, motivo, usuarioId }) {
   });
   revertirAsientosDocumento(db, documentoId, 'documentos_venta_anulacion', usuarioId);
   configuracion.registrarAuditoria(db, { usuarioId, modulo: 'ventas', entidad: 'documentos_venta', entidadId: documentoId, accion: 'anular', detalle: { tipo: 'conduce', numero: conduce.numero, motivo } });
+}
+
+// =========================================================================
+// Promociones programadas: descuento por producto o por categoría, en % o en RD$ por unidad,
+// entre dos fechas. Se aplican solas al vender (la mayor entre promoción y descuento manual).
+// Nunca se borran: se desactivan.
+// =========================================================================
+
+const FECHA_AAAAMMDD = /^\d{4}-\d{2}-\d{2}$/;
+
+function estadoPromocion(p, hoy) {
+  if (!p.activo) return 'desactivada';
+  if (p.fecha_fin < hoy) return 'vencida';
+  if (p.fecha_inicio > hoy) return 'programada';
+  return 'vigente';
+}
+
+function listarPromociones(db) {
+  const hoy = hoyLocal();
+  return db
+    .prepare(
+      `SELECT pr.*, p.descripcion AS producto_descripcion, p.codigo_interno, p.precio_detalle, c.nombre AS categoria_nombre,
+              u.nombre_completo AS usuario_nombre
+       FROM promociones pr
+       LEFT JOIN productos p ON p.id = pr.producto_id
+       LEFT JOIN categorias_producto c ON c.id = pr.categoria_id
+       LEFT JOIN usuarios u ON u.id = pr.usuario_id
+       WHERE pr.deleted_at IS NULL
+       ORDER BY pr.activo DESC, pr.fecha_fin DESC, pr.created_at DESC`
+    )
+    .all()
+    .map((p) => ({ ...p, estado: estadoPromocion(p, hoy) }));
+}
+
+function guardarPromocion(db, { promocionId, nombre, productoId, categoriaId, tipoDescuento, valor, fechaInicio, fechaFin, usuarioId }) {
+  session.requerirPermiso('ventas.promocion.gestionar');
+  if (!nombre || !String(nombre).trim()) throw new Error('Ponle un nombre a la promoción');
+  if (Boolean(productoId) === Boolean(categoriaId)) throw new Error('La promoción aplica a un producto o a una categoría (uno de los dos)');
+  let producto = null;
+  if (productoId) {
+    producto = db.prepare('SELECT id, descripcion, precio_detalle FROM productos WHERE id = ? AND deleted_at IS NULL').get(productoId);
+    if (!producto) throw new Error('Producto no encontrado');
+  } else if (!db.prepare('SELECT 1 FROM categorias_producto WHERE id = ? AND deleted_at IS NULL').get(categoriaId)) {
+    throw new Error('Categoría no encontrada');
+  }
+  if (!['porcentaje', 'monto'].includes(tipoDescuento)) throw new Error('El descuento es en % o en RD$ por unidad');
+  const monto = Number(valor);
+  if (!(monto > 0)) throw new Error('El descuento debe ser mayor que cero');
+  if (tipoDescuento === 'porcentaje' && monto >= 100) throw new Error('Un descuento en % debe ser menor que 100');
+  if (tipoDescuento === 'monto' && producto && monto >= producto.precio_detalle) {
+    throw new Error(`El descuento por unidad debe ser menor que el precio de "${producto.descripcion}" (${producto.precio_detalle})`);
+  }
+  if (!FECHA_AAAAMMDD.test(fechaInicio || '') || !FECHA_AAAAMMDD.test(fechaFin || '')) throw new Error('Indique las fechas de inicio y fin');
+  if (fechaFin < fechaInicio) throw new Error('La fecha de fin no puede ser anterior a la de inicio');
+
+  const id = promocionId || crypto.randomUUID();
+  if (promocionId) {
+    const actual = db.prepare('SELECT * FROM promociones WHERE id = ? AND deleted_at IS NULL').get(promocionId);
+    if (!actual) throw new Error('Promoción no encontrada');
+    if (!actual.activo) throw new Error('La promoción está desactivada; cree una nueva');
+    db.prepare(
+      `UPDATE promociones SET nombre = ?, producto_id = ?, categoria_id = ?, tipo_descuento = ?, valor = ?, fecha_inicio = ?, fecha_fin = ?,
+         updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?`
+    ).run(String(nombre).trim(), productoId || null, categoriaId || null, tipoDescuento, monto, fechaInicio, fechaFin, id);
+  } else {
+    db.prepare(
+      `INSERT INTO promociones (id, nombre, producto_id, categoria_id, tipo_descuento, valor, fecha_inicio, fecha_fin, activo, usuario_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?)`
+    ).run(id, String(nombre).trim(), productoId || null, categoriaId || null, tipoDescuento, monto, fechaInicio, fechaFin, usuarioId);
+  }
+  configuracion.registrarAuditoria(db, {
+    usuarioId, modulo: 'ventas', entidad: 'promociones', entidadId: id, accion: promocionId ? 'editar' : 'crear',
+    detalle: { nombre: String(nombre).trim(), tipoDescuento, valor: monto, fechaInicio, fechaFin },
+  });
+  return id;
+}
+
+function desactivarPromocion(db, { promocionId, usuarioId }) {
+  session.requerirPermiso('ventas.promocion.gestionar');
+  const promo = db.prepare('SELECT * FROM promociones WHERE id = ? AND deleted_at IS NULL').get(promocionId);
+  if (!promo) throw new Error('Promoción no encontrada');
+  if (!promo.activo) throw new Error('La promoción ya está desactivada');
+  db.prepare("UPDATE promociones SET activo = 0, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?").run(promocionId);
+  configuracion.registrarAuditoria(db, { usuarioId, modulo: 'ventas', entidad: 'promociones', entidadId: promocionId, accion: 'desactivar', detalle: { nombre: promo.nombre } });
 }
 
 function listarDocumentosVenta(db, { tipo, estado, clienteId, limite = 100 } = {}) {
@@ -1310,6 +1427,9 @@ function register(ipcMain, getDb) {
   ipcMain.handle('ventas:anularCotizacion', (event, payload) => { const db = getDb(); db.transaction(() => anularCotizacion(db, payload))(); return obtenerFactura(db, payload.documentoId); });
   ipcMain.handle('ventas:anularConduce', (event, payload) => { const db = getDb(); db.transaction(() => anularConduce(db, payload))(); return obtenerFactura(db, payload.documentoId); });
   ipcMain.handle('ventas:listarDocumentos', (event, filtros) => listarDocumentosVenta(getDb(), filtros || {}));
+  ipcMain.handle('ventas:listarPromociones', () => listarPromociones(getDb()));
+  ipcMain.handle('ventas:guardarPromocion', (event, payload) => { const db = getDb(); return db.transaction(() => guardarPromocion(db, payload))(); });
+  ipcMain.handle('ventas:desactivarPromocion', (event, payload) => { const db = getDb(); return db.transaction(() => desactivarPromocion(db, payload))(); });
 
   ipcMain.handle('ventas:crearFactura', (event, payload) => {
     const db = getDb();
@@ -1393,6 +1513,7 @@ module.exports = {
   register, calcularLinea, crearFactura, anularFactura, listarFacturas, obtenerFactura,
   abrirCuenta, agregarProductoCuenta, quitarLineaCuenta, anularCuentaAbierta, obtenerCuentaAbierta, listarCuentasAbiertas,
   crearCotizacion, crearConduce, anularCotizacion, anularConduce, listarDocumentosVenta,
+  listarPromociones, guardarPromocion, desactivarPromocion, descuentoLinea,
   crearNotaCredito, anularNotaCredito, crearNotaDebito, anularNotaDebito, listarNotas,
   ventasPorPeriodo, ventasPorVendedor, ventasPorArticulo, comisionesPorVendedor,
   marcarComisionPagada, margenPorFactura, resumenCobrosDelDia, itbisGeneradoVentas,

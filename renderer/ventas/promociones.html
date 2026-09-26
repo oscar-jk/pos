@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <title>Punto X — Promociones</title>
+  <link rel="stylesheet" href="../shared/styles.css" />
+  <link rel="stylesheet" href="./ventas.css" />
+  <style>
+    .tab-panel { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-lg); padding: 18px 20px; }
+    .enlace-accion { color: var(--color-accent); font-size: 12px; font-weight: 700; cursor: pointer; }
+    .pill-estado { font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 20px; color: #fff; white-space: nowrap; }
+    .aplica-a { display: flex; gap: 16px; margin-bottom: 8px; font-size: 13px; }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <div id="sidebar-container"></div>
+    <div class="main-area">
+      <div id="topbar-container"></div>
+
+      <div class="page-header">
+        <div>
+          <h1>Promociones</h1>
+          <p>Descuentos programados por producto o por categoría. Se aplican solos al vender dentro de sus fechas.</p>
+        </div>
+        <div id="acciones-pagina">
+          <button class="btn btn-primario" id="btn-nueva-promocion" data-permiso="ventas.promocion.gestionar">+ Nueva promoción</button>
+        </div>
+      </div>
+
+      <div id="mensaje-error" class="mensaje-error" style="display:none;"></div>
+
+      <div class="tab-panel" id="panel-promociones">
+        <table class="data-table">
+          <thead><tr><th>Promoción</th><th>Aplica a</th><th>Descuento</th><th>Desde</th><th>Hasta</th><th>Estado</th><th></th></tr></thead>
+          <tbody id="promociones-tbody"></tbody>
+        </table>
+        <div id="promociones-vacio" class="empty-state" style="display:none;">Aún no hay promociones.</div>
+      </div>
+    </div>
+  </div>
+
+  <script src="../shared/web/store.js"></script>
+  <script src="../shared/web/api-auth-app.js"></script>
+  <script src="../shared/web/api-contabilidad.js"></script>
+  <script src="../shared/web/api-inventario.js"></script>
+  <script src="../shared/web/api-caja.js"></script>
+  <script src="../shared/web/api-cxc.js"></script>
+  <script src="../shared/web/api-compras.js"></script>
+  <script src="../shared/web/api-cxp.js"></script>
+  <script src="../shared/web/api-ventas.js"></script>
+  <script src="../shared/web/api-config.js"></script>
+  <script src="../shared/web/web-banner.js"></script>
+  <script src="../shared/sidebar.js"></script>
+  <script src="../shared/topbar.js"></script>
+  <script src="../shared/shell.js"></script>
+  <script src="../shared/modal.js"></script>
+  <script src="./promociones.js"></script>
+</body>
+</html>
