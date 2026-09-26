@@ -144,6 +144,22 @@ function prepararLineasVenta(db, {
   return { lineasCalculadas, descuentoGlobalMonto, subtotal, itbisTotal, total: redondear(subtotal + itbisTotal) };
 }
 
+// Multimoneda: la factura guarda sus montos en RD$ (libros, CxC y reportes fiscales) y, si se
+// emite en otra moneda, la tasa del día registrada en Configuración, que queda congelada para
+// mostrarla e imprimirla en esa moneda. Si la tasa cambió mientras se cobraba, se avisa.
+function monedaYTasa(db, monedaId, tasaEnviada) {
+  const local = db.prepare('SELECT id FROM monedas WHERE es_local = 1').get().id;
+  if (!monedaId || monedaId === local) return { monedaFactura: local, tasaFactura: 1 };
+  const moneda = db.prepare('SELECT codigo FROM monedas WHERE id = ? AND activo = 1 AND deleted_at IS NULL').get(monedaId);
+  if (!moneda) throw new Error('Moneda no encontrada');
+  const tasa = configuracion.tasaDelDia(db, monedaId);
+  if (!tasa) throw new Error(`No hay tasa del ${moneda.codigo} registrada para hoy. Regístrela en Configuración > Monedas.`);
+  if (tasaEnviada && Math.abs(Number(tasaEnviada) - tasa) > 0.00005) {
+    throw new Error(`La tasa del ${moneda.codigo} cambió a ${tasa}. Revise los montos y vuelva a cobrar.`);
+  }
+  return { monedaFactura: monedaId, tasaFactura: tasa };
+}
+
 // Descuentos que traen la cotización o los conduces que se facturan (ya autorizados al emitirlos).
 function descuentosDeOrigen(db, origenes) {
   const descuentosAutorizados = new Map();
@@ -225,6 +241,9 @@ function crearFactura(db, payload) {
     if (!turnoCaja) throw new Error('Debe abrir un turno de caja antes de facturar al contado en efectivo');
   }
 
+  // --- Moneda: montos siempre en RD$; si se factura en otra moneda, la tasa del día queda congelada ---
+  const { monedaFactura, tasaFactura } = monedaYTasa(db, monedaId, tasaCambio);
+
   // --- NCF y número ---
   const codigoNcf = tipoNcfCodigo || (cliente ? cliente.tipo_comprobante_default : null) || 'consumo';
   const codigoTipoNcfMap = { consumo: 'B02', credito_fiscal: 'B01', gubernamental: 'B14', regimen_especial: 'B15' };
@@ -243,7 +262,7 @@ function crearFactura(db, payload) {
      VALUES (?, 'factura', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'facturado', ?, ?, ?, ?, ?)`
   ).run(
     documentoId, numero, ncf, tipoNcfId, sucursalId, almacenId, clienteId || null, vendedorId || null,
-    modoVenta, condicionPago, monedaId, tasaCambio || 1, fechaIso, subtotal, descuentoGlobalMonto,
+    modoVenta, condicionPago, monedaFactura, tasaFactura, fechaIso, subtotal, descuentoGlobalMonto,
     itbisTotal, retencionIsr, retencionItbis, total,
     esDelivery ? 1 : 0, repartidorId || null, direccionEntrega || null, esDelivery ? 'pendiente' : null, usuarioId
   );
@@ -1272,7 +1291,8 @@ function listarFacturas(db, { desde, hasta, estado, clienteId, limite = 50 }) {
 
   return db
     .prepare(
-      `SELECT dv.id, dv.numero, dv.ncf, dv.fecha, dv.total, dv.estado, dv.condicion_pago,
+      `SELECT dv.id, dv.numero, dv.ncf, dv.fecha, dv.total, dv.estado, dv.condicion_pago, dv.tasa_cambio,
+              (SELECT codigo FROM monedas WHERE id = dv.moneda_id) AS moneda_codigo,
               dv.motivo_anulacion, ua.nombre_completo AS usuario_anulo_nombre,
               COALESCE(c.nombre, 'Consumidor final') AS cliente_nombre, u.nombre_completo AS vendedor_nombre
        FROM documentos_venta dv
@@ -1439,10 +1459,11 @@ function itbisGeneradoVentas(db, { desde, hasta } = {}) {
 function obtenerFactura(db, documentoId) {
   const documento = db
     .prepare(
-      `SELECT dv.*, COALESCE(c.nombre, 'Consumidor final') AS cliente_nombre, u.nombre_completo AS vendedor_nombre
+      `SELECT dv.*, COALESCE(c.nombre, 'Consumidor final') AS cliente_nombre, u.nombre_completo AS vendedor_nombre, m.codigo AS moneda_codigo
        FROM documentos_venta dv
        LEFT JOIN clientes c ON c.id = dv.cliente_id
        LEFT JOIN usuarios u ON u.id = dv.vendedor_id
+       LEFT JOIN monedas m ON m.id = dv.moneda_id
        WHERE dv.id = ?`
     )
     .get(documentoId);
@@ -1552,10 +1573,7 @@ function register(ipcMain, getDb) {
   ipcMain.handle('ventas:reportes:resumenCobrosDelDia', (event, filtros) => resumenCobrosDelDia(getDb(), filtros || {}));
   ipcMain.handle('ventas:reportes:itbisGeneradoVentas', (event, filtros) => itbisGeneradoVentas(getDb(), filtros || {}));
 
-  ipcMain.handle('ventas:monedas', () => {
-    const db = getDb();
-    return db.prepare('SELECT id, codigo, nombre FROM monedas WHERE activo = 1').all();
-  });
+  ipcMain.handle('ventas:monedas', () => configuracion.listarMonedas(getDb()));
 
   ipcMain.handle('ventas:vendedores', () => {
     const db = getDb();

@@ -14,6 +14,23 @@ function fmtFecha(iso) {
   return iso ? new Date(iso).toLocaleString('es-DO', { dateStyle: 'short', timeStyle: 'short' }) : '—';
 }
 
+// Montos de un documento en su moneda: se guardan en RD$ y, si se emitió en otra moneda, se
+// muestran convertidos a la tasa congelada, con la tasa y el total equivalente en RD$ al pie.
+function formatoMonedaDocumento(doc) {
+  const extranjera = Boolean(doc.moneda_codigo) && doc.moneda_codigo !== 'DOP' && doc.tasa_cambio > 0;
+  const simbolo = !extranjera ? 'RD$' : (doc.moneda_codigo === 'USD' ? 'US$' : doc.moneda_codigo);
+  const valor = (n) => (extranjera ? (n || 0) / doc.tasa_cambio : n);
+  return {
+    extranjera,
+    n: (n) => fmtMoneda(valor(n)),
+    m: (n) => `${simbolo} ${fmtMoneda(valor(n))}`,
+    filasEquivalencia: () => (!extranjera ? '' : `
+      <tr><td>Tasa de cambio</td><td class="num">RD$ ${doc.tasa_cambio.toLocaleString('es-DO', { minimumFractionDigits: 2, maximumFractionDigits: 4 })} por ${simbolo} 1</td></tr>
+      <tr><td>Total en RD$</td><td class="num">RD$ ${fmtMoneda(doc.total)}</td></tr>
+      <tr><td>ITBIS en RD$</td><td class="num">RD$ ${fmtMoneda(doc.itbis_total)}</td></tr>`),
+  };
+}
+
 const FORMAS_PAGO_LABEL = { efectivo: 'Efectivo', tarjeta: 'Tarjeta', transferencia: 'Transferencia', credito: 'Crédito', cheque: 'Cheque' };
 
 const ESTILO_BASE = `
@@ -58,6 +75,7 @@ const ESTADO_DOCUMENTO = {
 
 function plantillaFactura(factura, negocio) {
   const itbisPorTasa = desglosarItbisPorTasa(factura.lineas);
+  const mon = formatoMonedaDocumento(factura);
   const tipo = factura.tipo || 'factura';
   const titulo = TITULO_DOCUMENTO[tipo] || 'FACTURA';
   const estado = (ESTADO_DOCUMENTO[tipo] || {})[factura.estado] || 'Vigente';
@@ -109,28 +127,29 @@ function plantillaFactura(factura, negocio) {
             <td>${escapar(l.codigo_interno)}</td>
             <td>${escapar(l.producto_descripcion)}</td>
             <td class="num">${l.cantidad}</td>
-            <td class="num">${fmtMoneda(l.precio_unitario)}</td>
-            <td class="num">${l.descuento_monto ? fmtMoneda(l.descuento_monto) : '—'}</td>
-            <td class="num">${fmtMoneda(l.itbis_monto)}</td>
-            <td class="num">${fmtMoneda(l.total_linea)}</td>
+            <td class="num">${mon.n(l.precio_unitario)}</td>
+            <td class="num">${l.descuento_monto ? mon.n(l.descuento_monto) : '—'}</td>
+            <td class="num">${mon.n(l.itbis_monto)}</td>
+            <td class="num">${mon.n(l.total_linea)}</td>
           </tr>
         `).join('')}
       </tbody>
     </table>
 
     <table class="totales">
-      <tr><td>Subtotal</td><td class="num">RD$ ${fmtMoneda(factura.subtotal)}</td></tr>
-      ${factura.descuento_total > 0 ? `<tr><td>Descuento</td><td class="num">-RD$ ${fmtMoneda(factura.descuento_total)}</td></tr>` : ''}
-      ${itbisPorTasa.map(([tasa, d]) => `<tr><td>ITBIS (${(tasa * 100).toFixed(0)}%)</td><td class="num">RD$ ${fmtMoneda(d.itbis)}</td></tr>`).join('')}
-      ${factura.retencion_isr > 0 ? `<tr><td>Retención ISR</td><td class="num">-RD$ ${fmtMoneda(factura.retencion_isr)}</td></tr>` : ''}
-      ${factura.retencion_itbis > 0 ? `<tr><td>Retención ITBIS</td><td class="num">-RD$ ${fmtMoneda(factura.retencion_itbis)}</td></tr>` : ''}
-      <tr class="total-final"><td>Total</td><td class="num">RD$ ${fmtMoneda(factura.total)}</td></tr>
+      <tr><td>Subtotal</td><td class="num">${mon.m(factura.subtotal)}</td></tr>
+      ${factura.descuento_total > 0 ? `<tr><td>Descuento</td><td class="num">-${mon.m(factura.descuento_total)}</td></tr>` : ''}
+      ${itbisPorTasa.map(([tasa, d]) => `<tr><td>ITBIS (${(tasa * 100).toFixed(0)}%)</td><td class="num">${mon.m(d.itbis)}</td></tr>`).join('')}
+      ${factura.retencion_isr > 0 ? `<tr><td>ISR a retener al pagar</td><td class="num">-${mon.m(factura.retencion_isr)}</td></tr>` : ''}
+      ${factura.retencion_itbis > 0 ? `<tr><td>ITBIS a retener al pagar</td><td class="num">-${mon.m(factura.retencion_itbis)}</td></tr>` : ''}
+      <tr class="total-final"><td>Total</td><td class="num">${mon.m(factura.total)}</td></tr>
+      ${mon.filasEquivalencia()}
     </table>
 
     ${tipo === 'factura' ? `
     <div class="pagos">
       <strong>Forma de pago:</strong>
-      ${(factura.pagos || []).map((p) => `${FORMAS_PAGO_LABEL[p.forma_pago] || p.forma_pago}: RD$ ${fmtMoneda(p.monto)}`).join(' &nbsp;·&nbsp; ') || '—'}
+      ${(factura.pagos || []).map((p) => `${FORMAS_PAGO_LABEL[p.forma_pago] || p.forma_pago}: ${mon.m(p.monto)}`).join(' &nbsp;·&nbsp; ') || '—'}
     </div>` : ''}
     ${tipo === 'cotizacion' ? '<div class="pagos">Precios con ITBIS incluido. Esta cotización no es una factura ni comprobante fiscal.</div>' : ''}
     ${tipo === 'pedido' ? '<div class="pagos">Precios con ITBIS incluido. La mercancía queda reservada para este pedido. No es una factura ni comprobante fiscal.</div>' : ''}
@@ -146,6 +165,7 @@ function plantillaFactura(factura, negocio) {
 }
 
 function plantillaTique(factura, negocio) {
+  const mon = formatoMonedaDocumento(factura);
   const itbisPorTasa = desglosarItbisPorTasa(factura.lineas);
   return `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8" />
     <title>Tique ${escapar(factura.numero)}</title>
@@ -177,18 +197,19 @@ function plantillaTique(factura, negocio) {
     <table>
       ${factura.lineas.map((l) => `
         <tr><td colspan="2" class="linea-desc">${escapar(l.producto_descripcion)}</td></tr>
-        <tr><td>${l.cantidad} x ${fmtMoneda(l.precio_unitario)}</td><td class="num">${fmtMoneda(l.total_linea)}</td></tr>
+        <tr><td>${l.cantidad} x ${mon.n(l.precio_unitario)}</td><td class="num">${mon.n(l.total_linea)}</td></tr>
       `).join('')}
     </table>
     <hr />
     <table class="totales">
-      <tr><td>Subtotal</td><td class="num">${fmtMoneda(factura.subtotal)}</td></tr>
-      ${factura.descuento_total > 0 ? `<tr><td>Descuento</td><td class="num">-${fmtMoneda(factura.descuento_total)}</td></tr>` : ''}
-      ${itbisPorTasa.map(([tasa, d]) => `<tr><td>ITBIS (${(tasa * 100).toFixed(0)}%)</td><td class="num">${fmtMoneda(d.itbis)}</td></tr>`).join('')}
-      <tr class="total-final"><td>TOTAL</td><td class="num">RD$ ${fmtMoneda(factura.total)}</td></tr>
+      <tr><td>Subtotal</td><td class="num">${mon.n(factura.subtotal)}</td></tr>
+      ${factura.descuento_total > 0 ? `<tr><td>Descuento</td><td class="num">-${mon.n(factura.descuento_total)}</td></tr>` : ''}
+      ${itbisPorTasa.map(([tasa, d]) => `<tr><td>ITBIS (${(tasa * 100).toFixed(0)}%)</td><td class="num">${mon.n(d.itbis)}</td></tr>`).join('')}
+      <tr class="total-final"><td>TOTAL</td><td class="num">${mon.m(factura.total)}</td></tr>
+      ${mon.filasEquivalencia()}
     </table>
     <hr />
-    <div>${(factura.pagos || []).map((p) => `${FORMAS_PAGO_LABEL[p.forma_pago] || p.forma_pago}: ${fmtMoneda(p.monto)}`).join('<br/>') || '—'}</div>
+    <div>${(factura.pagos || []).map((p) => `${FORMAS_PAGO_LABEL[p.forma_pago] || p.forma_pago}: ${mon.n(p.monto)}`).join('<br/>') || '—'}</div>
     <div class="pie">¡Gracias por su compra!<br/>Generado por Punto X</div>
   </body></html>`;
 }

@@ -116,6 +116,59 @@ function actualizarParametroNegocio(db, clave, valor, usuarioId) {
 }
 
 // =========================================================================
+// Monedas y tasa de cambio del día (Módulo 1: multimoneda). La tasa es RD$ por unidad de la
+// moneda; se registra una por día y queda congelada en cada factura que la usa.
+// =========================================================================
+
+function hoyLocal() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function tasaDelDia(db, monedaId, fecha = hoyLocal()) {
+  const fila = db.prepare('SELECT tasa FROM tasas_cambio WHERE moneda_id = ? AND fecha = ? AND deleted_at IS NULL').get(monedaId, fecha);
+  return fila ? fila.tasa : null;
+}
+
+function listarMonedas(db) {
+  const hoy = hoyLocal();
+  return db
+    .prepare('SELECT id, codigo, nombre, es_local FROM monedas WHERE activo = 1 AND deleted_at IS NULL ORDER BY es_local DESC, codigo')
+    .all()
+    .map((m) => ({
+      ...m,
+      tasa_hoy: m.es_local ? 1 : tasaDelDia(db, m.id, hoy),
+      historial: m.es_local ? [] : db
+        .prepare(
+          `SELECT t.fecha, t.tasa, u.nombre_completo AS usuario_nombre FROM tasas_cambio t LEFT JOIN usuarios u ON u.id = t.usuario_id
+           WHERE t.moneda_id = ? AND t.deleted_at IS NULL ORDER BY t.fecha DESC LIMIT 7`
+        )
+        .all(m.id),
+    }));
+}
+
+function guardarTasaCambio(db, { monedaId, tasa, usuarioId }) {
+  session.requerirPermiso('configuracion.gestionar');
+  const moneda = db.prepare('SELECT * FROM monedas WHERE id = ? AND deleted_at IS NULL').get(monedaId);
+  if (!moneda) throw new Error('Moneda no encontrada');
+  if (moneda.es_local) throw new Error('La moneda local no lleva tasa de cambio');
+  const valor = Math.round(Number(tasa) * 10000) / 10000;
+  if (!(valor > 0)) throw new Error('La tasa debe ser mayor que cero');
+  const hoy = hoyLocal();
+  const existente = db.prepare('SELECT id, tasa FROM tasas_cambio WHERE moneda_id = ? AND fecha = ?').get(monedaId, hoy);
+  if (existente) {
+    db.prepare("UPDATE tasas_cambio SET tasa = ?, usuario_id = ?, deleted_at = NULL, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?").run(valor, usuarioId, existente.id);
+  } else {
+    db.prepare('INSERT INTO tasas_cambio (id, moneda_id, fecha, tasa, usuario_id) VALUES (?, ?, ?, ?, ?)').run(crypto.randomUUID(), monedaId, hoy, valor, usuarioId);
+  }
+  registrarAuditoria(db, {
+    usuarioId, modulo: 'configuracion', entidad: 'tasas_cambio', entidadId: monedaId, accion: existente ? 'editar' : 'crear',
+    detalle: { moneda: moneda.codigo, fecha: hoy, tasa: valor, anterior: existente ? existente.tasa : null },
+  });
+  return valor;
+}
+
+// =========================================================================
 // Usuarios
 // =========================================================================
 
@@ -367,6 +420,8 @@ function register(ipcMain, getDb) {
   ipcMain.handle('config:listarBitacora', (event, filtros) => listarBitacora(getDb(), filtros || {}));
 
   ipcMain.handle('config:listarModulos', () => listarModulos(getDb()));
+  ipcMain.handle('config:listarMonedas', () => listarMonedas(getDb()));
+  ipcMain.handle('config:guardarTasaCambio', (event, payload) => { const db = getDb(); return db.transaction(() => guardarTasaCambio(db, payload))(); });
   ipcMain.handle('config:actualizarModulo', (event, payload) => {
     const db = getDb();
     db.transaction(() => actualizarModulo(db, payload))();
@@ -381,4 +436,5 @@ module.exports = {
   listarTasasItbis, crearTasaItbis, actualizarTasaItbis, listarTiposNcf, crearTipoNcf, ampliarRangoNcf,
   actualizarEstadoTipoNcf, listarSucursales, crearSucursal,
   listarModulos, modulosActivos, moduloActivo, exigirModulo, actualizarModulo,
+  listarMonedas, tasaDelDia, guardarTasaCambio,
 };

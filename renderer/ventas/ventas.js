@@ -5,11 +5,25 @@ const state = {
   origen: null, // { tipo: 'cuenta' | 'cotizacion' | 'conduces', ids, ... } al facturar desde otro documento
   cliente: null,
   nivelPrecio: 'detalle',
+  moneda: null, // null = RD$; { id, codigo, tasa_hoy } al facturar en otra moneda
+  monedas: [],
   carrito: [], // { producto, cantidad, descuentoPct, descuentoMonto, modoDescuento: 'pct' | 'monto', precioFijo? }
 };
 
 function fmt(n) {
   return `RD$ ${(n || 0).toLocaleString('es-DO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+// Montos de la venta en curso: se calculan en RD$ y, si se factura en otra moneda, se muestran
+// convertidos a la tasa del día (la misma que el servidor congela en la factura).
+function simboloMoneda() {
+  return !state.moneda ? 'RD$' : (state.moneda.codigo === 'USD' ? 'US$' : state.moneda.codigo);
+}
+function aMoneda(n) {
+  return state.moneda ? (n || 0) / state.moneda.tasa_hoy : (n || 0);
+}
+function fmtV(n) {
+  return `${simboloMoneda()} ${aMoneda(n).toLocaleString('es-DO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
 function redondear(n) {
@@ -92,7 +106,7 @@ function renderResultadosProducto(resultados) {
           <div class="buscador-resultados__nombre">${p.descripcion}</div>
           <div class="buscador-resultados__meta">${p.codigo_interno} · Disp: ${p.cantidad_disponible}${p.promocion ? ` · <span style="color:var(--color-success); font-weight:700;">Promoción ${textoPromocion(p.promocion)}</span>` : ""}</div>
         </div>
-        <div class="buscador-resultados__precio">${fmt(precioPorNivel(p, state.nivelPrecio))}</div>
+        <div class="buscador-resultados__precio">${fmtV(precioPorNivel(p, state.nivelPrecio))}</div>
       </div>
     `).join('');
     contenedor.querySelectorAll('.buscador-resultados__item').forEach((el) => {
@@ -146,8 +160,8 @@ function renderCarrito() {
           <input type="number" min="0" max="100" step="0.01" value="${pctManual}" class="desc-input" title="Descuento en %" ${descuentoBloqueado ? 'disabled' : ''} />
           <input type="number" min="0" step="0.01" value="${montoManual}" class="desc-monto" title="Descuento en RD$" ${descuentoBloqueado ? 'disabled' : ''} />
         </td>
-        <td style="text-align:right;">${fmt(precioUnitario)}</td>
-        <td style="text-align:right; font-weight:700;">${fmt(calc.totalLinea)}</td>
+        <td style="text-align:right;">${fmtV(precioUnitario)}</td>
+        <td style="text-align:right; font-weight:700;">${fmtV(calc.totalLinea)}</td>
         <td class="carrito-quitar" style="${bloqueado ? 'visibility:hidden;' : ''}">✕</td>
       </tr>
     `;
@@ -206,21 +220,21 @@ function calcularTotalesCarrito() {
 
 function renderTotales() {
   const { subtotal, itbisTotal, total, descuentoGlobalMonto } = calcularTotalesCarrito();
-  document.getElementById('total-subtotal').textContent = fmt(subtotal);
-  document.getElementById('total-descuento').textContent = `— ${fmt(descuentoGlobalMonto)}`;
-  document.getElementById('total-itbis').textContent = fmt(itbisTotal);
-  document.getElementById('total-total').textContent = fmt(total);
+  document.getElementById('total-subtotal').textContent = fmtV(subtotal);
+  document.getElementById('total-descuento').textContent = `— ${fmtV(descuentoGlobalMonto)}`;
+  document.getElementById('total-itbis').textContent = fmtV(itbisTotal);
+  document.getElementById('total-total').textContent = fmtV(total);
 
   actualizarPagoCredito(total);
   const etiqueta = { factura: 'Cobrar', cotizacion: 'Guardar cotización', conduce: 'Registrar conduce', pedido: 'Guardar pedido' }[state.documento];
-  document.getElementById('btn-cobrar').textContent = `${etiqueta} ${fmt(total)}`;
+  document.getElementById('btn-cobrar').textContent = `${etiqueta} ${fmtV(total)}`;
 }
 
 function actualizarPagoCredito(total) {
   const efectivo = parseFloat(document.getElementById('pago-efectivo').value) || 0;
   const tarjeta = parseFloat(document.getElementById('pago-tarjeta').value) || 0;
   const transferencia = parseFloat(document.getElementById('pago-transferencia').value) || 0;
-  const credito = redondear(Math.max(0, total - efectivo - tarjeta - transferencia));
+  const credito = redondear(Math.max(0, redondear(aMoneda(total)) - efectivo - tarjeta - transferencia));
   document.getElementById('pago-credito').value = credito.toFixed(2);
 
   const btn = document.getElementById('btn-cobrar');
@@ -346,6 +360,7 @@ document.getElementById('btn-cobrar').addEventListener('click', async () => {
   const credito = parseFloat(document.getElementById('pago-credito').value) || 0;
 
   const condicionPago = credito > 0 ? (efectivo + tarjeta + transferencia > 0 ? 'mixto' : 'credito') : 'contado';
+  const pagosRd = pagosEnPesos({ efectivo, tarjeta, transferencia, credito });
   const origen = state.origen;
 
   const base = {
@@ -377,14 +392,9 @@ document.getElementById('btn-cobrar').addEventListener('click', async () => {
         cajaId: state.info.cajaId,
         condicionPago,
         tipoNcfCodigo: document.getElementById('select-ncf').value,
-        monedaId: state.info.monedaId,
-        tasaCambio: 1,
-        pagos: [
-          { formaPago: 'efectivo', monto: efectivo },
-          { formaPago: 'tarjeta', monto: tarjeta },
-          { formaPago: 'transferencia', monto: transferencia },
-          { formaPago: 'credito', monto: credito },
-        ].filter((p) => p.monto > 0),
+        monedaId: state.moneda ? state.moneda.id : state.info.monedaId,
+        tasaCambio: state.moneda ? state.moneda.tasa_hoy : 1,
+        pagos: pagosRd,
         cuentaAbiertaId: origen && origen.tipo === 'cuenta' ? origen.id : null,
         cotizacionId: origen && origen.tipo === 'cotizacion' ? origen.id : null,
         conduceIds: origen && origen.tipo === 'conduces' ? origen.ids : null,
@@ -426,7 +436,7 @@ async function cargarHistorial() {
         <td>${f.ncf}</td>
         <td>${f.cliente_nombre}</td>
         <td>${fecha}</td>
-        <td>${fmt(f.total)}</td>
+        <td>${fmt(f.total)}${f.moneda_codigo && f.moneda_codigo !== 'DOP' ? ` <span style="font-size:11px; font-weight:700; color:var(--color-info);">${f.moneda_codigo}</span>` : ''}</td>
         <td><span class="status-pill" style="background:${colorEstado};">${f.estado}</span></td>
         <td>
           ${f.estado !== 'anulado' ? `<a href="#" class="btn-anular" data-permiso="ventas.factura.anular" data-id="${f.id}" style="color:var(--color-danger); font-size:12px; font-weight:700;">Anular</a>` : ''}
@@ -679,13 +689,56 @@ function mostrarExitoDocumento(doc) {
     pedido: ' guardado: la mercancía queda reservada hasta facturarlo',
   }[doc.tipo];
   exito.style.display = 'block';
-  exito.innerHTML = `${titulo} <strong>${doc.numero}</strong>${detalle}. Total ${fmt(doc.total)}.` +
+  const enMoneda = doc.moneda_codigo && doc.moneda_codigo !== 'DOP' && doc.tasa_cambio > 0
+    ? `${doc.moneda_codigo === 'USD' ? 'US$' : doc.moneda_codigo} ${(doc.total / doc.tasa_cambio).toLocaleString('es-DO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (${fmt(doc.total)} a tasa ${doc.tasa_cambio})`
+    : fmt(doc.total);
+  exito.innerHTML = `${titulo} <strong>${doc.numero}</strong>${detalle}. Total ${enMoneda}.` +
     (window.puntoXImpresion ? `
       <span data-permiso="ventas.factura.imprimir" style="margin-left:10px;">
         <button type="button" class="btn btn-secundario btn-chico" data-imprimir="factura">Imprimir ${titulo.toLowerCase()}</button>
         ${doc.tipo === 'factura' ? '<button type="button" class="btn btn-secundario btn-chico" data-imprimir="tique">Imprimir tique</button>' : ''}
       </span>` : '');
   exito.querySelectorAll('[data-imprimir]').forEach((b) => b.addEventListener('click', () => imprimirFactura(doc.id, b.dataset.imprimir)));
+}
+
+// Los pagos se escriben en la moneda de la venta; al servidor van en RD$. El redondeo de la
+// conversión se ajusta para que sumen exactamente el total en RD$.
+function pagosEnPesos(pagosMoneda) {
+  const total = calcularTotalesCarrito().total;
+  const pagos = Object.entries(pagosMoneda).filter(([, m]) => m > 0)
+    .map(([formaPago, m]) => ({ formaPago, monto: state.moneda ? redondear(m * state.moneda.tasa_hoy) : m }));
+  if (!state.moneda || pagos.length === 0) return pagos;
+  const diferencia = redondear(total - pagos.reduce((a, p) => a + p.monto, 0));
+  const ajustar = pagos.find((p) => p.formaPago === 'credito') || pagos[pagos.length - 1];
+  if (Math.abs(diferencia) <= 0.05 * pagos.length) ajustar.monto = redondear(ajustar.monto + diferencia);
+  return pagos;
+}
+
+// --- Moneda de la factura: RD$ o una extranjera con tasa registrada hoy ---
+
+async function configurarMonedas() {
+  if (!window.puntoXVentas.listarMonedas) return;
+  state.monedas = (await window.puntoXVentas.listarMonedas()).filter((m) => !m.es_local && m.tasa_hoy);
+  if (state.monedas.length === 0) return;
+  const select = document.getElementById('select-moneda');
+  select.innerHTML = '<option value="">RD$ — Peso dominicano</option>'
+    + state.monedas.map((m) => `<option value="${m.id}">${m.codigo} — ${m.nombre}</option>`).join('');
+  select.addEventListener('change', () => setMoneda(select.value));
+  actualizarBloqueMoneda();
+}
+
+function actualizarBloqueMoneda() {
+  const visible = state.monedas.length > 0 && state.documento === 'factura' && !state.origen;
+  document.getElementById('bloque-moneda').style.display = visible ? 'block' : 'none';
+  if (!visible && state.moneda) setMoneda('');
+}
+
+function setMoneda(monedaId) {
+  state.moneda = state.monedas.find((m) => m.id === monedaId) || null;
+  document.getElementById('select-moneda').value = state.moneda ? state.moneda.id : '';
+  document.getElementById('nota-moneda').textContent = state.moneda
+    ? `Tasa de hoy: RD$ ${state.moneda.tasa_hoy} por ${simboloMoneda()} 1. Los pagos se escriben en ${simboloMoneda()}.` : '';
+  renderCarrito();
 }
 
 // --- Tipo de documento: factura, cotización o conduce ---
@@ -711,6 +764,7 @@ function setDocumento(tipo) {
   document.getElementById('label-concepto').textContent = tipo === 'conduce' ? 'Entrega / observaciones' : 'Nota (opcional)';
   document.getElementById('input-concepto').placeholder = tipo === 'conduce' ? 'Dirección de entrega, quién recibe...' : '';
   if (['conduce', 'pedido'].includes(tipo) && state.modoVenta !== 'completa') setModoVenta('completa'); // siempre a un cliente
+  actualizarBloqueMoneda();
   document.querySelector('.page-header h1').textContent = { factura: 'Nueva factura', cotizacion: 'Nueva cotización', conduce: 'Nuevo conduce', pedido: 'Nuevo pedido' }[tipo];
   renderTotales();
 }
@@ -811,6 +865,7 @@ function terminarOrigen() {
   document.getElementById('input-buscar-producto').disabled = false;
   document.getElementById('aviso-origen').style.display = 'none';
   if (document.getElementById('select-documento').options.length > 1) document.getElementById('bloque-documento').style.display = 'block';
+  actualizarBloqueMoneda();
   window.history.replaceState(null, '', window.location.pathname);
 }
 
@@ -819,6 +874,7 @@ async function init() {
   state.categorias = await window.puntoXCxc.listarCategorias();
   actualizarSubtitulo();
   configurarSelectorDocumento();
+  await configurarMonedas();
   renderCarrito();
   cargarHistorial();
   cargarNotas();

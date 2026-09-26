@@ -197,6 +197,8 @@ contextBridge.exposeInMainWorld('puntoXConfig', {
   listarBitacora: invoke('config:listarBitacora'),
 
   listarModulos: invoke('config:listarModulos'),
+  listarMonedas: invoke('config:listarMonedas'),
+  guardarTasaCambio: invoke('config:guardarTasaCambio'),
   actualizarModulo: invoke('config:actualizarModulo'),
 });
 

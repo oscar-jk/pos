@@ -134,15 +134,21 @@ CREATE TABLE monedas (
   codigo      TEXT NOT NULL UNIQUE, -- DOP, USD
   nombre      TEXT NOT NULL,
   es_local    INTEGER NOT NULL DEFAULT 0,
-  activo      INTEGER NOT NULL DEFAULT 1
+  activo      INTEGER NOT NULL DEFAULT 1,
+  created_at  TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  updated_at  TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  deleted_at  TEXT
 );
 
 CREATE TABLE tasas_cambio (
   id          TEXT PRIMARY KEY,
   moneda_id   TEXT NOT NULL REFERENCES monedas(id),
   fecha       TEXT NOT NULL, -- fecha del día (YYYY-MM-DD)
-  tasa        REAL NOT NULL,
+  tasa        REAL NOT NULL, -- RD$ por 1 unidad de la moneda; queda congelada en cada factura
+  usuario_id  TEXT REFERENCES usuarios(id),
   created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  updated_at  TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  deleted_at  TEXT,
   UNIQUE (moneda_id, fecha)
 );
 

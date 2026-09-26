@@ -51,6 +51,7 @@ function cambiarTab(tab) {
   if (tab === 'sucursales') cargarSucursales();
   if (tab === 'impresoras') cargarImpresoras();
   if (tab === 'modulos') cargarModulos();
+  if (tab === 'monedas') cargarMonedas();
   if (tab === 'bitacora') cargarBitacora();
 }
 
@@ -513,6 +514,33 @@ document.getElementById('btn-nueva-impresora').addEventListener('click', () => a
 
 // --- Módulos opcionales ---
 
+async function cargarMonedas() {
+  const monedas = (await window.puntoXConfig.listarMonedas()).filter((m) => !m.es_local);
+  const fechaSimple = (f) => f.split('-').reverse().join('/');
+  document.getElementById('monedas-lista').innerHTML = monedas.map((m) => `
+    <div class="card" style="margin-bottom:14px; max-width:640px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
+        <div>
+          <div style="font-weight:800;">${m.nombre} (${m.codigo})</div>
+          <div style="font-size:12px; color:${m.tasa_hoy ? 'var(--color-text-muted)' : 'var(--color-danger)'};">${m.tasa_hoy ? `Tasa de hoy: RD$ ${m.tasa_hoy}` : 'Sin tasa registrada hoy'}</div>
+        </div>
+        <div style="display:flex; gap:8px; align-items:center;">
+          <input class="input-normal" type="number" step="0.0001" min="0" data-tasa-moneda="${m.id}" value="${m.tasa_hoy || ''}" placeholder="RD$ por 1 ${m.codigo}" style="width:170px;" />
+          <button class="btn btn-primario btn-chico" data-guardar-tasa="${m.id}">Guardar tasa de hoy</button>
+        </div>
+      </div>
+      ${m.historial.length ? `<div style="font-size:12px; color:var(--color-text-muted); margin-top:10px;">Últimas: ${m.historial.map((h) => `${fechaSimple(h.fecha)} RD$ ${h.tasa}`).join(' · ')}</div>` : ''}
+    </div>`).join('') || '<div class="empty-state">No hay monedas extranjeras.</div>';
+  document.querySelectorAll('[data-guardar-tasa]').forEach((btn) => btn.addEventListener('click', async () => {
+    const input = document.querySelector(`[data-tasa-moneda="${btn.dataset.guardarTasa}"]`);
+    try {
+      await window.puntoXConfig.guardarTasaCambio({ monedaId: btn.dataset.guardarTasa, tasa: parseFloat(input.value), usuarioId: state.info.usuario.id });
+      mostrarExito('Tasa de cambio guardada.');
+      cargarMonedas();
+    } catch (err) { mostrarError(err.message); }
+  }));
+}
+
 async function cargarModulos() {
   const modulos = await window.puntoXConfig.listarModulos();
   document.getElementById('modulos-lista').innerHTML = modulos.map((m) => `
@@ -563,6 +591,7 @@ async function init() {
   // La impresión solo existe en la app de escritorio; la versión web de prueba no la expone.
   if (!window.puntoXImpresion) document.querySelector('.tab-btn[data-tab="impresoras"]').remove();
   if (!window.puntoXConfig.listarModulos) document.querySelector('.tab-btn[data-tab="modulos"]').remove();
+  if (!window.puntoXConfig.listarMonedas) document.querySelector('.tab-btn[data-tab="monedas"]').remove();
   state.roles = await window.puntoXConfig.listarRoles();
   const tabInicial = window.location.hash.slice(1);
   const existe = [...document.querySelectorAll('.tab-btn')].some((b) => b.dataset.tab === tabInicial);

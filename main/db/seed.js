@@ -137,6 +137,8 @@ const PARAMETROS_NEGOCIO_NUEVOS = [
   ['metodo_valoracion', 'promedio_ponderado', 'Método de valoración de inventario para los productos que no definen uno propio'],
 ];
 
+const MONEDAS_EXTRANJERAS = [['USD', 'Dólar estadounidense']];
+
 // Catálogo de cuentas contables mínimas exigido por el Módulo 7.
 const CUENTAS_CONTABLES = [
   ['1000', 'ACTIVO', 'activo', null, 0],
@@ -346,6 +348,12 @@ function sincronizarPermisosFaltantes(db) {
     const ahora = new Date().toISOString();
     for (const [clave, valorDefault, descripcion] of PARAMETROS_NEGOCIO_NUEVOS) {
       if (!parametrosExistentes.has(clave)) insertParametroFaltante.run(clave, valorDefault, descripcion, ahora);
+    }
+
+    // Monedas extranjeras disponibles para facturar (la tasa del día se registra en Configuración).
+    const insertMoneda = db.prepare('INSERT INTO monedas (id, codigo, nombre, es_local, activo) VALUES (?, ?, ?, 0, 1)');
+    for (const [codigo, nombre] of MONEDAS_EXTRANJERAS) {
+      if (!db.prepare('SELECT 1 FROM monedas WHERE codigo = ?').get(codigo)) insertMoneda.run(uuid(), codigo, nombre);
     }
 
     // Cuentas contables del catálogo mínimo agregadas en versiones posteriores (p. ej. 1350).
