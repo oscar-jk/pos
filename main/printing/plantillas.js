@@ -48,10 +48,11 @@ function encabezadoNegocio(negocio) {
 }
 
 // Mismo formato carta para factura, cotización y conduce: cambian título, datos de cabecera y pie.
-const TITULO_DOCUMENTO = { factura: 'FACTURA', cotizacion: 'COTIZACIÓN', conduce: 'CONDUCE' };
+const TITULO_DOCUMENTO = { factura: 'FACTURA', cotizacion: 'COTIZACIÓN', conduce: 'CONDUCE', pedido: 'PEDIDO' };
 const ESTADO_DOCUMENTO = {
   factura: { anulado: 'ANULADA' },
   cotizacion: { abierto: 'Vigente', facturado: 'Facturada', anulado: 'ANULADA' },
+  pedido: { abierto: 'Pendiente de facturar', facturado: 'Facturado', anulado: 'ANULADO' },
   conduce: { entregado: 'Entregado, pendiente de facturar', facturado: 'Facturado', anulado: 'ANULADO' },
 };
 
@@ -132,6 +133,7 @@ function plantillaFactura(factura, negocio) {
       ${(factura.pagos || []).map((p) => `${FORMAS_PAGO_LABEL[p.forma_pago] || p.forma_pago}: RD$ ${fmtMoneda(p.monto)}`).join(' &nbsp;·&nbsp; ') || '—'}
     </div>` : ''}
     ${tipo === 'cotizacion' ? '<div class="pagos">Precios con ITBIS incluido. Esta cotización no es una factura ni comprobante fiscal.</div>' : ''}
+    ${tipo === 'pedido' ? '<div class="pagos">Precios con ITBIS incluido. La mercancía queda reservada para este pedido. No es una factura ni comprobante fiscal.</div>' : ''}
     ${tipo === 'conduce' ? `
     <div class="pagos">Mercancía entregada, pendiente de facturar. Este conduce no es comprobante fiscal.</div>
     <div style="display:flex; gap:40px; margin-top:50px;">

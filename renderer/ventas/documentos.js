@@ -35,7 +35,7 @@ function cambiarTab(tab) {
   document.querySelectorAll('.tab-btn').forEach((b) => b.classList.toggle('is-active', b.dataset.tab === tab));
   document.querySelectorAll('.tab-panel').forEach((p) => { p.style.display = p.id === `tab-${tab}` ? 'block' : 'none'; });
   mostrarError(null);
-  if (tab === 'cotizaciones') cargarCotizaciones(); else cargarConduces();
+  if (tab === 'cotizaciones') cargarCotizaciones(); else if (tab === 'pedidos') cargarPedidos(); else cargarConduces();
 }
 document.querySelectorAll('.tab-btn').forEach((b) => b.addEventListener('click', () => cambiarTab(b.dataset.tab)));
 
@@ -71,6 +71,37 @@ async function cargarCotizaciones() {
     if (!motivo) return;
     const r = await ejecutar(() => window.puntoXVentas.anularCotizacion({ documentoId: el.dataset.anularCotizacion, motivo, usuarioId: state.info.usuario.id }));
     if (r) cargarCotizaciones();
+  }));
+}
+
+// --- Pedidos ---
+
+function estadoPedido(p) {
+  if (p.estado === 'anulado') return pill('Anulado', 'var(--color-danger)');
+  if (p.estado === 'facturado') return pill(`Facturado · ${esc(p.factura_numero)}`, 'var(--color-success)');
+  return pill('Reservado, por facturar', 'var(--color-warning)');
+}
+
+async function cargarPedidos() {
+  const lista = await ejecutar(() => window.puntoXVentas.listarDocumentos({ tipo: 'pedido' }));
+  if (!lista) return;
+  document.getElementById('pedidos-vacio').style.display = lista.length === 0 ? 'block' : 'none';
+  document.getElementById('pedidos-tbody').innerHTML = lista.map((p) => `
+    <tr>
+      <td>${p.numero}</td><td>${esc(p.cliente_nombre)}</td><td>${fechaCorta(p.fecha)}</td><td>${esc(p.concepto) || '—'}</td>
+      <td style="text-align:right;">${fmt(p.total)}</td><td>${estadoPedido(p)}</td>
+      <td style="white-space:nowrap;">
+        ${window.puntoXImpresion ? `<span class="enlace-accion" data-imprimir="${p.id}">Imprimir</span>` : ''}
+        ${p.estado === 'abierto' ? ` · <a class="enlace-accion" data-permiso="ventas.factura.crear" href="./index.html?pedido=${encodeURIComponent(p.id)}">Facturar</a>` : ''}
+        ${p.estado === 'abierto' ? ` · <span class="enlace-accion" data-permiso="ventas.pedido.crear" data-anular-pedido="${p.id}" style="color:var(--color-danger);">Anular</span>` : ''}
+      </td>
+    </tr>`).join('');
+  document.querySelectorAll('#pedidos-tbody [data-imprimir]').forEach((el) => el.addEventListener('click', () => imprimir(el.dataset.imprimir)));
+  document.querySelectorAll('[data-anular-pedido]').forEach((el) => el.addEventListener('click', async () => {
+    const motivo = prompt('Motivo de la anulación (la mercancía reservada queda libre):');
+    if (!motivo) return;
+    const r = await ejecutar(() => window.puntoXVentas.anularPedido({ documentoId: el.dataset.anularPedido, motivo, usuarioId: state.info.usuario.id }));
+    if (r) cargarPedidos();
   }));
 }
 
@@ -134,10 +165,11 @@ async function init() {
     document.querySelector('.tabs').remove();
     document.querySelectorAll('.tab-panel').forEach((p) => p.remove());
     document.getElementById('acciones-pagina').remove();
-    mostrarError('Las cotizaciones y los conduces están disponibles en la aplicación de escritorio.');
+    mostrarError('Las cotizaciones, los pedidos y los conduces están disponibles en la aplicación de escritorio.');
     return;
   }
-  cambiarTab(window.location.hash === '#conduces' ? 'conduces' : 'cotizaciones');
+  const tabHash = window.location.hash.slice(1);
+  cambiarTab(['pedidos', 'conduces'].includes(tabHash) ? tabHash : 'cotizaciones');
 }
 
 init();

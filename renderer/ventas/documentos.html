@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8" />
-  <title>Punto X — Cotizaciones y conduces</title>
+  <title>Punto X — Cotizaciones, pedidos y conduces</title>
   <link rel="stylesheet" href="../shared/styles.css" />
   <link rel="stylesheet" href="./ventas.css" />
   <style>
@@ -20,11 +20,12 @@
 
       <div class="page-header">
         <div>
-          <h1>Cotizaciones y conduces</h1>
-          <p>Cotizaciones sin compromiso y mercancía entregada pendiente de facturar.</p>
+          <h1>Cotizaciones, pedidos y conduces</h1>
+          <p>Cotizaciones sin compromiso, pedidos con la mercancía reservada y mercancía entregada pendiente de facturar.</p>
         </div>
         <div id="acciones-pagina" style="display:flex; gap:8px;">
           <a class="btn btn-secundario" href="./index.html?documento=cotizacion" data-permiso="ventas.cotizacion.crear">+ Nueva cotización</a>
+          <a class="btn btn-secundario" href="./index.html?documento=pedido" data-permiso="ventas.pedido.crear">+ Nuevo pedido</a>
           <a class="btn btn-secundario" href="./index.html?documento=conduce" data-permiso="ventas.conduce.crear">+ Nuevo conduce</a>
         </div>
       </div>
@@ -33,6 +34,7 @@
 
       <div class="tabs">
         <button class="tab-btn is-active" data-tab="cotizaciones">Cotizaciones</button>
+        <button class="tab-btn" data-tab="pedidos">Pedidos</button>
         <button class="tab-btn" data-tab="conduces">Conduces</button>
       </div>
 
@@ -42,6 +44,14 @@
           <tbody id="cotizaciones-tbody"></tbody>
         </table>
         <div id="cotizaciones-vacio" class="empty-state" style="display:none;">Aún no hay cotizaciones.</div>
+      </div>
+
+      <div id="tab-pedidos" class="tab-panel" style="display:none;">
+        <table class="data-table">
+          <thead><tr><th>Número</th><th>Cliente</th><th>Fecha</th><th>Nota</th><th style="text-align:right;">Total</th><th>Estado</th><th></th></tr></thead>
+          <tbody id="pedidos-tbody"></tbody>
+        </table>
+        <div id="pedidos-vacio" class="empty-state" style="display:none;">Aún no hay pedidos.</div>
       </div>
 
       <div id="tab-conduces" class="tab-panel" style="display:none;">

@@ -223,6 +223,8 @@ contextBridge.exposeInMainWorld('puntoXVentas', {
   crearFactura: invoke('ventas:crearFactura'),
   crearCotizacion: invoke('ventas:crearCotizacion'),
   crearConduce: invoke('ventas:crearConduce'),
+  crearPedido: invoke('ventas:crearPedido'),
+  anularPedido: invoke('ventas:anularPedido'),
   anularCotizacion: invoke('ventas:anularCotizacion'),
   anularConduce: invoke('ventas:anularConduce'),
   listarDocumentos: invoke('ventas:listarDocumentos'),

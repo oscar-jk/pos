@@ -323,12 +323,36 @@ function componentesKit(db, kitProductoId) {
     .all(kitProductoId);
 }
 
-// Cuántos kits se pueden armar hoy según la existencia de sus componentes.
+// Lo que se puede vender: la existencia menos lo reservado en pedidos abiertos.
+function existenciaLibre(db, productoId, almacenId) {
+  const row = db
+    .prepare('SELECT cantidad_disponible, cantidad_comprometida FROM existencias WHERE producto_id = ? AND almacen_id = ?')
+    .get(productoId, almacenId);
+  return row ? redondearCantidad(row.cantidad_disponible - row.cantidad_comprometida) : 0;
+}
+
+// Cuánto se puede vender hoy (sin tocar lo reservado); para un kit, cuántos se pueden armar.
 function existenciaDisponibleParaVenta(db, producto, almacenId) {
-  if (!producto.es_kit) return existenciaDisponible(db, producto.id, almacenId);
+  if (!producto.es_kit) return existenciaLibre(db, producto.id, almacenId);
   const componentes = componentesKit(db, producto.id);
   if (componentes.length === 0) return 0;
-  return Math.min(...componentes.map((c) => Math.floor(existenciaDisponible(db, c.componente_producto_id, almacenId) / c.cantidad)));
+  return Math.min(...componentes.map((c) => Math.floor(existenciaLibre(db, c.componente_producto_id, almacenId) / c.cantidad)));
+}
+
+// Reserva (cantidad > 0) o libera (cantidad < 0) existencia para un pedido; un kit reserva sus
+// componentes. No mueve inventario ni kardex: solo la existencia comprometida.
+function reservarExistencia(db, { producto, almacenId, cantidad }) {
+  for (const m of productosAMover(db, producto, cantidad)) {
+    const fila = db.prepare('SELECT 1 FROM existencias WHERE producto_id = ? AND almacen_id = ?').get(m.productoId, almacenId);
+    if (!fila) {
+      db.prepare('INSERT INTO existencias (id, producto_id, almacen_id, cantidad_disponible, cantidad_comprometida) VALUES (?, ?, ?, 0, 0)')
+        .run(crypto.randomUUID(), m.productoId, almacenId);
+    }
+    db.prepare(
+      `UPDATE existencias SET cantidad_comprometida = MAX(0, ROUND(cantidad_comprometida + ?, 4)), updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
+       WHERE producto_id = ? AND almacen_id = ?`
+    ).run(m.cantidad, m.productoId, almacenId);
+  }
 }
 
 // Costo estimado de una unidad (cotizaciones, márgenes): para un producto normal es su
@@ -1017,7 +1041,7 @@ function register(ipcMain, getDb) {
 
 module.exports = {
   register, buscarProductos, obtenerProducto, obtenerProductoCompleto, listarProductos, guardarProducto,
-  existenciaDisponible, existenciaDisponibleParaVenta, costoUnitarioVenta, registrarMovimientoInventario,
+  existenciaDisponible, existenciaLibre, existenciaDisponibleParaVenta, reservarExistencia, costoUnitarioVenta, registrarMovimientoInventario,
   moverInventarioPorVenta, kardexPorProducto, existenciasConsolidadas, productosPorVencer,
   metodoValoracion, usaCapas, loteDeEntrada, reingresarSalidas, reingresarDocumento, reingresarVenta, retirarEntradas,
   lotesCreadosPor, actualizarCostoCapa, refrescarCostoPeps, listarLotes, promocionVigente, consultarPrecio, hoyLocal,

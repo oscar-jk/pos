@@ -131,7 +131,7 @@ function renderCarrito() {
   vacio.style.display = state.carrito.length === 0 ? 'block' : 'none';
 
   const bloqueado = Boolean(state.origen);
-  const descuentoBloqueado = state.origen && state.origen.tipo === 'cotizacion';
+  const descuentoBloqueado = state.origen && ['cotizacion', 'pedido'].includes(state.origen.tipo);
   tbody.innerHTML = state.carrito.map((linea, i) => {
     const calc = calcularLinea(linea);
     const precioUnitario = calc.precioUnitario;
@@ -212,7 +212,7 @@ function renderTotales() {
   document.getElementById('total-total').textContent = fmt(total);
 
   actualizarPagoCredito(total);
-  const etiqueta = { factura: 'Cobrar', cotizacion: 'Guardar cotización', conduce: 'Registrar conduce' }[state.documento];
+  const etiqueta = { factura: 'Cobrar', cotizacion: 'Guardar cotización', conduce: 'Registrar conduce', pedido: 'Guardar pedido' }[state.documento];
   document.getElementById('btn-cobrar').textContent = `${etiqueta} ${fmt(total)}`;
 }
 
@@ -228,6 +228,7 @@ function actualizarPagoCredito(total) {
     factura: credito === 0 || Boolean(state.cliente),
     cotizacion: true,
     conduce: Boolean(state.cliente),
+    pedido: Boolean(state.cliente),
   }[state.documento];
   btn.disabled = !(state.carrito.length > 0 && requisito);
 }
@@ -250,7 +251,7 @@ document.getElementById('select-nivel-precio').addEventListener('change', (e) =>
 // --- Modo de venta ---
 
 function setModoVenta(modo) {
-  if (modo === 'rapida' && (state.documento === 'conduce' || state.origen)) return; // requieren el cliente ya elegido
+  if (modo === 'rapida' && (['conduce', 'pedido'].includes(state.documento) || state.origen)) return; // requieren el cliente ya elegido
   state.modoVenta = modo;
   document.getElementById('btn-modo-rapida').classList.toggle('is-active', modo === 'rapida');
   document.getElementById('btn-modo-completa').classList.toggle('is-active', modo === 'completa');
@@ -368,6 +369,8 @@ document.getElementById('btn-cobrar').addEventListener('click', async () => {
       documento = await window.puntoXVentas.crearCotizacion({ ...base, concepto, diasValidez: parseInt(document.getElementById('input-validez').value, 10) || 15 });
     } else if (state.documento === 'conduce') {
       documento = await window.puntoXVentas.crearConduce({ ...base, concepto });
+    } else if (state.documento === 'pedido') {
+      documento = await window.puntoXVentas.crearPedido({ ...base, concepto });
     } else {
       documento = await window.puntoXVentas.crearFactura({
         ...base,
@@ -385,6 +388,7 @@ document.getElementById('btn-cobrar').addEventListener('click', async () => {
         cuentaAbiertaId: origen && origen.tipo === 'cuenta' ? origen.id : null,
         cotizacionId: origen && origen.tipo === 'cotizacion' ? origen.id : null,
         conduceIds: origen && origen.tipo === 'conduces' ? origen.ids : null,
+        pedidoId: origen && origen.tipo === 'pedido' ? origen.id : null,
       });
     }
     mostrarExitoDocumento(documento);
@@ -667,9 +671,13 @@ function escHtml(texto) {
 
 function mostrarExitoDocumento(doc) {
   const exito = document.getElementById('factura-exito');
-  const titulo = { factura: 'Factura', cotizacion: 'Cotización', conduce: 'Conduce' }[doc.tipo];
-  const detalle = doc.tipo === 'factura' ? ` (NCF ${doc.ncf}) guardada`
-    : doc.tipo === 'cotizacion' ? ` guardada, válida hasta el ${doc.valida_hasta.split('-').reverse().join('/')}` : ' registrado, pendiente de facturar';
+  const titulo = { factura: 'Factura', cotizacion: 'Cotización', conduce: 'Conduce', pedido: 'Pedido' }[doc.tipo];
+  const detalle = {
+    factura: ` (NCF ${doc.ncf}) guardada`,
+    cotizacion: ` guardada, válida hasta el ${(doc.valida_hasta || '').split('-').reverse().join('/')}`,
+    conduce: ' registrado, pendiente de facturar',
+    pedido: ' guardado: la mercancía queda reservada hasta facturarlo',
+  }[doc.tipo];
   exito.style.display = 'block';
   exito.innerHTML = `${titulo} <strong>${doc.numero}</strong>${detalle}. Total ${fmt(doc.total)}.` +
     (window.puntoXImpresion ? `
@@ -686,6 +694,7 @@ function configurarSelectorDocumento() {
   const select = document.getElementById('select-documento');
   if (!window.puntoXVentas.crearCotizacion) return; // versión web de prueba: solo facturas
   if (state.info.tienePermiso('ventas.cotizacion.crear')) select.insertAdjacentHTML('beforeend', '<option value="cotizacion">Cotización</option>');
+  if (state.info.tienePermiso('ventas.pedido.crear')) select.insertAdjacentHTML('beforeend', '<option value="pedido">Pedido (reservar mercancía)</option>');
   if (state.info.tienePermiso('ventas.conduce.crear')) select.insertAdjacentHTML('beforeend', '<option value="conduce">Conduce (entregar sin facturar)</option>');
   if (select.options.length > 1) document.getElementById('bloque-documento').style.display = 'block';
   select.addEventListener('change', (e) => setDocumento(e.target.value));
@@ -701,8 +710,8 @@ function setDocumento(tipo) {
   document.getElementById('campo-validez').style.display = tipo === 'cotizacion' ? 'block' : 'none';
   document.getElementById('label-concepto').textContent = tipo === 'conduce' ? 'Entrega / observaciones' : 'Nota (opcional)';
   document.getElementById('input-concepto').placeholder = tipo === 'conduce' ? 'Dirección de entrega, quién recibe...' : '';
-  if (tipo === 'conduce' && state.modoVenta !== 'completa') setModoVenta('completa'); // el conduce siempre es a un cliente
-  document.querySelector('.page-header h1').textContent = { factura: 'Nueva factura', cotizacion: 'Nueva cotización', conduce: 'Nuevo conduce' }[tipo];
+  if (['conduce', 'pedido'].includes(tipo) && state.modoVenta !== 'completa') setModoVenta('completa'); // siempre a un cliente
+  document.querySelector('.page-header h1').textContent = { factura: 'Nueva factura', cotizacion: 'Nueva cotización', conduce: 'Nuevo conduce', pedido: 'Nuevo pedido' }[tipo];
   renderTotales();
 }
 
@@ -761,6 +770,20 @@ async function cargarCotizacionParaFacturar(cotizacionId) {
   mostrarAvisoOrigen(`Facturando la cotización <strong>${cot.numero}</strong> con sus precios. Para cambiar productos o precios, haz una nueva cotización. <a href="./documentos.html" style="font-weight:700; color:var(--color-accent);">Volver</a>`);
 }
 
+async function cargarPedidoParaFacturar(pedidoId) {
+  const pedido = await window.puntoXVentas.obtenerFactura({ documentoId: pedidoId });
+  if (!pedido || pedido.tipo !== 'pedido' || pedido.estado !== 'abierto') throw new Error('El pedido ya no está pendiente de facturar.');
+  const carrito = await Promise.all(pedido.lineas.map(async (l) => ({
+    producto: await productoParaCarrito(l.producto_id), cantidad: l.cantidad, precioFijo: l.precio_unitario,
+    descuentoPct: 0, descuentoMonto: l.descuento_monto || 0, modoDescuento: 'monto',
+  })));
+  await seleccionarClientePorId(pedido.cliente_id);
+  const brutoLineas = pedido.lineas.reduce((a, l) => a + l.total_linea, 0);
+  document.getElementById('input-descuento-global').value = brutoLineas > 0 ? redondear((pedido.descuento_total / brutoLineas) * 100) : 0;
+  aplicarOrigen({ tipo: 'pedido', id: pedido.id }, carrito);
+  mostrarAvisoOrigen(`Facturando el pedido <strong>${pedido.numero}</strong> de ${escHtml(pedido.cliente_nombre || '')} con sus precios. Para cambiarlo, anúlalo y haz uno nuevo. <a href="./documentos.html#pedidos" style="font-weight:700; color:var(--color-accent);">Volver</a>`);
+}
+
 async function cargarConducesParaFacturar(ids) {
   const conduces = await Promise.all(ids.map((id) => window.puntoXVentas.obtenerFactura({ documentoId: id })));
   if (conduces.some((c) => !c || c.tipo !== 'conduce' || c.estado !== 'entregado')) throw new Error('Algún conduce ya no está pendiente de facturar.');
@@ -803,6 +826,7 @@ async function init() {
   try {
     if (params.get('cuenta') && window.puntoXCuentas) await cargarCuentaParaCobro(params.get('cuenta'));
     else if (params.get('cotizacion')) await cargarCotizacionParaFacturar(params.get('cotizacion'));
+    else if (params.get('pedido')) await cargarPedidoParaFacturar(params.get('pedido'));
     else if (params.get('conduces')) await cargarConducesParaFacturar(params.get('conduces').split(',').filter(Boolean));
     else if ([...document.getElementById('select-documento').options].some((o) => o.value === params.get('documento'))) setDocumento(params.get('documento'));
   } catch (err) {

@@ -165,20 +165,23 @@ function crearFactura(db, payload) {
     modoVenta, sucursalId, almacenId, cajaId, clienteId, vendedorId, usuarioId,
     condicionPago, tipoNcfCodigo, nivelPrecio, monedaId, tasaCambio,
     lineas, descuentoGlobalPct, pagos, esDelivery, direccionEntrega, repartidorId,
-    cuentaAbiertaId, cotizacionId, conduceIds,
+    cuentaAbiertaId, cotizacionId, conduceIds, pedidoId,
   } = payload;
 
   if (!lineas || lineas.length === 0) throw new Error('La factura debe tener al menos una línea');
-  if ([cuentaAbiertaId, cotizacionId, conduceIds && conduceIds.length].filter(Boolean).length > 1) {
-    throw new Error('Una factura se genera desde una sola fuente: cuenta abierta, cotización o conduces');
+  if ([cuentaAbiertaId, cotizacionId, conduceIds && conduceIds.length, pedidoId].filter(Boolean).length > 1) {
+    throw new Error('Una factura se genera desde una sola fuente: cuenta abierta, cotización, pedido o conduces');
   }
   const cuentaAbierta = cuentaAbiertaId ? validarCobroCuentaAbierta(db, cuentaAbiertaId, lineas) : null;
   const cotizacion = cotizacionId ? validarFacturaDesdeCotizacion(db, cotizacionId, lineas, clienteId) : null;
   const conduces = conduceIds && conduceIds.length ? validarFacturaDesdeConduces(db, conduceIds, lineas, clienteId) : null;
+  const pedido = pedidoId ? validarFacturaDesdePedido(db, pedidoId, lineas, clienteId) : null;
+  // La reserva del pedido se libera antes de validar existencia: esa mercancía es suya.
+  if (pedido) reservarLineasPedido(db, pedido, -1);
 
   const { lineasCalculadas, descuentoGlobalMonto, subtotal, itbisTotal, total } = prepararLineasVenta(db, {
     lineas, almacenId, nivelPrecio, usuarioId, descuentoGlobalPct, validarExistencia: !conduces,
-    ...descuentosDeOrigen(db, [cotizacion, ...(conduces || [])].filter(Boolean)),
+    ...descuentosDeOrigen(db, [cotizacion, pedido, ...(conduces || [])].filter(Boolean)),
   });
 
   // --- Retención (informativa por ahora; no se neta contra el cobro — ver nota en README del módulo) ---
@@ -334,7 +337,7 @@ function crearFactura(db, payload) {
       usuarioId, modulo: 'ventas', entidad: 'cuentas_abiertas', entidadId: cuentaAbierta.id, accion: 'cobrar', detalle: { numero: cuentaAbierta.numero, factura: numero, total },
     });
   }
-  for (const origen of [cotizacion, ...(conduces || [])].filter(Boolean)) {
+  for (const origen of [cotizacion, pedido, ...(conduces || [])].filter(Boolean)) {
     db.prepare(
       "UPDATE documentos_venta SET estado = 'facturado', facturado_en_id = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?"
     ).run(documentoId, origen.id);
@@ -500,6 +503,59 @@ function crearConduce(db, { sucursalId, almacenId, clienteId, vendedorId, usuari
   return documentoId;
 }
 
+// Pedido u orden de venta: reserva la mercancía para un cliente (existencia comprometida) sin
+// facturar ni mover inventario ni contabilidad. Se factura completo, con sus precios, o se anula
+// y la reserva se libera.
+function reservarLineasPedido(db, pedido, signo) {
+  for (const l of detalleDocumento(db, pedido.id)) {
+    const producto = db.prepare('SELECT * FROM productos WHERE id = ?').get(l.producto_id);
+    inventario.reservarExistencia(db, { producto, almacenId: pedido.almacen_id, cantidad: signo * l.cantidad });
+  }
+}
+
+function crearPedido(db, { sucursalId, almacenId, clienteId, vendedorId, usuarioId, nivelPrecio, lineas, descuentoGlobalPct, concepto }) {
+  session.requerirPermiso('ventas.pedido.crear');
+  if (!lineas || lineas.length === 0) throw new Error('El pedido debe tener al menos un producto');
+  if (!clienteId) throw new Error('El pedido requiere el cliente para quien se reserva la mercancía');
+  const cliente = cxc.obtenerCliente(db, clienteId);
+  if (!cliente) throw new Error('Cliente no encontrado');
+  if (cliente.bloqueado) throw new Error(`El cliente está bloqueado: ${cliente.motivo_bloqueo || 'sin motivo registrado'}`);
+  const calculo = prepararLineasVenta(db, { lineas, almacenId, nivelPrecio, usuarioId, descuentoGlobalPct, validarExistencia: true });
+  const { documentoId, numero } = insertarDocumentoSinFiscal(db, {
+    tipo: 'pedido', estado: 'abierto', sucursalId, almacenId, clienteId, vendedorId, calculo, concepto, usuarioId,
+  });
+  reservarLineasPedido(db, { id: documentoId, almacen_id: almacenId }, 1);
+  configuracion.registrarAuditoria(db, { usuarioId, modulo: 'ventas', entidad: 'documentos_venta', entidadId: documentoId, accion: 'crear', detalle: { tipo: 'pedido', numero, total: calculo.total } });
+  return documentoId;
+}
+
+function anularPedido(db, { documentoId, motivo, usuarioId }) {
+  session.requerirPermiso('ventas.pedido.crear');
+  const pedido = db.prepare("SELECT * FROM documentos_venta WHERE id = ? AND tipo = 'pedido'").get(documentoId);
+  if (!pedido) throw new Error('Pedido no encontrado');
+  if (pedido.estado === 'facturado') throw new Error('El pedido ya está facturado. Para revertirlo, anula la factura.');
+  if (pedido.estado === 'anulado') throw new Error('El pedido ya está anulado');
+  if (!motivo || !motivo.trim()) throw new Error('La anulación requiere un motivo');
+  db.prepare("UPDATE documentos_venta SET estado = 'anulado', motivo_anulacion = ?, usuario_anulo_id = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?")
+    .run(motivo.trim(), usuarioId, documentoId);
+  reservarLineasPedido(db, pedido, -1);
+  configuracion.registrarAuditoria(db, { usuarioId, modulo: 'ventas', entidad: 'documentos_venta', entidadId: documentoId, accion: 'anular', detalle: { tipo: 'pedido', numero: pedido.numero, motivo } });
+}
+
+function validarFacturaDesdePedido(db, pedidoId, lineasFactura, clienteId) {
+  const pedido = db.prepare("SELECT * FROM documentos_venta WHERE id = ? AND tipo = 'pedido' AND deleted_at IS NULL").get(pedidoId);
+  if (!pedido) throw new Error('Pedido no encontrado');
+  if (pedido.estado !== 'abierto') throw new Error(`El pedido ${pedido.numero} ya está ${pedido.estado === 'facturado' ? 'facturado' : 'anulado'}`);
+  if (pedido.cliente_id !== clienteId) throw new Error('La factura debe ser para el mismo cliente del pedido');
+  const clave = (productoId, cantidad, precio) => `${productoId}|${redondear(Number(cantidad))}|${redondear(Number(precio))}`;
+  const enPedido = detalleDocumento(db, pedidoId).map((l) => clave(l.producto_id, l.cantidad, l.precio_unitario)).sort();
+  const enFactura = lineasFactura.map((l) => clave(l.productoId, l.cantidad, l.precioUnitario)).sort();
+  if (enPedido.join() !== enFactura.join()) {
+    throw new Error('Los productos, cantidades o precios no coinciden con el pedido. Para cambiarlos, anula el pedido y haz uno nuevo.');
+  }
+  return pedido;
+}
+
 function revertirAsientosDocumento(db, documentoId, tipoAnulacion, usuarioId) {
   const codigoPorId = Object.fromEntries(db.prepare('SELECT id, codigo FROM cuentas_contables').all().map((c) => [c.id, c.codigo]));
   const asientos = db
@@ -628,7 +684,7 @@ function desactivarPromocion(db, { promocionId, usuarioId }) {
 }
 
 function listarDocumentosVenta(db, { tipo, estado, clienteId, limite = 100 } = {}) {
-  if (!['cotizacion', 'conduce'].includes(tipo)) throw new Error('Tipo de documento inválido');
+  if (!['cotizacion', 'conduce', 'pedido'].includes(tipo)) throw new Error('Tipo de documento inválido');
   const condiciones = ['dv.tipo = ?', 'dv.deleted_at IS NULL'];
   const params = [tipo];
   if (estado) { condiciones.push('dv.estado = ?'); params.push(estado); }
@@ -816,11 +872,13 @@ function anularFactura(db, { documentoId, motivo, usuarioId }) {
   ).run(motivo, usuarioId, documentoId);
 
   // Documentos que originaron esta factura: vuelven a quedar pendientes de facturar.
-  const origenes = db.prepare("SELECT * FROM documentos_venta WHERE facturado_en_id = ? AND tipo IN ('cotizacion', 'conduce')").all(documentoId);
+  const origenes = db.prepare("SELECT * FROM documentos_venta WHERE facturado_en_id = ? AND tipo IN ('cotizacion', 'conduce', 'pedido')").all(documentoId);
   const deConduces = origenes.some((o) => o.tipo === 'conduce');
   for (const o of origenes) {
     db.prepare(`UPDATE documentos_venta SET estado = ?, facturado_en_id = NULL, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?`)
       .run(o.tipo === 'conduce' ? 'entregado' : 'abierto', o.id);
+    // Un pedido vuelve a quedar pendiente: su mercancía (que reingresa abajo) queda reservada otra vez.
+    if (o.tipo === 'pedido') reservarLineasPedido(db, o, 1);
   }
   db.prepare(
     `UPDATE cuentas_abiertas SET estado = 'abierta', documento_venta_id = NULL, fecha_cierre = NULL,
@@ -1424,6 +1482,8 @@ function register(ipcMain, getDb) {
   });
   crearYObtener('ventas:crearCotizacion', crearCotizacion);
   crearYObtener('ventas:crearConduce', crearConduce);
+  crearYObtener('ventas:crearPedido', crearPedido);
+  ipcMain.handle('ventas:anularPedido', (event, payload) => { const db = getDb(); db.transaction(() => anularPedido(db, payload))(); return obtenerFactura(db, payload.documentoId); });
   ipcMain.handle('ventas:anularCotizacion', (event, payload) => { const db = getDb(); db.transaction(() => anularCotizacion(db, payload))(); return obtenerFactura(db, payload.documentoId); });
   ipcMain.handle('ventas:anularConduce', (event, payload) => { const db = getDb(); db.transaction(() => anularConduce(db, payload))(); return obtenerFactura(db, payload.documentoId); });
   ipcMain.handle('ventas:listarDocumentos', (event, filtros) => listarDocumentosVenta(getDb(), filtros || {}));
@@ -1512,7 +1572,7 @@ function register(ipcMain, getDb) {
 module.exports = {
   register, calcularLinea, crearFactura, anularFactura, listarFacturas, obtenerFactura,
   abrirCuenta, agregarProductoCuenta, quitarLineaCuenta, anularCuentaAbierta, obtenerCuentaAbierta, listarCuentasAbiertas,
-  crearCotizacion, crearConduce, anularCotizacion, anularConduce, listarDocumentosVenta,
+  crearCotizacion, crearConduce, anularCotizacion, anularConduce, listarDocumentosVenta, crearPedido, anularPedido,
   listarPromociones, guardarPromocion, desactivarPromocion, descuentoLinea,
   crearNotaCredito, anularNotaCredito, crearNotaDebito, anularNotaDebito, listarNotas,
   ventasPorPeriodo, ventasPorVendedor, ventasPorArticulo, comisionesPorVendedor,
