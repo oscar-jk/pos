@@ -50,6 +50,7 @@ const ACCIONES_TAB = {
   ajustes: '<button class="btn btn-primario" id="btn-nuevo-ajuste" data-permiso="inventario.ajuste.crear">+ Nuevo ajuste</button>',
   mermas: '<button class="btn btn-primario" id="btn-nueva-merma" data-permiso="inventario.merma.crear">+ Nueva merma</button>',
   transferencias: '<button class="btn btn-primario" id="btn-nueva-transferencia" data-permiso="inventario.transferencia.crear">+ Nueva transferencia</button>',
+  conversiones: '<button class="btn btn-primario" id="btn-nueva-conversion" data-permiso="inventario.conversion.crear">+ Nueva conversión</button>',
 };
 
 function cambiarTab(tab) {
@@ -64,6 +65,7 @@ function cambiarTab(tab) {
   if (tab === 'ajustes') { cargarAjustes(); enlazarBtn('btn-nuevo-ajuste', () => abrirFormularioAjuste()); }
   if (tab === 'mermas') { cargarMermas(); enlazarBtn('btn-nueva-merma', () => abrirFormularioMerma()); }
   if (tab === 'transferencias') { cargarTransferencias(); enlazarBtn('btn-nueva-transferencia', () => abrirFormularioTransferencia()); }
+  if (tab === 'conversiones') { cargarConversiones(); enlazarBtn('btn-nueva-conversion', () => abrirFormularioConversion()); }
   if (tab === 'vencimientos') cargarVencimientos();
 }
 
@@ -651,6 +653,129 @@ async function abrirFormularioTransferencia() {
       mostrarError(err.message);
     }
   });
+}
+
+// --- Conversiones ---
+
+async function cargarConversiones() {
+  const lista = await window.puntoXInventario.listarConversiones({});
+  document.getElementById('conversiones-vacio').style.display = lista.length === 0 ? 'block' : 'none';
+  document.getElementById('conversiones-tbody').innerHTML = lista.map((c) => `
+    <tr>
+      <td>${c.numero}</td>
+      <td>${c.cantidad_origen} × ${esc(c.origen_descripcion)}</td>
+      <td>${c.cantidad_destino} × ${esc(c.destino_descripcion)}</td>
+      <td>${esc(c.almacen_nombre)}</td>
+      <td style="text-align:right;">${c.costo_total === null ? '—' : 'RD$ ' + fmt(c.costo_total)}</td>
+      <td>${fechaCorta(c.fecha)}</td>
+      <td><span class="pill-estado" style="background:${c.estado === 'anulada' ? 'var(--color-danger)' : 'var(--color-success)'};">${c.estado === 'anulada' ? 'Anulada' : 'Confirmada'}</span></td>
+      <td>${c.estado !== 'anulada' ? `<span class="enlace-accion" data-permiso="inventario.conversion.anular" data-anular-conversion="${c.id}" style="color:var(--color-danger); cursor:pointer; font-weight:700; font-size:12px;">Anular</span>` : ''}</td>
+    </tr>`).join('');
+  document.querySelectorAll('[data-anular-conversion]').forEach((el) => el.addEventListener('click', async () => {
+    const motivo = prompt('Motivo de la anulación (el producto convertido vuelve a su origen):');
+    if (!motivo) return;
+    try {
+      await window.puntoXInventario.anularConversion({ conversionId: el.dataset.anularConversion, motivo, usuarioId: state.info.usuario.id });
+      cargarConversiones();
+    } catch (err) { mostrarError(err.message); }
+  }));
+}
+
+function buscadorEnFormulario(inputId, resultadosId, almacenFn, alElegir) {
+  let espera = null;
+  document.getElementById(inputId).addEventListener('input', (e) => {
+    clearTimeout(espera);
+    const texto = e.target.value.trim();
+    const resultados = document.getElementById(resultadosId);
+    if (!texto) { resultados.style.display = 'none'; return; }
+    espera = setTimeout(async () => {
+      const encontrados = (await window.puntoXInventario.buscarProductos({ texto, almacenId: almacenFn(), limite: 10 })).filter((p) => !p.es_kit);
+      resultados.innerHTML = encontrados.map((p, i) => `<div class="buscador-resultados__item" data-i="${i}"><div class="buscador-resultados__nombre">${esc(p.descripcion)}</div><div class="buscador-resultados__meta">${esc(p.codigo_interno)} · Disp: ${p.cantidad_disponible}</div></div>`).join('') || '<div class="buscador-resultados__vacio">Sin resultados</div>';
+      resultados.querySelectorAll('[data-i]').forEach((el) => el.addEventListener('click', () => {
+        alElegir(encontrados[Number(el.dataset.i)]);
+        resultados.style.display = 'none';
+        e.target.value = '';
+      }));
+      resultados.style.display = 'block';
+    }, 200);
+  });
+}
+
+function abrirFormularioConversion() {
+  let origen = null;
+  let destino = null;
+  const contenido = window.PuntoXModal.abrirModal('Nueva conversión de producto', `
+    <div class="form-field"><label>Almacén</label><select id="fc-almacen">${opciones(state.almacenes, state.almacenes[0]?.id, (a) => a.nombre)}</select></div>
+    <div class="form-grid" style="margin-top:10px;">
+      <div class="form-field">
+        <label>Sale (origen) *</label>
+        <div class="buscador-producto" style="position:relative;">
+          <input id="fc-buscar-origen" class="input-normal" type="text" placeholder="Ej.: Arroz saco 50 kg" autocomplete="off" />
+          <div id="fc-resultados-origen" class="buscador-resultados" style="display:none;"></div>
+        </div>
+        <div id="fc-origen-sel" style="margin-top:6px; font-size:13px; font-weight:600;"></div>
+        <div id="fc-campo-lote-origen" style="display:none; margin-top:6px;"></div>
+        <input id="fc-cantidad-origen" type="number" step="0.01" min="0" value="1" style="margin-top:6px;" title="Cantidad que sale" />
+      </div>
+      <div class="form-field">
+        <label>Entra (destino) *</label>
+        <div class="buscador-producto" style="position:relative;">
+          <input id="fc-buscar-destino" class="input-normal" type="text" placeholder="Ej.: Arroz por libra" autocomplete="off" />
+          <div id="fc-resultados-destino" class="buscador-resultados" style="display:none;"></div>
+        </div>
+        <div id="fc-destino-sel" style="margin-top:6px; font-size:13px; font-weight:600;"></div>
+        <div id="fc-campo-lote-destino" style="display:none; margin-top:6px;">
+          <input id="fc-lote" placeholder="Lote (vacío = el del origen)" style="width:48%;" />
+          <input id="fc-vence" type="date" title="Vencimiento (vacío = el del origen)" style="width:48%;" />
+        </div>
+        <input id="fc-cantidad-destino" type="number" step="0.01" min="0" value="1" style="margin-top:6px;" title="Cantidad que entra" />
+      </div>
+    </div>
+    <div class="form-field" style="margin-top:10px;"><label>Nota</label><input id="fc-concepto" placeholder="Ej.: saco abierto para venta al detalle" /></div>
+    <div id="fc-resumen" style="font-size:12px; color:var(--color-text-muted); margin-top:8px;"></div>
+    <div class="form-seccion" style="display:flex; justify-content:flex-end; gap:8px;">
+      <button type="button" class="btn btn-secundario" id="fc-cancelar">Cancelar</button>
+      <button type="button" class="btn btn-primario" id="fc-guardar">Convertir</button>
+    </div>
+  `);
+  const almacen = () => document.getElementById('fc-almacen').value;
+  const resumen = () => {
+    const qo = parseFloat(document.getElementById('fc-cantidad-origen').value) || 0;
+    const qd = parseFloat(document.getElementById('fc-cantidad-destino').value) || 0;
+    document.getElementById('fc-resumen').textContent = origen && destino && qo > 0 && qd > 0
+      ? `Salen ${qo} de "${origen.descripcion}" y entran ${qd} de "${destino.descripcion}" (${(qd / qo).toLocaleString('es-DO', { maximumFractionDigits: 4 })} por cada uno). El costo del origen pasa completo al destino.` : '';
+  };
+  const lotesOrigen = async () => {
+    const campo = document.getElementById('fc-campo-lote-origen');
+    campo.style.display = origen && origen.controla_lote ? 'block' : 'none';
+    if (origen && origen.controla_lote) campo.innerHTML = selectorLote(await lotesDe(origen.id, almacen()), null, 'id="fc-lote-origen" class="input-normal"');
+  };
+  buscadorEnFormulario('fc-buscar-origen', 'fc-resultados-origen', almacen, (p) => { origen = p; document.getElementById('fc-origen-sel').textContent = p.descripcion; lotesOrigen(); resumen(); });
+  buscadorEnFormulario('fc-buscar-destino', 'fc-resultados-destino', almacen, (p) => {
+    destino = p;
+    document.getElementById('fc-destino-sel').textContent = p.descripcion;
+    document.getElementById('fc-campo-lote-destino').style.display = p.controla_lote ? 'block' : 'none';
+    resumen();
+  });
+  document.getElementById('fc-almacen').addEventListener('change', lotesOrigen);
+  ['fc-cantidad-origen', 'fc-cantidad-destino'].forEach((id) => document.getElementById(id).addEventListener('input', resumen));
+  document.getElementById('fc-cancelar').addEventListener('click', window.PuntoXModal.cerrarModal);
+  document.getElementById('fc-guardar').addEventListener('click', async () => {
+    if (!origen || !destino) { mostrarError('Elige el producto de origen y el de destino'); return; }
+    try {
+      await window.puntoXInventario.crearConversion({
+        almacenId: almacen(), productoOrigenId: origen.id, productoDestinoId: destino.id,
+        cantidadOrigen: parseFloat(document.getElementById('fc-cantidad-origen').value) || 0,
+        cantidadDestino: parseFloat(document.getElementById('fc-cantidad-destino').value) || 0,
+        loteOrigenId: document.getElementById('fc-lote-origen')?.value || null,
+        numeroLote: document.getElementById('fc-lote').value || null, fechaVencimiento: document.getElementById('fc-vence').value || null,
+        concepto: document.getElementById('fc-concepto').value || null, usuarioId: state.info.usuario.id,
+      });
+      window.PuntoXModal.cerrarModal();
+      cargarConversiones();
+    } catch (err) { mostrarError(err.message); }
+  });
+  void contenido;
 }
 
 // --- Vencimientos ---

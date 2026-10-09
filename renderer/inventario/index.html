@@ -28,6 +28,7 @@
         <button class="tab-btn" data-tab="ajustes">Ajustes</button>
         <button class="tab-btn" data-tab="mermas">Mermas y averías</button>
         <button class="tab-btn" data-tab="transferencias">Transferencias</button>
+        <button class="tab-btn" data-tab="conversiones">Conversiones</button>
         <button class="tab-btn" data-tab="vencimientos">Lotes y vencimientos</button>
       </div>
 
@@ -79,6 +80,16 @@
           <tbody id="transferencias-tbody"></tbody>
         </table>
         <div id="transferencias-vacio" class="empty-state" style="display:none;">Aún no hay transferencias registradas.</div>
+      </div>
+
+      <div id="tab-conversiones" class="tab-panel" style="display:none;">
+        <table class="data-table">
+          <thead>
+            <tr><th>Número</th><th>Origen</th><th>Destino</th><th>Almacén</th><th style="text-align:right;">Valor</th><th>Fecha</th><th>Estado</th><th></th></tr>
+          </thead>
+          <tbody id="conversiones-tbody"></tbody>
+        </table>
+        <div id="conversiones-vacio" class="empty-state" style="display:none;">Aún no hay conversiones. Ej.: abrir un saco de 50 kg para vender por kilo.</div>
       </div>
 
       <div id="tab-vencimientos" class="tab-panel" style="display:none;">

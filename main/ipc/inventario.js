@@ -993,6 +993,225 @@ function listarTransferencias(db, { limite = 50 } = {}) {
 }
 
 // =========================================================================
+// Listas de precio: nombradas y reutilizables, asignadas a una sucursal y/o a una categoría de
+// cliente. Fijan precio (ITBIS incluido) por producto y, opcionalmente, un % sobre el precio de
+// detalle para los demás. Al vender manda: lista de la categoría del cliente, luego la de la
+// sucursal, luego el nivel de precio normal.
+// =========================================================================
+
+function listarListasPrecio(db) {
+  return db
+    .prepare(
+      `SELECT l.*, s.nombre AS sucursal_nombre, cc.nombre AS categoria_cliente_nombre,
+              (SELECT COUNT(*) FROM listas_precio_detalle d WHERE d.lista_id = l.id AND d.deleted_at IS NULL) AS productos
+       FROM listas_precio l LEFT JOIN sucursales s ON s.id = l.sucursal_id LEFT JOIN categorias_cliente cc ON cc.id = l.categoria_cliente_id
+       WHERE l.deleted_at IS NULL ORDER BY l.activo DESC, l.nombre`
+    )
+    .all();
+}
+
+function obtenerListaPrecio(db, listaId) {
+  const lista = db.prepare('SELECT * FROM listas_precio WHERE id = ? AND deleted_at IS NULL').get(listaId);
+  if (!lista) return null;
+  lista.lineas = db
+    .prepare(
+      `SELECT d.producto_id, d.precio, p.descripcion, p.codigo_interno, p.precio_detalle
+       FROM listas_precio_detalle d JOIN productos p ON p.id = d.producto_id
+       WHERE d.lista_id = ? AND d.deleted_at IS NULL ORDER BY p.descripcion`
+    )
+    .all(listaId);
+  return lista;
+}
+
+function guardarListaPrecio(db, { listaId, nombre, sucursalId, categoriaClienteId, porcentajeSobreDetalle, lineas = [], usuarioId }) {
+  session.requerirPermiso('inventario.lista_precio.gestionar');
+  const limpio = String(nombre || '').trim();
+  if (!limpio) throw new Error('Ponle un nombre a la lista');
+  if (!sucursalId && !categoriaClienteId) throw new Error('Asigna la lista a una sucursal, a una categoría de cliente o a ambas');
+  const pct = porcentajeSobreDetalle === null || porcentajeSobreDetalle === undefined || porcentajeSobreDetalle === '' ? null : Number(porcentajeSobreDetalle);
+  if (pct !== null && !(pct > -100 && pct < 1000)) throw new Error('El % sobre el precio de detalle no es válido');
+  // Una sucursal o una categoría solo puede tener una lista activa con esa misma asignación.
+  const choque = db
+    .prepare(
+      `SELECT nombre FROM listas_precio WHERE deleted_at IS NULL AND activo = 1 AND id != ?
+       AND COALESCE(sucursal_id, '') = ? AND COALESCE(categoria_cliente_id, '') = ?`
+    )
+    .get(listaId || '', sucursalId || '', categoriaClienteId || '');
+  if (choque) throw new Error(`Ya hay una lista activa con esa misma asignación ("${choque.nombre}")`);
+  const vistos = new Set();
+  for (const l of lineas) {
+    if (vistos.has(l.productoId)) throw new Error('Un producto aparece dos veces en la lista');
+    vistos.add(l.productoId);
+    if (!(Number(l.precio) > 0)) throw new Error('Cada precio de la lista debe ser mayor que cero');
+    if (!db.prepare('SELECT 1 FROM productos WHERE id = ? AND deleted_at IS NULL').get(l.productoId)) throw new Error('Producto no encontrado');
+  }
+
+  const id = listaId || crypto.randomUUID();
+  if (listaId) {
+    const actual = db.prepare('SELECT * FROM listas_precio WHERE id = ? AND deleted_at IS NULL').get(listaId);
+    if (!actual) throw new Error('Lista no encontrada');
+    if (!actual.activo) throw new Error('La lista está desactivada; cree una nueva');
+    db.prepare(
+      `UPDATE listas_precio SET nombre = ?, sucursal_id = ?, categoria_cliente_id = ?, porcentaje_sobre_detalle = ?,
+         updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?`
+    ).run(limpio, sucursalId || null, categoriaClienteId || null, pct, id);
+  } else {
+    db.prepare(
+      'INSERT INTO listas_precio (id, nombre, sucursal_id, categoria_cliente_id, porcentaje_sobre_detalle, activo, usuario_id) VALUES (?, ?, ?, ?, ?, 1, ?)'
+    ).run(id, limpio, sucursalId || null, categoriaClienteId || null, pct, usuarioId);
+  }
+  // Las líneas que ya no vienen se dan de baja (borrado lógico); las que vienen se crean o reactivan.
+  db.prepare("UPDATE listas_precio_detalle SET deleted_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE lista_id = ? AND deleted_at IS NULL").run(id);
+  for (const l of lineas) {
+    const fila = db.prepare('SELECT id FROM listas_precio_detalle WHERE lista_id = ? AND producto_id = ?').get(id, l.productoId);
+    if (fila) {
+      db.prepare("UPDATE listas_precio_detalle SET precio = ?, deleted_at = NULL, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?").run(redondear(Number(l.precio)), fila.id);
+    } else {
+      db.prepare('INSERT INTO listas_precio_detalle (id, lista_id, producto_id, precio) VALUES (?, ?, ?, ?)').run(crypto.randomUUID(), id, l.productoId, redondear(Number(l.precio)));
+    }
+  }
+  auditoria().registrarAuditoria(db, {
+    usuarioId, modulo: 'inventario', entidad: 'listas_precio', entidadId: id, accion: listaId ? 'editar' : 'crear',
+    detalle: { nombre: limpio, productos: lineas.length, porcentajeSobreDetalle: pct },
+  });
+  return id;
+}
+
+function desactivarListaPrecio(db, { listaId, usuarioId }) {
+  session.requerirPermiso('inventario.lista_precio.gestionar');
+  const lista = db.prepare('SELECT * FROM listas_precio WHERE id = ? AND deleted_at IS NULL').get(listaId);
+  if (!lista) throw new Error('Lista no encontrada');
+  db.prepare("UPDATE listas_precio SET activo = 0, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?").run(listaId);
+  auditoria().registrarAuditoria(db, { usuarioId, modulo: 'inventario', entidad: 'listas_precio', entidadId: listaId, accion: 'desactivar', detalle: { nombre: lista.nombre } });
+}
+
+// Listas que aplican a una venta: la de la categoría del cliente y la de la sucursal (una
+// lista asignada a ambas cuenta como de la categoría cuando coincide la sucursal).
+function listasParaVenta(db, { sucursalId, categoriaClienteId }) {
+  const cargar = (lista) => (!lista ? null : {
+    id: lista.id, nombre: lista.nombre, porcentaje_sobre_detalle: lista.porcentaje_sobre_detalle,
+    precios: Object.fromEntries(db.prepare('SELECT producto_id, precio FROM listas_precio_detalle WHERE lista_id = ? AND deleted_at IS NULL').all(lista.id).map((d) => [d.producto_id, d.precio])),
+  });
+  const deCategoria = categoriaClienteId ? db
+    .prepare(
+      `SELECT * FROM listas_precio WHERE deleted_at IS NULL AND activo = 1 AND categoria_cliente_id = ?
+       AND (sucursal_id IS NULL OR sucursal_id = ?) ORDER BY sucursal_id IS NULL LIMIT 1`
+    )
+    .get(categoriaClienteId, sucursalId || '') : null;
+  const deSucursal = sucursalId ? db
+    .prepare('SELECT * FROM listas_precio WHERE deleted_at IS NULL AND activo = 1 AND sucursal_id = ? AND categoria_cliente_id IS NULL LIMIT 1')
+    .get(sucursalId) : null;
+  return { categoria: cargar(deCategoria), sucursal: cargar(deSucursal) };
+}
+
+// Precio de un producto según las listas (o null si ninguna lo cubre). Réplica en renderer/ventas.
+function precioSegunListas(listas, producto) {
+  for (const lista of [listas.categoria, listas.sucursal]) {
+    if (!lista) continue;
+    if (lista.precios[producto.id] !== undefined) return { precio: lista.precios[producto.id], lista: lista.nombre };
+    if (lista.porcentaje_sobre_detalle !== null && lista.porcentaje_sobre_detalle !== undefined) {
+      return { precio: redondear(producto.precio_detalle * (1 + lista.porcentaje_sobre_detalle / 100)), lista: lista.nombre };
+    }
+  }
+  return null;
+}
+
+// =========================================================================
+// Conversión de producto (ej: 1 saco de 50 kg → 50 unidades de 1 kg). Sale el origen al costo
+// real de lo que salió y entra el destino con ese mismo valor repartido: el inventario vale lo
+// mismo antes y después, así que no genera asiento. Queda la trazabilidad origen → destino.
+// =========================================================================
+
+function crearConversion(db, { almacenId, productoOrigenId, cantidadOrigen, productoDestinoId, cantidadDestino, loteOrigenId, numeroLote, fechaVencimiento, concepto, usuarioId }) {
+  session.requerirPermiso('inventario.conversion.crear');
+  const origen = obtenerProducto(db, productoOrigenId, almacenId);
+  const destino = obtenerProducto(db, productoDestinoId, almacenId);
+  if (!origen || !destino) throw new Error('Producto no encontrado');
+  if (origen.id === destino.id) throw new Error('El producto de origen y el de destino deben ser distintos');
+  if (origen.es_kit || destino.es_kit) throw new Error('Los kits no se convierten: convierta sus componentes');
+  const qOrigen = redondearCantidad(Number(cantidadOrigen));
+  const qDestino = redondearCantidad(Number(cantidadDestino));
+  if (!(qOrigen > 0) || !(qDestino > 0)) throw new Error('Las cantidades de origen y destino deben ser mayores que cero');
+  if (!origen.permite_venta_negativo && existenciaLibre(db, origen.id, almacenId) < qOrigen - EPS) {
+    throw new Error(`Existencia insuficiente de "${origen.descripcion}" para convertir (disponible: ${existenciaLibre(db, origen.id, almacenId)})`);
+  }
+
+  const conversionId = crypto.randomUUID();
+  const numero = siguienteNumeroDocumento(db, 'conversiones_producto');
+  const salida = registrarMovimientoInventario(db, {
+    productoId: origen.id, almacenId, tipoMovimiento: 'conversion', cantidad: -qOrigen, loteId: loteOrigenId || null,
+    documentoOrigenTipo: 'conversiones_producto', documentoOrigenId: conversionId, usuarioId,
+  });
+  // El destino hereda el lote y vencimiento del origen si no se indica otro (mismo saco, otra presentación).
+  let lote = null;
+  if (destino.controla_lote) {
+    const loteSalida = salida.piezas.find((p) => p.loteId);
+    const heredado = loteSalida ? db.prepare('SELECT numero_lote, fecha_vencimiento FROM lotes WHERE id = ?').get(loteSalida.loteId) : null;
+    lote = loteDeEntrada(destino, {
+      numeroLote: numeroLote || (heredado && heredado.numero_lote !== 'SIN LOTE' ? heredado.numero_lote : ''),
+      fechaVencimiento: fechaVencimiento || (heredado && heredado.fecha_vencimiento),
+    });
+  }
+  registrarMovimientoInventario(db, {
+    productoId: destino.id, almacenId, tipoMovimiento: 'conversion', cantidad: qDestino, lote,
+    costoUnitario: salida.costoTotal / qDestino, documentoOrigenTipo: 'conversiones_producto', documentoOrigenId: conversionId, usuarioId,
+  });
+  db.prepare(
+    `INSERT INTO conversiones_producto (id, numero, almacen_id, producto_origen_id, cantidad_origen, producto_destino_id, cantidad_destino,
+       costo_total, concepto, fecha, usuario_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%fZ','now'), ?)`
+  ).run(conversionId, numero, almacenId, origen.id, qOrigen, destino.id, qDestino, salida.costoTotal, concepto || null, usuarioId);
+  auditoria().registrarAuditoria(db, {
+    usuarioId, modulo: 'inventario', entidad: 'conversiones_producto', entidadId: conversionId, accion: 'crear',
+    detalle: { numero, origen: origen.descripcion, cantidadOrigen: qOrigen, destino: destino.descripcion, cantidadDestino: qDestino, costoTotal: salida.costoTotal },
+  });
+  return conversionId;
+}
+
+// Anular devuelve el origen a sus lotes y costo, y saca el destino. Solo si lo convertido sigue
+// completo en existencia: si ya se vendió una parte, se registra una conversión inversa.
+function anularConversion(db, { conversionId, motivo, usuarioId }) {
+  session.requerirPermiso('inventario.conversion.anular');
+  const conv = db.prepare('SELECT * FROM conversiones_producto WHERE id = ?').get(conversionId);
+  if (!conv) throw new Error('Conversión no encontrada');
+  if (conv.estado === 'anulada') throw new Error('La conversión ya está anulada');
+  if (!motivo || !motivo.trim()) throw new Error('La anulación requiere un motivo');
+  const destino = db.prepare('SELECT * FROM productos WHERE id = ?').get(conv.producto_destino_id);
+  const disponible = usaCapas(db, destino)
+    ? lotesCreadosPor(db, { origenTipo: 'conversiones_producto', origenId: conv.id, productoId: destino.id })
+      .filter((l) => l.almacen_id === conv.almacen_id).reduce((a, l) => a + l.cantidad, 0)
+    : existenciaLibre(db, destino.id, conv.almacen_id);
+  if (disponible < conv.cantidad_destino - EPS) {
+    throw new Error(`Ya no están completas las ${conv.cantidad_destino} unidades de "${destino.descripcion}" de esta conversión (quedan ${redondearCantidad(disponible)}). Registre una conversión inversa.`);
+  }
+  db.prepare("UPDATE conversiones_producto SET estado = 'anulada', motivo_anulacion = ?, usuario_anulo_id = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?")
+    .run(motivo.trim(), usuarioId, conversionId);
+  retirarEntradas(db, {
+    origenTipo: 'conversiones_producto', origenId: conv.id, productoId: destino.id, almacenId: conv.almacen_id, cantidad: conv.cantidad_destino,
+    costoUnitario: conv.costo_total / conv.cantidad_destino, tipoMovimiento: 'conversion',
+    documentoOrigenTipo: 'conversiones_producto_anulacion', documentoOrigenId: conv.id, usuarioId,
+  });
+  reingresarSalidas(db, {
+    origenTipo: 'conversiones_producto', origenId: conv.id, productoId: conv.producto_origen_id, almacenId: conv.almacen_id,
+    tipoMovimiento: 'conversion', documentoOrigenTipo: 'conversiones_producto_anulacion', documentoOrigenId: conv.id, usuarioId,
+  });
+  auditoria().registrarAuditoria(db, { usuarioId, modulo: 'inventario', entidad: 'conversiones_producto', entidadId: conversionId, accion: 'anular', detalle: { numero: conv.numero, motivo: motivo.trim() } });
+}
+
+function listarConversiones(db, { limite = 50 } = {}) {
+  return db
+    .prepare(
+      `SELECT c.*, po.descripcion AS origen_descripcion, pd.descripcion AS destino_descripcion, a.nombre AS almacen_nombre,
+              u.nombre_completo AS usuario_nombre
+       FROM conversiones_producto c
+       JOIN productos po ON po.id = c.producto_origen_id JOIN productos pd ON pd.id = c.producto_destino_id
+       JOIN almacenes a ON a.id = c.almacen_id LEFT JOIN usuarios u ON u.id = c.usuario_id
+       ORDER BY c.fecha DESC, c.rowid DESC LIMIT ?`
+    )
+    .all(limite);
+}
+
+// =========================================================================
 // IPC
 // =========================================================================
 
@@ -1037,6 +1256,14 @@ function register(ipcMain, getDb) {
     return db.transaction(() => crearTransferencia(db, payload))();
   });
   ipcMain.handle('inventario:listarTransferencias', (event, filtros) => listarTransferencias(getDb(), filtros || {}));
+  ipcMain.handle('inventario:crearConversion', (event, payload) => { const db = getDb(); return db.transaction(() => crearConversion(db, payload))(); });
+  ipcMain.handle('inventario:anularConversion', (event, payload) => { const db = getDb(); return db.transaction(() => anularConversion(db, payload))(); });
+  ipcMain.handle('inventario:listarListasPrecio', () => listarListasPrecio(getDb()));
+  ipcMain.handle('inventario:obtenerListaPrecio', (event, { listaId }) => obtenerListaPrecio(getDb(), listaId));
+  ipcMain.handle('inventario:guardarListaPrecio', (event, payload) => { const db = getDb(); const id = db.transaction(() => guardarListaPrecio(db, payload))(); return obtenerListaPrecio(db, id); });
+  ipcMain.handle('inventario:desactivarListaPrecio', (event, payload) => { const db = getDb(); db.transaction(() => desactivarListaPrecio(db, payload))(); return true; });
+  ipcMain.handle('inventario:listasParaVenta', (event, contexto) => listasParaVenta(getDb(), contexto || {}));
+  ipcMain.handle('inventario:listarConversiones', (event, filtros) => listarConversiones(getDb(), filtros || {}));
 }
 
 module.exports = {
@@ -1046,5 +1273,7 @@ module.exports = {
   metodoValoracion, usaCapas, loteDeEntrada, reingresarSalidas, reingresarDocumento, reingresarVenta, retirarEntradas,
   lotesCreadosPor, actualizarCostoCapa, refrescarCostoPeps, listarLotes, promocionVigente, consultarPrecio, hoyLocal,
   listarCategorias, crearCategoria, listarUnidadesMedida, listarTasasItbis, listarAlmacenes, crearAlmacen,
+  crearConversion, anularConversion, listarConversiones,
+  listarListasPrecio, obtenerListaPrecio, guardarListaPrecio, desactivarListaPrecio, listasParaVenta, precioSegunListas,
   crearAjuste, listarAjustes, crearMerma, listarMermas, crearTransferencia, listarTransferencias,
 };

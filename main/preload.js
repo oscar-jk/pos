@@ -40,6 +40,14 @@ contextBridge.exposeInMainWorld('puntoXInventario', {
 
   crearTransferencia: invoke('inventario:crearTransferencia'),
   listarTransferencias: invoke('inventario:listarTransferencias'),
+  crearConversion: invoke('inventario:crearConversion'),
+  anularConversion: invoke('inventario:anularConversion'),
+  listarConversiones: invoke('inventario:listarConversiones'),
+  listarListasPrecio: invoke('inventario:listarListasPrecio'),
+  obtenerListaPrecio: invoke('inventario:obtenerListaPrecio'),
+  guardarListaPrecio: invoke('inventario:guardarListaPrecio'),
+  desactivarListaPrecio: invoke('inventario:desactivarListaPrecio'),
+  listasParaVenta: invoke('inventario:listasParaVenta'),
 });
 
 contextBridge.exposeInMainWorld('puntoXCxc', {

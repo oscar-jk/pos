@@ -10,6 +10,7 @@ const MIGRACIONES = [
   require('./006_promociones'),
   require('./007_retenciones_cobro'),
   require('./008_multimoneda'),
+  require('./009_conversion_listas'),
 ];
 
 function columnasDe(db, tabla) {

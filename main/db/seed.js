@@ -32,6 +32,10 @@ const PERMISOS = [
   ['inventario', 'inventario.transferencia.crear', 'Registrar transferencia entre almacenes'],
   ['inventario', 'inventario.recepcion.crear', 'Registrar recepción de mercancía'],
   ['inventario', 'inventario.merma.crear', 'Registrar merma o avería'],
+  ['inventario', 'inventario.conversion.crear', 'Convertir un producto en otro (ej. saco en libras)'],
+  ['inventario', 'inventario.conversion.anular', 'Anular una conversión de producto'],
+  ['inventario', 'inventario.lista_precio.gestionar', 'Crear y editar listas de precio'],
+  ['inventario', 'inventario.etiqueta.imprimir', 'Imprimir etiquetas de código de barra y precio'],
   // Compras
   ['compras', 'compras.orden.crear', 'Crear orden de compra'],
   ['compras', 'compras.factura.crear', 'Registrar factura de compra'],
@@ -98,6 +102,7 @@ const ROLES = [
       'inventario.ver', 'inventario.costos.ver', 'inventario.producto.crear',
       'inventario.producto.editar', 'inventario.ajuste.crear', 'inventario.ajuste.anular',
       'inventario.transferencia.crear', 'inventario.recepcion.crear', 'inventario.merma.crear',
+      'inventario.conversion.crear', 'inventario.conversion.anular', 'inventario.etiqueta.imprimir',
     ],
   },
   {

@@ -397,6 +397,8 @@ CREATE TABLE conversiones_producto (
   cantidad_origen         REAL NOT NULL,
   producto_destino_id     TEXT NOT NULL REFERENCES productos(id),
   cantidad_destino        REAL NOT NULL,
+  costo_total             REAL NOT NULL DEFAULT 0, -- valor que pasa del origen al destino
+  concepto                TEXT,
   fecha                   TEXT NOT NULL,
   estado                  TEXT NOT NULL DEFAULT 'confirmada', -- confirmada | anulada
   motivo_anulacion        TEXT,
@@ -412,6 +414,9 @@ CREATE TABLE listas_precio (
   id          TEXT PRIMARY KEY,
   nombre      TEXT NOT NULL,
   sucursal_id TEXT REFERENCES sucursales(id),
+  categoria_cliente_id TEXT REFERENCES categorias_cliente(id),
+  porcentaje_sobre_detalle REAL, -- para productos sin precio fijo en la lista (negativo = descuento)
+  usuario_id  TEXT REFERENCES usuarios(id),
   activo      INTEGER NOT NULL DEFAULT 1,
   created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
   updated_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
