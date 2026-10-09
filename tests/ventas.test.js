@@ -151,3 +151,14 @@ test('nota de crédito parcial reingresa y revierte proporcional', () => {
   assert.equal(h.saldoCuenta(db, '1300'), 350);
   assert.ok(h.balanceCuadrado(db));
 });
+
+// --- B2: pagos válidos desde el inicio ---
+test('B2: un pago en cero, negativo o no numérico se rechaza con su propio mensaje', () => {
+  const { db, ctx, p } = base();
+  const linea = [{ productoId: p, cantidad: 1 }];
+  assert.throws(() => h.facturar(db, ctx, linea, [{ formaPago: 'efectivo', monto: 218 }, { formaPago: 'tarjeta', monto: -100 }]), /tarjeta debe ser mayor que cero/);
+  assert.throws(() => h.facturar(db, ctx, linea, [{ formaPago: 'efectivo', monto: 118 }, { formaPago: 'tarjeta', monto: 0 }]), /mayor que cero/);
+  assert.throws(() => h.facturar(db, ctx, linea, [{ formaPago: 'efectivo', monto: 'abc' }]), /mayor que cero/);
+  assert.throws(() => h.facturar(db, ctx, linea, [{ formaPago: 'bitcoin', monto: 118 }]), /Forma de pago no válida/);
+  assert.equal(h.existencia(db, ctx, p), 10); // nada se movió
+});

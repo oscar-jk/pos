@@ -183,6 +183,17 @@ function descuentosDeOrigen(db, origenes) {
   return { descuentosAutorizados, descuentoGlobalAutorizadoPct: bruto > 0 ? (global / bruto) * 100 : 0 };
 }
 
+// Cada pago debe tener una forma conocida y un monto mayor que cero. Se valida antes que nada:
+// un pago negativo o en cero no debe llegar a moverse en caja ni en el asiento.
+function validarPagos(pagos) {
+  if (pagos !== undefined && !Array.isArray(pagos)) throw new Error('Los pagos no tienen un formato válido');
+  for (const p of pagos || []) {
+    if (!p || !CUENTA_POR_FORMA_PAGO[p.formaPago]) throw new Error(`Forma de pago no válida: ${p && p.formaPago ? p.formaPago : 'sin indicar'}`);
+    const monto = Number(p.monto);
+    if (!Number.isFinite(monto) || monto <= 0) throw new Error(`El pago en ${p.formaPago} debe ser mayor que cero`);
+  }
+}
+
 function crearFactura(db, payload) {
   session.requerirPermiso('ventas.factura.crear');
   const {
@@ -193,6 +204,7 @@ function crearFactura(db, payload) {
   } = payload;
 
   if (!lineas || lineas.length === 0) throw new Error('La factura debe tener al menos una línea');
+  validarPagos(pagos);
   if ([cuentaAbiertaId, cotizacionId, conduceIds && conduceIds.length, pedidoId].filter(Boolean).length > 1) {
     throw new Error('Una factura se genera desde una sola fuente: cuenta abierta, cotización, pedido o conduces');
   }
