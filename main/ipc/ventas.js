@@ -198,7 +198,7 @@ function crearFactura(db, payload) {
   session.requerirPermiso('ventas.factura.crear');
   const {
     modoVenta, sucursalId, almacenId, cajaId, clienteId, vendedorId, usuarioId,
-    condicionPago, tipoNcfCodigo, nivelPrecio, monedaId, tasaCambio,
+    tipoNcfCodigo, nivelPrecio, monedaId, tasaCambio,
     lineas, descuentoGlobalPct, pagos, esDelivery, direccionEntrega, repartidorId,
     cuentaAbiertaId, cotizacionId, conduceIds, pedidoId,
   } = payload;
@@ -242,6 +242,9 @@ function crearFactura(db, payload) {
   }
 
   const montoCredito = redondear((pagos || []).filter((p) => p.formaPago === 'credito').reduce((acc, p) => acc + p.monto, 0));
+  // La condición sale de los pagos, no de lo que diga la pantalla: una factura con crédito que
+  // llegara marcada 'contado' quedaba fuera del saldo del cliente aunque el asiento la cargara a CxC.
+  const condicionReal = montoCredito > 0 ? (sumaPagos > montoCredito + 0.009 ? 'mixto' : 'credito') : 'contado';
   if (montoCredito > 0) {
     if (!cliente) throw new Error('Una venta a crédito requiere un cliente registrado');
     const motivoMora = cxc.verificarBloqueoPorMora(db, clienteId);
@@ -282,7 +285,7 @@ function crearFactura(db, payload) {
      VALUES (?, 'factura', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'facturado', ?, ?, ?, ?, ?)`
   ).run(
     documentoId, numero, ncf, tipoNcfId, sucursalId, almacenId, clienteId || null, vendedorId || null,
-    modoVenta, condicionPago, monedaFactura, tasaFactura, fechaIso, subtotal, descuentoGlobalMonto,
+    modoVenta, condicionReal, monedaFactura, tasaFactura, fechaIso, subtotal, descuentoGlobalMonto,
     itbisTotal, retencionIsr, retencionItbis, total,
     esDelivery ? 1 : 0, repartidorId || null, direccionEntrega || null, esDelivery ? 'pendiente' : null, usuarioId
   );

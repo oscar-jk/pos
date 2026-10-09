@@ -505,11 +505,24 @@ function salirCapas(db, producto, almacenId, cantidad, { loteId, preferirLotes }
   return piezas;
 }
 
+function redondearCosto(n) {
+  return Math.round((n + Number.EPSILON) * 1e6) / 1e6;
+}
+
+// Valor del producto en todos los almacenes: sus capas (PEPS) o existencia × costo promedio.
+function valorProducto(db, producto, peps, costoPromedio) {
+  if (peps && usaCapas(db, producto)) {
+    return db.prepare('SELECT COALESCE(SUM(cantidad * costo_unitario), 0) AS v FROM lotes WHERE producto_id = ? AND deleted_at IS NULL AND cantidad > 0').get(producto.id).v;
+  }
+  const existencia = db.prepare('SELECT COALESCE(SUM(cantidad_disponible), 0) AS t FROM existencias WHERE producto_id = ?').get(producto.id).t;
+  return existencia * (costoPromedio || 0);
+}
+
 function costoPromedioDeCapas(db, productoId) {
   const fila = db
     .prepare('SELECT SUM(cantidad * costo_unitario) AS valor, SUM(cantidad) AS cantidad FROM lotes WHERE producto_id = ? AND deleted_at IS NULL AND cantidad > 0')
     .get(productoId);
-  return fila.cantidad > EPS ? redondear(fila.valor / fila.cantidad) : null;
+  return fila.cantidad > EPS ? redondearCosto(fila.valor / fila.cantidad) : null;
 }
 
 // Registra un movimiento de inventario (kardex + existencia + capas + costo del producto).
@@ -531,13 +544,15 @@ function registrarMovimientoInventario(db, {
   const capasEntrada = cantidad > 0
     ? (capas || [{ numeroLote: lote && lote.numeroLote, fechaVencimiento: lote && lote.fechaVencimiento, cantidad, costoUnitario }])
     : null;
-  const costoEntrada = capasEntrada
-    ? redondear(capasEntrada.reduce((a, c) => a + c.cantidad * (c.costoUnitario || 0), 0) / cantidad)
-    : null;
+  const valorEntrada = capasEntrada ? capasEntrada.reduce((a, c) => a + c.cantidad * (c.costoUnitario || 0), 0) : 0;
+  const costoEntrada = capasEntrada ? valorEntrada / cantidad : null;
+  const conCapas = cantidad !== 0 && usaCapas(db, producto);
+  if (conCapas) sincronizarCapas(db, producto, almacenId, existenciaAntes);
+  const costoAntes = producto.costo_promedio || 0;
+  const valorAntes = valorProducto(db, producto, peps, costoAntes);
 
   let piezas;
-  if (cantidad !== 0 && usaCapas(db, producto)) {
-    sincronizarCapas(db, producto, almacenId, existenciaAntes);
+  if (conCapas) {
     piezas = cantidad > 0
       ? entrarCapas(db, producto, almacenId, existenciaAntes, capasEntrada, peps ? (producto.costo_promedio || 0) : null)
       : salirCapas(db, producto, almacenId, -cantidad, { loteId, preferirLotes });
@@ -562,21 +577,32 @@ function registrarMovimientoInventario(db, {
   }
 
   // Costo del producto: PEPS = promedio de las capas que quedan (referencia para márgenes y
-  // cotizaciones); promedio ponderado = se recalcula cuando entra mercancía con costo propio.
-  let costoVigente = producto.costo_promedio || 0;
-  if (cantidad !== 0 && peps && usaCapas(db, producto)) {
+  // cotizaciones); promedio ponderado = valor del inventario ÷ existencia, recalculado cuando
+  // entra mercancía con costo propio o sale a un costo distinto del promedio (anular una compra).
+  // Se guarda con 6 decimales: con 2, el valor del inventario se iba separando de la cuenta 1300.
+  let costoVigente = costoAntes;
+  const existenciaTotal = db.prepare('SELECT COALESCE(SUM(cantidad_disponible),0) AS total FROM existencias WHERE producto_id = ?').get(productoId).total;
+  if (cantidad !== 0 && peps && conCapas) {
     const promedioCapas = costoPromedioDeCapas(db, productoId);
     if (promedioCapas !== null) costoVigente = promedioCapas;
   } else if (cantidad > 0 && costoEntrada > 0) {
-    const existenciaTotal = db.prepare('SELECT COALESCE(SUM(cantidad_disponible),0) AS total FROM existencias WHERE producto_id = ?').get(productoId).total;
-    const existenciaPrevia = existenciaTotal - cantidad;
-    costoVigente = existenciaTotal > 0
-      ? redondear(((costoVigente * existenciaPrevia) + (costoEntrada * cantidad)) / existenciaTotal)
-      : costoEntrada;
+    costoVigente = existenciaTotal > 0 ? redondearCosto((valorAntes + valorEntrada) / existenciaTotal) : redondearCosto(costoEntrada);
+  } else if (cantidad < 0 && !peps && costoUnitario !== undefined && costoUnitario !== null
+    && Math.abs(costoUnitario - costoAntes) > 0.000001 && existenciaTotal > 0) {
+    costoVigente = Math.max(0, redondearCosto((valorAntes - Math.abs(cantidad) * costoUnitario) / existenciaTotal));
   }
   if (costoVigente !== producto.costo_promedio) {
     db.prepare("UPDATE productos SET costo_promedio = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?").run(costoVigente, productoId);
   }
+
+  // Costo del movimiento = valor del inventario antes − después, ambos redondeados. Así los
+  // redondeos se compensan entre movimientos y la cuenta 1300 queda igual al valor del
+  // inventario. Si hay unidades sin capa (venta en negativo con PEPS) se valora por piezas.
+  const sinCapa = peps && conCapas && (piezas.some((p) => !p.loteId) || (cantidad > 0 && existenciaAntes < 0));
+  const costoTotal = cantidad === 0 ? 0 : sinCapa
+    ? redondear(piezas.reduce((a, p) => a + Math.abs(p.cantidad) * p.costoUnitario, 0))
+    : Math.abs(redondear(valorAntes) - redondear(valorProducto(db, producto, peps, costoVigente)));
+  if (cantidad < 0 && !peps) piezas.forEach((p) => { p.costoUnitario = redondearCosto(costoTotal / Math.abs(cantidad)); });
 
   const insertKardex = db.prepare(
     `INSERT INTO kardex_movimientos
@@ -593,7 +619,6 @@ function registrarMovimientoInventario(db, {
     );
   }
 
-  const costoTotal = redondear(piezas.reduce((a, p) => a + Math.abs(p.cantidad) * p.costoUnitario, 0));
   return { saldo: saldoCantidad, costoTotal, costoUnitario: cantidad !== 0 ? redondear(costoTotal / Math.abs(cantidad)) : 0, piezas };
 }
 
