@@ -184,14 +184,15 @@ function listarUsuarios(db) {
 function crearUsuario(db, { nombreCompleto, usuario, password, rolId, sucursalId, pctComision }, usuarioCreadorId) {
   session.requerirPermiso('configuracion.gestionar');
   if (!nombreCompleto || !usuario || !password || !rolId) throw new Error('Nombre, usuario, contraseña y rol son obligatorios');
-  if (password.length < 6) throw new Error('La contraseña debe tener al menos 6 caracteres');
+  if (password.length < 8) throw new Error('La contraseña debe tener al menos 8 caracteres');
   const existe = db.prepare('SELECT 1 FROM usuarios WHERE usuario = ? AND deleted_at IS NULL').get(usuario);
   if (existe) throw new Error(`Ya existe un usuario con el nombre de acceso "${usuario}"`);
 
   const id = crypto.randomUUID();
   db.prepare(
-    `INSERT INTO usuarios (id, nombre_completo, usuario, password_hash, rol_id, sucursal_id, pct_comision, activo)
-     VALUES (?, ?, ?, ?, ?, ?, ?, 1)`
+    // La contraseña la pone el administrador: el usuario debe cambiarla al entrar.
+    `INSERT INTO usuarios (id, nombre_completo, usuario, password_hash, rol_id, sucursal_id, pct_comision, activo, debe_cambiar_password)
+     VALUES (?, ?, ?, ?, ?, ?, ?, 1, 1)`
   ).run(id, nombreCompleto, usuario, hashPassword(password), rolId, sucursalId || null, pctComision || 0);
   registrarAuditoria(db, { usuarioId: usuarioCreadorId, modulo: 'configuracion', entidad: 'usuarios', entidadId: id, accion: 'crear', detalle: { usuario, rolId } });
   return id;
@@ -204,8 +205,8 @@ function actualizarUsuario(db, usuarioId, { nombreCompleto, rolId, sucursalId, p
        updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?`
   ).run(nombreCompleto, rolId, sucursalId || null, pctComision || 0, activo === false ? 0 : 1, usuarioId);
   if (password) {
-    if (password.length < 6) throw new Error('La contraseña debe tener al menos 6 caracteres');
-    db.prepare("UPDATE usuarios SET password_hash = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?").run(hashPassword(password), usuarioId);
+    if (password.length < 8) throw new Error('La contraseña debe tener al menos 8 caracteres');
+    db.prepare("UPDATE usuarios SET password_hash = ?, debe_cambiar_password = 1, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?").run(hashPassword(password), usuarioId);
   }
   registrarAuditoria(db, { usuarioId: usuarioEditorId, modulo: 'configuracion', entidad: 'usuarios', entidadId: usuarioId, accion: 'editar', detalle: { rolId, activo } });
 }

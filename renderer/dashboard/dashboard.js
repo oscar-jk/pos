@@ -141,6 +141,7 @@ async function cargarVentasYCaja() {
 
 async function init() {
   const info = await window.PuntoXShell.initPuntoXShell('dashboard');
+  if (!info) return; // sin sesión o con la contraseña pendiente: el shell ya redirigió al login
 
   const nombre = primerNombre(info.usuario && info.usuario.nombreCompleto);
   document.getElementById('saludo').textContent = nombre ? `${saludoPorHora()}, ${nombre}` : saludoPorHora();

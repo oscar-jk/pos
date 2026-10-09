@@ -88,3 +88,23 @@ body {
   color: rgba(255, 255, 255, 0.5);
   margin-top: 18px;
 }
+
+.login-aviso {
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--color-text);
+  background: var(--color-accent-soft);
+  border: 1px solid var(--color-accent);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+}
+
+.login-salir {
+  margin-top: 6px;
+  background: none;
+  border: none;
+  color: var(--color-text-muted);
+  font-family: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}

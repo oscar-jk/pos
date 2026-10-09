@@ -277,8 +277,8 @@ function seed(db) {
     // --- Usuario administrador inicial ---
     // Usuario: admin / Contraseña temporal: admin123 — cambiar en el primer inicio de sesión.
     db.prepare(
-      `INSERT INTO usuarios (id, nombre_completo, usuario, password_hash, rol_id, sucursal_id, activo)
-       VALUES (?, ?, ?, ?, ?, ?, 1)`
+      `INSERT INTO usuarios (id, nombre_completo, usuario, password_hash, rol_id, sucursal_id, activo, debe_cambiar_password)
+       VALUES (?, ?, ?, ?, ?, ?, 1, 1)`
     ).run(
       uuid(),
       'Administrador',

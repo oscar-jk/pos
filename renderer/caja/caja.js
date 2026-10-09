@@ -739,6 +739,7 @@ function abrirFormularioPegarPartidas() {
 
 async function init() {
   state.info = await window.PuntoXShell.initPuntoXShell('caja');
+  if (!state.info) return; // sin sesión o con la contraseña pendiente: el shell ya redirigió al login
   // La conciliación bancaria solo existe en la app de escritorio.
   if (!window.puntoXCaja.listarConciliaciones) document.querySelector('.tab-btn[data-tab="conciliacion"]').remove();
   state.cajaActual = await window.puntoXCaja.obtenerCajaPrincipal();

@@ -4,7 +4,8 @@
 async function initPuntoXShell(moduloActivo) {
   const info = await window.puntoX.getAppInfo();
 
-  if (!info.usuario) {
+  // Sin sesión, o con la contraseña pendiente de cambio, solo se puede estar en el login.
+  if (!info.usuario || info.usuario.debeCambiarPassword) {
     window.location.href = '../login/index.html';
     return null;
   }

@@ -812,6 +812,7 @@ document.getElementById('lotes-buscar').addEventListener('input', cargarVencimie
 
 async function init() {
   state.info = await window.PuntoXShell.initPuntoXShell('inventario');
+  if (!state.info) return; // sin sesión o con la contraseña pendiente: el shell ya redirigió al login
   const [categorias, unidades, tasas, almacenes] = await Promise.all([
     window.puntoXInventario.listarCategorias(),
     window.puntoXInventario.listarUnidadesMedida(),

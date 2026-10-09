@@ -646,6 +646,7 @@ async function ejecutarReporte(reporte) {
 
 async function init() {
   state.info = await window.PuntoXShell.initPuntoXShell('reportes');
+  if (!state.info) return; // sin sesión o con la contraseña pendiente: el shell ya redirigió al login
   renderNav();
 }
 

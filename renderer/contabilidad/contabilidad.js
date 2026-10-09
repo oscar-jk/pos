@@ -349,6 +349,7 @@ async function cargarPeriodos() {
 
 async function init() {
   state.info = await window.PuntoXShell.initPuntoXShell('contabilidad');
+  if (!state.info) return; // sin sesión o con la contraseña pendiente: el shell ya redirigió al login
   state.cuentas = await window.puntoXContabilidad.listarCuentas();
   cambiarTab('cuentas');
 }

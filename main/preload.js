@@ -10,6 +10,7 @@ contextBridge.exposeInMainWorld('puntoXAuth', {
   login: invoke('auth:login'),
   logout: invoke('auth:logout'),
   sesionActual: invoke('auth:sesionActual'),
+  cambiarPassword: invoke('auth:cambiarPassword'),
 });
 
 contextBridge.exposeInMainWorld('puntoXInventario', {

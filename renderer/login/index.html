@@ -26,6 +26,24 @@
         </div>
         <button type="submit" class="login-btn" id="login-btn">Iniciar sesión</button>
       </form>
+
+      <form class="login-form" id="cambio-form" style="display:none;">
+        <div class="login-aviso">Por seguridad, cambia tu contraseña antes de continuar. Usa al menos 8 caracteres.</div>
+        <div class="form-field">
+          <label>Contraseña actual</label>
+          <input id="cambio-actual" class="input-normal" type="password" autocomplete="current-password" />
+        </div>
+        <div class="form-field">
+          <label>Nueva contraseña</label>
+          <input id="cambio-nueva" class="input-normal" type="password" autocomplete="new-password" />
+        </div>
+        <div class="form-field">
+          <label>Repite la nueva contraseña</label>
+          <input id="cambio-repetir" class="input-normal" type="password" autocomplete="new-password" />
+        </div>
+        <button type="submit" class="login-btn" id="cambio-btn">Guardar y entrar</button>
+        <button type="button" class="login-salir" id="cambio-salir">Salir</button>
+      </form>
     </div>
     <div class="login-footer">Punto X · Sistema de Facturación · Creado por ODTeam X</div>
   </div>

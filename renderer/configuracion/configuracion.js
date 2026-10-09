@@ -118,7 +118,7 @@ async function abrirFormularioUsuario(usuarioId) {
       <div class="form-field"><label>Usuario (acceso) *</label><input id="u-usuario" value="${usuario ? usuario.usuario : ''}" ${esEdicion ? 'disabled' : ''} /></div>
       <div class="form-field"><label>Rol *</label><select id="u-rol">${opciones(state.roles, usuario ? usuario.rol_id : null, (r) => r.nombre)}</select></div>
       <div class="form-field"><label>% Comisión de vendedor</label><input id="u-comision" type="number" step="0.01" value="${usuario ? usuario.pct_comision : 0}" /></div>
-      <div class="form-field"><label>${esEdicion ? 'Nueva contraseña (opcional)' : 'Contraseña *'}</label><input id="u-password" type="password" placeholder="${esEdicion ? 'Dejar en blanco para no cambiarla' : 'Mínimo 6 caracteres'}" /></div>
+      <div class="form-field"><label>${esEdicion ? 'Nueva contraseña (opcional)' : 'Contraseña *'}</label><input id="u-password" type="password" placeholder="${esEdicion ? 'Dejar en blanco para no cambiarla' : 'Mínimo 8 caracteres; la persona la cambiará al entrar'}" /></div>
       ${esEdicion ? `<div class="form-field form-field--checkbox"><input id="u-activo" type="checkbox" ${usuario.activo ? 'checked' : ''} /><label>Activo</label></div>` : ''}
     </div>
     <div class="form-seccion" style="display:flex; justify-content:flex-end; gap:8px;">
@@ -588,6 +588,7 @@ async function cargarBitacora() {
 
 async function init() {
   state.info = await window.PuntoXShell.initPuntoXShell('configuracion');
+  if (!state.info) return; // sin sesión o con la contraseña pendiente: el shell ya redirigió al login
   // La impresión solo existe en la app de escritorio; la versión web de prueba no la expone.
   if (!window.puntoXImpresion) document.querySelector('.tab-btn[data-tab="impresoras"]').remove();
   if (!window.puntoXConfig.listarModulos) document.querySelector('.tab-btn[data-tab="modulos"]').remove();
