@@ -290,7 +290,8 @@ async function cargarRecibos() {
     </tr>
   `).join('');
   document.querySelectorAll('[data-anular]').forEach((el) => el.addEventListener('click', async () => {
-    const motivo = await window.PuntoXModal.pedirTexto('Motivo de la anulación:');
+    const doc = recibos.find((x) => x.id === el.dataset.anular) || {};
+    const motivo = await window.PuntoXModal.confirmarAnulacion({ documento: 'Recibo de cobro', numero: doc.numero, total: doc.monto_total, revierte: ['Cuentas por cobrar: las facturas vuelven a quedar pendientes', 'Caja o banco: sale el dinero cobrado', 'Contabilidad: asiento espejo (incluye retenciones)'] });
     if (!motivo) return;
     try {
       await window.puntoXCxc.anularRecibo({ reciboId: el.dataset.anular, motivo, usuarioId: state.info.usuario.id });

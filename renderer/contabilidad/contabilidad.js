@@ -160,7 +160,8 @@ async function cargarDiario() {
   `).join('');
 
   document.querySelectorAll('[data-anular]').forEach((el) => el.addEventListener('click', async () => {
-    const motivo = await window.PuntoXModal.pedirTexto('Motivo de la anulación:');
+    const doc = asientos.find((x) => x.id === el.dataset.anular) || {};
+    const motivo = await window.PuntoXModal.confirmarAnulacion({ documento: 'Asiento', numero: doc.numero, total: (doc.lineas || []).reduce((a, l) => a + (l.debe || 0), 0), revierte: ['Contabilidad: se registra el asiento espejo'] });
     if (!motivo) return;
     try {
       await window.puntoXContabilidad.anularAsiento({ asientoId: el.dataset.anular, motivo, usuarioId: state.info.usuario.id });

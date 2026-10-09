@@ -121,7 +121,8 @@ async function cargarFacturas() {
     </tr>
   `).join('');
   document.querySelectorAll('#facturas-tbody [data-anular]').forEach((el) => el.addEventListener('click', async () => {
-    const motivo = await window.PuntoXModal.pedirTexto('Motivo de la anulación:');
+    const doc = facturas.find((x) => x.id === el.dataset.anular) || {};
+    const motivo = await window.PuntoXModal.confirmarAnulacion({ documento: 'Factura de compra', numero: doc.numero, total: doc.total, revierte: ['Inventario: sale la mercancía de esta compra', 'Cuentas por pagar: la deuda con el proveedor', 'Contabilidad: asiento espejo'] });
     if (!motivo) return;
     try {
       await window.puntoXCompras.anularFacturaCompra({ documentoId: el.dataset.anular, motivo, usuarioId: state.info.usuario.id });
@@ -434,7 +435,8 @@ async function cargarPagos() {
     </tr>
   `).join('');
   document.querySelectorAll('#pagos-tbody [data-anular]').forEach((el) => el.addEventListener('click', async () => {
-    const motivo = await window.PuntoXModal.pedirTexto('Motivo de la anulación:');
+    const doc = pagos.find((x) => x.id === el.dataset.anular) || {};
+    const motivo = await window.PuntoXModal.confirmarAnulacion({ documento: 'Pago a proveedor', numero: doc.numero, total: doc.monto_total, revierte: ['Cuentas por pagar: las facturas vuelven a quedar pendientes', 'Caja o banco: vuelve el dinero', 'Contabilidad: asiento espejo'] });
     if (!motivo) return;
     try {
       await window.puntoXCxp.anularPago({ pagoId: el.dataset.anular, motivo, usuarioId: state.info.usuario.id });
