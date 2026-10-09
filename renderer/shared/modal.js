@@ -9,7 +9,7 @@ function abrirModal(titulo, contenidoHtml) {
   overlay.innerHTML = `
     <div class="modal-box">
       <div class="modal-box__header">
-        <h2>${titulo}</h2>
+        <h2>${esc(titulo)}</h2>
         <button class="modal-cerrar" id="modal-btn-cerrar">✕</button>
       </div>
       <div id="modal-contenido">${contenidoHtml}</div>
@@ -26,10 +26,6 @@ function cerrarModal() {
   if (existente) existente.remove();
 }
 
-function escModal(t) {
-  return String(t ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-}
-
 // Reemplazo de window.prompt(), que Electron no implementa (devuelve vacío sin mostrar nada).
 // Usa su propia capa, encima de cualquier modal abierto (p.ej. pedir una categoría desde la
 // ficha de producto). Devuelve el texto escrito, o null si se cancela.
@@ -40,9 +36,9 @@ function pedirTexto(mensaje, valorInicial = '', { tipo = 'text', obligatorio = t
     capa.style.zIndex = '2000';
     capa.innerHTML = `
       <form class="modal-box" style="max-width:440px">
-        <div class="modal-box__header"><h2>${escModal(mensaje)}</h2></div>
+        <div class="modal-box__header"><h2>${esc(mensaje)}</h2></div>
         <div style="padding:16px 20px;display:flex;flex-direction:column;gap:12px">
-          <input class="input-normal" style="width:100%" name="valor" type="${tipo}" ${tipo === 'number' ? 'step="any"' : ''} value="${escModal(valorInicial)}" autocomplete="off">
+          <input class="input-normal" style="width:100%" name="valor" type="${tipo}" ${tipo === 'number' ? 'step="any"' : ''} value="${esc(valorInicial)}" autocomplete="off">
           <p class="pedir-error" style="color:#b42318;font-size:13px;margin:0;display:none">Este dato es obligatorio.</p>
           <div style="display:flex;justify-content:flex-end;gap:8px">
             <button type="button" class="btn btn-secundario" data-cancelar>Cancelar</button>

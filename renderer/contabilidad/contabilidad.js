@@ -69,19 +69,19 @@ async function cargarCuentas() {
 
   document.getElementById('cuentas-tbody').innerHTML = filas.map((c) => `
     <tr>
-      <td class="${c.nivel === 0 ? 'cuenta-nivel-1' : 'cuenta-nivel-2'}">${c.codigo}</td>
-      <td class="${c.nivel === 0 ? 'cuenta-nivel-1' : ''}">${c.nombre}</td>
-      <td>${TIPO_ETIQUETA[c.tipo] || c.tipo}</td>
+      <td class="${c.nivel === 0 ? 'cuenta-nivel-1' : 'cuenta-nivel-2'}">${esc(c.codigo)}</td>
+      <td class="${c.nivel === 0 ? 'cuenta-nivel-1' : ''}">${esc(c.nombre)}</td>
+      <td>${esc(TIPO_ETIQUETA[c.tipo] || c.tipo)}</td>
       <td>${c.es_movimiento ? 'Sí' : 'Agrupación'}</td>
       <td>${c.activo ? '<span class="pill-estado" style="background:var(--color-success);">Activa</span>' : '<span class="pill-estado" style="background:var(--color-text-faint);">Inactiva</span>'}</td>
-      <td><span class="enlace-accion" data-editar="${c.id}">Editar</span></td>
+      <td><span class="enlace-accion" data-editar="${esc(c.id)}">Editar</span></td>
     </tr>
   `).join('');
   document.querySelectorAll('[data-editar]').forEach((el) => el.addEventListener('click', () => abrirFormularioCuenta(el.dataset.editar)));
 }
 
 function opciones(lista, valorSel, etiquetaFn) {
-  return lista.map((x) => `<option value="${x.id}" ${x.id === valorSel ? 'selected' : ''}>${etiquetaFn(x)}</option>`).join('');
+  return lista.map((x) => `<option value="${esc(x.id)}" ${x.id === valorSel ? 'selected' : ''}>${etiquetaFn(x)}</option>`).join('');
 }
 
 async function abrirFormularioCuenta(cuentaId) {
@@ -90,8 +90,8 @@ async function abrirFormularioCuenta(cuentaId) {
 
   window.PuntoXModal.abrirModal(esEdicion ? 'Editar cuenta contable' : 'Nueva cuenta contable', `
     <div class="form-grid">
-      <div class="form-field"><label>Código *</label><input id="cc-codigo" value="${cuenta ? cuenta.codigo : ''}" ${esEdicion ? 'disabled' : ''} /></div>
-      <div class="form-field"><label>Nombre *</label><input id="cc-nombre" value="${cuenta ? cuenta.nombre : ''}" /></div>
+      <div class="form-field"><label>Código *</label><input id="cc-codigo" value="${esc(cuenta ? cuenta.codigo : '')}" ${esEdicion ? 'disabled' : ''} /></div>
+      <div class="form-field"><label>Nombre *</label><input id="cc-nombre" value="${esc(cuenta ? cuenta.nombre : '')}" /></div>
       <div class="form-field"><label>Tipo</label>
         <select id="cc-tipo" ${esEdicion ? 'disabled' : ''}>
           ${Object.entries(TIPO_ETIQUETA).map(([v, e]) => `<option value="${v}" ${cuenta?.tipo === v ? 'selected' : ''}>${e}</option>`).join('')}
@@ -142,18 +142,18 @@ async function cargarDiario() {
   contenedor.innerHTML = asientos.map((a) => `
     <div class="card" style="margin-bottom:12px;">
       <div class="card__header">
-        <span class="card__title">${a.numero} — ${a.concepto}</span>
+        <span class="card__title">${esc(a.numero)} — ${esc(a.concepto)}</span>
         <span>
           ${a.es_manual ? '<span class="pill-estado" style="background:var(--color-info); margin-right:6px;">Manual</span>' : ''}
           ${a.estado === 'anulado' ? '<span class="pill-estado" style="background:var(--color-danger); margin-right:6px;">Anulado</span>' : ''}
-          <span style="font-size:12px; color:var(--color-text-muted);">${fechaCorta(a.fecha)} · ${a.origen_modulo}</span>
-          ${a.es_manual && a.estado !== 'anulado' ? ` · <span class="enlace-accion" data-permiso="contabilidad.asiento_manual.crear" data-anular="${a.id}">Anular</span>` : ''}
+          <span style="font-size:12px; color:var(--color-text-muted);">${fechaCorta(a.fecha)} · ${esc(a.origen_modulo)}</span>
+          ${a.es_manual && a.estado !== 'anulado' ? ` · <span class="enlace-accion" data-permiso="contabilidad.asiento_manual.crear" data-anular="${esc(a.id)}">Anular</span>` : ''}
         </span>
       </div>
       <table class="data-table">
         <thead><tr><th>Cuenta</th><th>Descripción</th><th style="text-align:right;">Debe</th><th style="text-align:right;">Haber</th></tr></thead>
         <tbody>
-          ${a.lineas.map((l) => `<tr><td>${l.cuenta_codigo} — ${l.cuenta_nombre}</td><td>${l.descripcion || ''}</td><td style="text-align:right;">${l.debe > 0 ? fmt(l.debe) : ''}</td><td style="text-align:right;">${l.haber > 0 ? fmt(l.haber) : ''}</td></tr>`).join('')}
+          ${a.lineas.map((l) => `<tr><td>${esc(l.cuenta_codigo)} — ${esc(l.cuenta_nombre)}</td><td>${esc(l.descripcion || '')}</td><td style="text-align:right;">${l.debe > 0 ? fmt(l.debe) : ''}</td><td style="text-align:right;">${l.haber > 0 ? fmt(l.haber) : ''}</td></tr>`).join('')}
         </tbody>
       </table>
     </div>
@@ -189,11 +189,11 @@ function abrirFormularioAsientoManual() {
       <div class="linea-dinamica">
         <select data-i="${i}" data-campo="cuentaCodigo" style="flex-grow:1;">
           <option value="">— Selecciona cuenta —</option>
-          ${state.cuentas.filter((c) => c.es_movimiento).map((c) => `<option value="${c.codigo}" ${l.cuentaCodigo === c.codigo ? 'selected' : ''}>${c.codigo} — ${c.nombre}</option>`).join('')}
+          ${state.cuentas.filter((c) => c.es_movimiento).map((c) => `<option value="${esc(c.codigo)}" ${l.cuentaCodigo === c.codigo ? 'selected' : ''}>${esc(c.codigo)} — ${esc(c.nombre)}</option>`).join('')}
         </select>
-        <input type="text" placeholder="Descripción" value="${l.descripcion}" data-i="${i}" data-campo="descripcion" style="width:140px;" />
-        <input type="number" step="0.01" placeholder="Debe" value="${l.debe || ''}" data-i="${i}" data-campo="debe" style="width:90px;" />
-        <input type="number" step="0.01" placeholder="Haber" value="${l.haber || ''}" data-i="${i}" data-campo="haber" style="width:90px;" />
+        <input type="text" placeholder="Descripción" value="${esc(l.descripcion)}" data-i="${i}" data-campo="descripcion" style="width:140px;" />
+        <input type="number" step="0.01" placeholder="Debe" value="${esc(l.debe || '')}" data-i="${i}" data-campo="debe" style="width:90px;" />
+        <input type="number" step="0.01" placeholder="Haber" value="${esc(l.haber || '')}" data-i="${i}" data-campo="haber" style="width:90px;" />
         <span class="carrito-quitar" data-quitar="${i}">✕</span>
       </div>
     `).join('');
@@ -250,10 +250,10 @@ async function renderMayor() {
       <thead><tr><th>Fecha</th><th>Asiento</th><th>Concepto</th><th style="text-align:right;">Debe</th><th style="text-align:right;">Haber</th><th style="text-align:right;">Saldo</th></tr></thead>
       <tbody>
         ${movimientos.length === 0 ? '<tr><td colspan="6" style="text-align:center; color:var(--color-text-faint);">Sin movimientos</td></tr>' : ''}
-        ${movimientos.map((m) => `<tr><td>${fechaCorta(m.fecha)}</td><td>${m.numero}</td><td>${m.concepto}</td><td style="text-align:right;">${m.debe > 0 ? fmt(m.debe) : ''}</td><td style="text-align:right;">${m.haber > 0 ? fmt(m.haber) : ''}</td><td style="text-align:right; font-weight:700;">${fmt(m.saldo_acumulado)}</td></tr>`).join('')}
+        ${movimientos.map((m) => `<tr><td>${fechaCorta(m.fecha)}</td><td>${esc(m.numero)}</td><td>${esc(m.concepto)}</td><td style="text-align:right;">${m.debe > 0 ? fmt(m.debe) : ''}</td><td style="text-align:right;">${m.haber > 0 ? fmt(m.haber) : ''}</td><td style="text-align:right; font-weight:700;">${fmt(m.saldo_acumulado)}</td></tr>`).join('')}
       </tbody>
     </table>
-    <div style="margin-top:12px; text-align:right; font-weight:800;">Saldo final de ${cuenta.codigo} — ${cuenta.nombre}: ${fmt(saldoFinal)}</div>
+    <div style="margin-top:12px; text-align:right; font-weight:800;">Saldo final de ${esc(cuenta.codigo)} — ${esc(cuenta.nombre)}: ${fmt(saldoFinal)}</div>
   `;
 }
 
@@ -263,7 +263,7 @@ async function cargarComprobacion() {
   const filas = await window.puntoXContabilidad.balanceComprobacion({});
   document.getElementById('comprobacion-tbody').innerHTML = filas.length === 0
     ? '<tr><td colspan="6" style="text-align:center; color:var(--color-text-faint);">Sin movimientos registrados</td></tr>'
-    : filas.map((f) => `<tr><td>${f.codigo}</td><td>${f.nombre}</td><td>${TIPO_ETIQUETA[f.tipo] || f.tipo}</td><td>${fmt(f.total_debe)}</td><td>${fmt(f.total_haber)}</td><td style="font-weight:700;">${fmt(f.saldo)}</td></tr>`).join('');
+    : filas.map((f) => `<tr><td>${esc(f.codigo)}</td><td>${esc(f.nombre)}</td><td>${esc(TIPO_ETIQUETA[f.tipo] || f.tipo)}</td><td>${fmt(f.total_debe)}</td><td>${fmt(f.total_haber)}</td><td style="font-weight:700;">${fmt(f.saldo)}</td></tr>`).join('');
 
   const totalDebe = filas.reduce((acc, f) => acc + f.total_debe, 0);
   const totalHaber = filas.reduce((acc, f) => acc + f.total_haber, 0);
@@ -282,12 +282,12 @@ async function cargarFinancieros() {
     <table class="data-table">
       <tbody>
         <tr><td colspan="2" style="font-weight:700;">Ingresos</td></tr>
-        ${resultados.ingresos.map((c) => `<tr><td style="padding-left:20px;">${c.nombre}</td><td style="text-align:right;">${fmt(c.saldo)}</td></tr>`).join('') || '<tr><td style="padding-left:20px; color:var(--color-text-faint);">Sin movimientos</td><td></td></tr>'}
+        ${resultados.ingresos.map((c) => `<tr><td style="padding-left:20px;">${esc(c.nombre)}</td><td style="text-align:right;">${fmt(c.saldo)}</td></tr>`).join('') || '<tr><td style="padding-left:20px; color:var(--color-text-faint);">Sin movimientos</td><td></td></tr>'}
         <tr><td colspan="2" style="font-weight:700; padding-top:14px;">Costo de ventas</td></tr>
-        ${resultados.costos.map((c) => `<tr><td style="padding-left:20px;">${c.nombre}</td><td style="text-align:right;">${fmt(c.saldo)}</td></tr>`).join('') || '<tr><td style="padding-left:20px; color:var(--color-text-faint);">Sin movimientos</td><td></td></tr>'}
+        ${resultados.costos.map((c) => `<tr><td style="padding-left:20px;">${esc(c.nombre)}</td><td style="text-align:right;">${fmt(c.saldo)}</td></tr>`).join('') || '<tr><td style="padding-left:20px; color:var(--color-text-faint);">Sin movimientos</td><td></td></tr>'}
         <tr class="reporte-total-row"><td>Utilidad bruta</td><td style="text-align:right;">${fmt(resultados.utilidadBruta)}</td></tr>
         <tr><td colspan="2" style="font-weight:700; padding-top:14px;">Gastos operativos</td></tr>
-        ${resultados.gastos.map((c) => `<tr><td style="padding-left:20px;">${c.nombre}</td><td style="text-align:right;">${fmt(c.saldo)}</td></tr>`).join('') || '<tr><td style="padding-left:20px; color:var(--color-text-faint);">Sin movimientos</td><td></td></tr>'}
+        ${resultados.gastos.map((c) => `<tr><td style="padding-left:20px;">${esc(c.nombre)}</td><td style="text-align:right;">${fmt(c.saldo)}</td></tr>`).join('') || '<tr><td style="padding-left:20px; color:var(--color-text-faint);">Sin movimientos</td><td></td></tr>'}
         <tr class="reporte-total-row"><td>Utilidad neta</td><td style="text-align:right;">${fmt(resultados.utilidadNeta)}</td></tr>
       </tbody>
     </table>
@@ -297,12 +297,12 @@ async function cargarFinancieros() {
     <table class="data-table">
       <tbody>
         <tr><td colspan="2" style="font-weight:700;">Activo</td></tr>
-        ${balance.activos.map((c) => `<tr><td style="padding-left:20px;">${c.nombre}</td><td style="text-align:right;">${fmt(c.saldo)}</td></tr>`).join('') || '<tr><td style="padding-left:20px; color:var(--color-text-faint);">Sin movimientos</td><td></td></tr>'}
+        ${balance.activos.map((c) => `<tr><td style="padding-left:20px;">${esc(c.nombre)}</td><td style="text-align:right;">${fmt(c.saldo)}</td></tr>`).join('') || '<tr><td style="padding-left:20px; color:var(--color-text-faint);">Sin movimientos</td><td></td></tr>'}
         <tr class="reporte-total-row"><td>Total activo</td><td style="text-align:right;">${fmt(balance.totalActivo)}</td></tr>
         <tr><td colspan="2" style="font-weight:700; padding-top:14px;">Pasivo</td></tr>
-        ${balance.pasivos.map((c) => `<tr><td style="padding-left:20px;">${c.nombre}</td><td style="text-align:right;">${fmt(c.saldo)}</td></tr>`).join('') || '<tr><td style="padding-left:20px; color:var(--color-text-faint);">Sin movimientos</td><td></td></tr>'}
+        ${balance.pasivos.map((c) => `<tr><td style="padding-left:20px;">${esc(c.nombre)}</td><td style="text-align:right;">${fmt(c.saldo)}</td></tr>`).join('') || '<tr><td style="padding-left:20px; color:var(--color-text-faint);">Sin movimientos</td><td></td></tr>'}
         <tr><td colspan="2" style="font-weight:700; padding-top:14px;">Patrimonio</td></tr>
-        ${balance.patrimonio.map((c) => `<tr><td style="padding-left:20px;">${c.nombre}</td><td style="text-align:right;">${fmt(c.saldo)}</td></tr>`).join('')}
+        ${balance.patrimonio.map((c) => `<tr><td style="padding-left:20px;">${esc(c.nombre)}</td><td style="text-align:right;">${fmt(c.saldo)}</td></tr>`).join('')}
         <tr><td style="padding-left:20px;">Utilidad del periodo</td><td style="text-align:right;">${fmt(balance.utilidadDelPeriodo)}</td></tr>
         <tr class="reporte-total-row"><td>Total pasivo + patrimonio</td><td style="text-align:right;">${fmt(balance.totalPasivo + balance.totalPatrimonio)}</td></tr>
       </tbody>
@@ -319,13 +319,13 @@ async function cargarPeriodos() {
   const periodos = await window.puntoXContabilidad.listarPeriodos();
   document.getElementById('periodos-tbody').innerHTML = periodos.map((p) => `
     <tr>
-      <td>${p.nombre}</td><td>${fechaCorta(p.fecha_inicio)}</td><td>${fechaCorta(p.fecha_fin)}</td>
-      <td><span class="pill-estado" style="background:${p.estado === 'abierto' ? 'var(--color-success)' : 'var(--color-text-faint)'};">${p.estado}</span></td>
+      <td>${esc(p.nombre)}</td><td>${fechaCorta(p.fecha_inicio)}</td><td>${fechaCorta(p.fecha_fin)}</td>
+      <td><span class="pill-estado" style="background:${p.estado === 'abierto' ? 'var(--color-success)' : 'var(--color-text-faint)'};">${esc(p.estado)}</span></td>
       <td>${fechaCorta(p.fecha_cierre)}</td>
       <td>
         ${p.estado === 'abierto'
-          ? `<span class="enlace-accion" data-permiso="contabilidad.periodo.cerrar" data-cerrar="${p.id}">Cerrar periodo</span>`
-          : `<span class="enlace-accion" data-permiso="contabilidad.periodo.reabrir" data-reabrir="${p.id}" style="color:var(--color-warning);">Reabrir</span>`}
+          ? `<span class="enlace-accion" data-permiso="contabilidad.periodo.cerrar" data-cerrar="${esc(p.id)}">Cerrar periodo</span>`
+          : `<span class="enlace-accion" data-permiso="contabilidad.periodo.reabrir" data-reabrir="${esc(p.id)}" style="color:var(--color-warning);">Reabrir</span>`}
       </td>
     </tr>
   `).join('');

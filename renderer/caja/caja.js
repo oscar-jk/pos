@@ -53,7 +53,7 @@ async function renderTurno() {
   if (!state.turnoActual) {
     panel.innerHTML = `
       <div class="empty-state empty-state--panel">
-        <p style="margin-bottom:14px; color:var(--color-text);">No hay un turno de caja abierto para <strong>${state.cajaActual.nombre}</strong>. Ábrelo antes de facturar ventas al contado en efectivo.</p>
+        <p style="margin-bottom:14px; color:var(--color-text);">No hay un turno de caja abierto para <strong>${esc(state.cajaActual.nombre)}</strong>. Ábrelo antes de facturar ventas al contado en efectivo.</p>
         <div class="form-field" style="max-width:240px; margin:0 auto 14px;">
           <label>Fondo inicial</label>
           <input id="fondo-inicial" class="input-normal" type="number" step="0.01" value="0" />
@@ -100,10 +100,10 @@ async function renderTurno() {
         ${movimientos.map((m) => `
           <tr>
             <td>${fechaHora(m.created_at)}</td>
-            <td>${m.tipo}</td>
-            <td>${m.concepto}</td>
+            <td>${esc(m.tipo)}</td>
+            <td>${esc(m.concepto)}</td>
             <td style="color:${m.monto < 0 ? 'var(--color-danger)' : 'var(--color-success)'};">${m.monto > 0 ? '+' : ''}${fmt(m.monto)}</td>
-            <td>${m.usuario_nombre || ''}</td>
+            <td>${esc(m.usuario_nombre || '')}</td>
           </tr>
         `).join('')}
       </tbody>
@@ -186,15 +186,15 @@ async function cargarHistorial() {
     const diffColor = t.diferencia === null ? '' : (t.diferencia === 0 ? 'var(--color-success)' : (t.diferencia > 0 ? 'var(--color-info)' : 'var(--color-danger)'));
     return `
       <tr>
-        <td>${t.caja_nombre}</td>
+        <td>${esc(t.caja_nombre)}</td>
         <td>${fechaHora(t.fecha_apertura)}</td>
         <td>${fechaHora(t.fecha_cierre)}</td>
         <td>${fmt(t.fondo_inicial)}</td>
         <td>${t.efectivo_esperado !== null ? fmt(t.efectivo_esperado) : '—'}</td>
         <td>${t.efectivo_contado !== null ? fmt(t.efectivo_contado) : '—'}</td>
         <td style="color:${diffColor};">${t.diferencia !== null ? fmt(t.diferencia) : '—'}</td>
-        <td><span class="pill-estado" style="background:${t.estado === 'abierto' ? 'var(--color-success)' : 'var(--color-text-faint)'};">${t.estado}</span></td>
-        <td>${t.estado === 'cerrado' && window.puntoXImpresion ? `<a href="#" class="btn-imprimir-arqueo" data-permiso="caja.tique.imprimir" data-id="${t.id}" style="color:var(--color-accent); font-size:12px; font-weight:700;">Imprimir arqueo</a>` : ''}</td>
+        <td><span class="pill-estado" style="background:${t.estado === 'abierto' ? 'var(--color-success)' : 'var(--color-text-faint)'};">${esc(t.estado)}</span></td>
+        <td>${t.estado === 'cerrado' && window.puntoXImpresion ? `<a href="#" class="btn-imprimir-arqueo" data-permiso="caja.tique.imprimir" data-id="${esc(t.id)}" style="color:var(--color-accent); font-size:12px; font-weight:700;">Imprimir arqueo</a>` : ''}</td>
       </tr>
     `;
   }).join('');
@@ -294,8 +294,8 @@ async function cargarBanco() {
   document.getElementById('banco-vacio').style.display = transferencias.length === 0 ? 'block' : 'none';
   document.getElementById('banco-tbody').innerHTML = transferencias.map((t) => `
     <tr>
-      <td><span class="pill-estado" style="background:${t.tipo === 'deposito' ? 'var(--color-success)' : 'var(--color-warning)'};">${t.tipo}</span></td>
-      <td>${t.cuenta_nombre}</td><td>${t.banco}</td><td>${fmt(t.monto)}</td><td>${fechaHora(t.fecha)}</td><td>${t.usuario_nombre || ''}</td>
+      <td><span class="pill-estado" style="background:${t.tipo === 'deposito' ? 'var(--color-success)' : 'var(--color-warning)'};">${esc(t.tipo)}</span></td>
+      <td>${esc(t.cuenta_nombre)}</td><td>${esc(t.banco)}</td><td>${fmt(t.monto)}</td><td>${fechaHora(t.fecha)}</td><td>${esc(t.usuario_nombre || '')}</td>
     </tr>
   `).join('');
 }
@@ -305,7 +305,7 @@ async function abrirFormularioTransferencia() {
   const contenido = window.PuntoXModal.abrirModal('Nueva transferencia caja-banco', `
     <div class="form-field"><label>Cuenta bancaria</label>
       <select id="tb-cuenta" class="input-normal">
-        ${cuentas.map((c) => `<option value="${c.id}">${c.nombre} — ${c.banco}</option>`).join('')}
+        ${cuentas.map((c) => `<option value="${esc(c.id)}">${esc(c.nombre)} — ${esc(c.banco)}</option>`).join('')}
         <option value="__nueva__">+ Nueva cuenta bancaria...</option>
       </select>
     </div>
@@ -350,10 +350,6 @@ async function abrirFormularioTransferencia() {
 }
 
 // --- Conciliación bancaria ---
-
-function esc(texto) {
-  return String(texto ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-}
 
 function fechaCorta(iso) {
   if (!iso) return '—';
@@ -401,10 +397,10 @@ async function cargarConciliaciones() {
             <td>${fechaCorta(c.periodo_desde)} al ${fechaCorta(c.periodo_hasta)}</td>
             <td>${fmt(c.saldoEstadoCuenta)}</td>
             <td>${fmt(c.saldoLibros)}</td>
-            <td>${c.partidasPendientes} del banco · ${c.movimientosPendientes} del sistema</td>
+            <td>${esc(c.partidasPendientes)} del banco · ${esc(c.movimientosPendientes)} del sistema</td>
             <td style="color:${Math.abs(c.diferencia) < 0.01 ? 'var(--color-success)' : 'var(--color-danger)'}; font-weight:700;">${fmt(c.diferencia)}</td>
             <td><span class="pill-estado" style="background:${c.estado === 'conciliada' ? 'var(--color-success)' : 'var(--color-warning)'};">${c.estado === 'conciliada' ? 'Conciliada' : 'En proceso'}</span></td>
-            <td><span class="enlace-accion" data-abrir-conciliacion="${c.id}">Abrir</span></td>
+            <td><span class="enlace-accion" data-abrir-conciliacion="${esc(c.id)}">Abrir</span></td>
           </tr>`).join('')}
       </tbody>
     </table>`}
@@ -425,7 +421,7 @@ async function abrirFormularioConciliacion() {
   window.PuntoXModal.abrirModal('Nueva conciliación bancaria', `
     <div class="form-field"><label>Cuenta bancaria *</label>
       <select id="nc-cuenta" class="input-normal">
-        ${cuentas.map((c) => `<option value="${c.id}">${esc(c.nombre)} — ${esc(c.banco)}${c.numero_cuenta ? ` (${esc(c.numero_cuenta)})` : ''}</option>`).join('')}
+        ${cuentas.map((c) => `<option value="${esc(c.id)}">${esc(c.nombre)} — ${esc(c.banco)}${c.numero_cuenta ? ` (${esc(c.numero_cuenta)})` : ''}</option>`).join('')}
         <option value="__nueva__" ${cuentas.length === 0 ? 'selected' : ''}>+ Nueva cuenta bancaria...</option>
       </select>
     </div>
@@ -537,7 +533,7 @@ async function renderDetalleConciliacion() {
     <div class="conc-columnas">
       <div class="conc-columna">
         <div class="conc-columna__titulo">Estado de cuenta del banco</div>
-        <div class="conc-columna__sub">${partidas.length} partida(s) · ${r.partidasConciliadas} conciliada(s)</div>
+        <div class="conc-columna__sub">${esc(partidas.length)} partida(s) · ${esc(r.partidasConciliadas)} conciliada(s)</div>
         ${partidas.length === 0 ? '<div class="empty-state">Agrega las partidas del estado de cuenta, o pégalas desde el archivo del banco.</div>' : `
         <table class="data-table">
           <thead><tr><th>Fecha</th><th>Descripción</th><th class="conc-monto">Monto</th><th>Estado</th><th></th></tr></thead>
@@ -546,10 +542,10 @@ async function renderDetalleConciliacion() {
               const estado = !p.conciliado ? 'pendiente' : (p.asiento_id ? 'registrada' : 'conciliada');
               const [etiqueta, color] = ESTADO_PARTIDA[estado];
               const acciones = !editable ? '' : (estado === 'pendiente'
-                ? `<span class="enlace-accion" data-seleccionar="${p.id}">Emparejar</span> ·
-                   <span class="enlace-accion" data-registrar="${p.id}" title="${p.monto < 0 ? 'Gasto bancario: Gastos Operativos contra Bancos' : 'Crédito del banco: Bancos contra Gastos Operativos'}">Registrar</span> ·
-                   <span class="enlace-accion" data-quitar="${p.id}" style="color:var(--color-danger);">Quitar</span>`
-                : `<span class="enlace-accion" data-deshacer="${p.id}">Deshacer</span>`);
+                ? `<span class="enlace-accion" data-seleccionar="${esc(p.id)}">Emparejar</span> ·
+                   <span class="enlace-accion" data-registrar="${esc(p.id)}" title="${p.monto < 0 ? 'Gasto bancario: Gastos Operativos contra Bancos' : 'Crédito del banco: Bancos contra Gastos Operativos'}">Registrar</span> ·
+                   <span class="enlace-accion" data-quitar="${esc(p.id)}" style="color:var(--color-danger);">Quitar</span>`
+                : `<span class="enlace-accion" data-deshacer="${esc(p.id)}">Deshacer</span>`);
               return `<tr class="${p.id === state.partidaSeleccionada ? 'conc-fila--seleccionada' : ''} ${p.conciliado ? 'conc-fila--conciliada' : ''}">
                 <td>${fechaCorta(p.fecha)}</td><td>${esc(p.descripcion)}</td>${montoCelda(p.monto)}
                 <td><span class="conc-estado" style="background:${color};">${etiqueta}</span></td><td style="white-space:nowrap;">${acciones}</td></tr>`;
@@ -573,7 +569,7 @@ async function renderDetalleConciliacion() {
                 : `<span class="conc-estado" style="background:var(--color-warning);">${m.disponible ? 'En tránsito' : 'Conciliado después'}</span>`;
               return `<tr class="${candidata ? 'conc-fila--candidata' : ''} ${m.conciliado ? 'conc-fila--conciliada' : ''}">
                 <td>${fechaCorta(m.fecha)}</td><td>${esc(m.concepto)}</td>${montoCelda(m.monto)}<td>${estado}</td>
-                <td>${candidata ? `<span class="enlace-accion" data-emparejar="${m.asiento_detalle_id}">Emparejar</span>` : ''}</td></tr>`;
+                <td>${candidata ? `<span class="enlace-accion" data-emparejar="${esc(m.asiento_detalle_id)}">Emparejar</span>` : ''}</td></tr>`;
             }).join('')}
           </tbody>
         </table>
@@ -725,7 +721,7 @@ function abrirFormularioPegarPartidas() {
     const total = resultado.partidas.reduce((a, p) => a + p.monto, 0);
     vista.innerHTML = resultado.partidas.length === 0
       ? `No se reconoció ninguna partida${resultado.ignoradas ? ` (${resultado.ignoradas} línea(s) ignorada(s))` : ''}.`
-      : `<strong>${resultado.partidas.length}</strong> partida(s) reconocida(s), neto ${fmt(total)}${resultado.ignoradas ? ` · ${resultado.ignoradas} línea(s) ignorada(s)` : ''}.`;
+      : `<strong>${esc(resultado.partidas.length)}</strong> partida(s) reconocida(s), neto ${fmt(total)}${resultado.ignoradas ? ` · ${resultado.ignoradas} línea(s) ignorada(s)` : ''}.`;
     boton.disabled = resultado.partidas.length === 0;
   });
   document.getElementById('pp-cancelar').addEventListener('click', window.PuntoXModal.cerrarModal);

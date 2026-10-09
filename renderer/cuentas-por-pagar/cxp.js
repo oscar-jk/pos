@@ -57,10 +57,10 @@ async function cargarProveedores() {
   document.getElementById('proveedores-vacio').style.display = proveedores.length === 0 ? 'block' : 'none';
   document.getElementById('proveedores-tbody').innerHTML = proveedores.map((p) => `
     <tr>
-      <td>${p.nombre}</td><td>${p.rnc || '—'}</td><td>${p.dias_credito}</td>
+      <td>${esc(p.nombre)}</td><td>${esc(p.rnc || '—')}</td><td>${esc(p.dias_credito)}</td>
       <td style="color:${p.saldo_pendiente > 0 ? 'var(--color-warning)' : 'inherit'};">${fmt(p.saldo_pendiente)}</td>
       <td style="color:${p.saldo_a_favor > 0 ? 'var(--color-success)' : 'inherit'};">${p.saldo_a_favor === undefined ? '—' : fmt(p.saldo_a_favor)}</td>
-      <td><span class="enlace-accion" data-editar="${p.id}">Editar</span></td>
+      <td><span class="enlace-accion" data-editar="${esc(p.id)}">Editar</span></td>
     </tr>
   `).join('');
   document.querySelectorAll('[data-editar]').forEach((el) => el.addEventListener('click', () => abrirFormularioProveedor(el.dataset.editar)));
@@ -78,12 +78,12 @@ async function abrirFormularioProveedor(proveedorId) {
 
   window.PuntoXModal.abrirModal(esEdicion ? 'Editar proveedor' : 'Nuevo proveedor', `
     <div class="form-grid">
-      <div class="form-field"><label>Nombre *</label><input id="p-nombre" value="${proveedor ? proveedor.nombre : ''}" /></div>
-      <div class="form-field"><label>RNC</label><input id="p-rnc" value="${proveedor ? proveedor.rnc || '' : ''}" /></div>
+      <div class="form-field"><label>Nombre *</label><input id="p-nombre" value="${esc(proveedor ? proveedor.nombre : '')}" /></div>
+      <div class="form-field"><label>RNC</label><input id="p-rnc" value="${esc(proveedor ? proveedor.rnc || '' : '')}" /></div>
       <div class="form-field"><label>Días de crédito</label><input id="p-dias" type="number" step="1" value="${proveedor ? proveedor.dias_credito : 30}" /></div>
-      <div class="form-field"><label>Teléfono</label><input id="p-telefono" value="${proveedor ? proveedor.telefono || '' : ''}" /></div>
-      <div class="form-field" style="grid-column: span 2;"><label>Email</label><input id="p-email" value="${proveedor ? proveedor.email || '' : ''}" /></div>
-      <div class="form-field" style="grid-column: span 2;"><label>Dirección</label><input id="p-direccion" value="${proveedor ? proveedor.direccion || '' : ''}" /></div>
+      <div class="form-field"><label>Teléfono</label><input id="p-telefono" value="${esc(proveedor ? proveedor.telefono || '' : '')}" /></div>
+      <div class="form-field" style="grid-column: span 2;"><label>Email</label><input id="p-email" value="${esc(proveedor ? proveedor.email || '' : '')}" /></div>
+      <div class="form-field" style="grid-column: span 2;"><label>Dirección</label><input id="p-direccion" value="${esc(proveedor ? proveedor.direccion || '' : '')}" /></div>
     </div>
     <div class="form-seccion" style="display:flex; justify-content:flex-end; gap:8px;">
       <button type="button" class="btn btn-secundario" id="p-cancelar">Cancelar</button>
@@ -115,9 +115,9 @@ async function cargarFacturas() {
   document.getElementById('facturas-vacio').style.display = facturas.length === 0 ? 'block' : 'none';
   document.getElementById('facturas-tbody').innerHTML = facturas.map((f) => `
     <tr>
-      <td>${f.numero}</td><td>${f.proveedor_nombre}</td><td>${fechaCorta(f.fecha)}</td><td>${f.condicion_pago}</td><td>${fmt(f.total)}</td>
-      <td><span class="pill-estado" style="background:${f.estado === 'anulado' ? 'var(--color-danger)' : 'var(--color-success)'};">${f.estado}</span></td>
-      <td>${f.estado !== 'anulado' ? `<span class="enlace-accion" data-permiso="compras.factura.anular" data-anular="${f.id}">Anular</span>` : ''}</td>
+      <td>${esc(f.numero)}</td><td>${esc(f.proveedor_nombre)}</td><td>${fechaCorta(f.fecha)}</td><td>${esc(f.condicion_pago)}</td><td>${fmt(f.total)}</td>
+      <td><span class="pill-estado" style="background:${f.estado === 'anulado' ? 'var(--color-danger)' : 'var(--color-success)'};">${esc(f.estado)}</span></td>
+      <td>${f.estado !== 'anulado' ? `<span class="enlace-accion" data-permiso="compras.factura.anular" data-anular="${esc(f.id)}">Anular</span>` : ''}</td>
     </tr>
   `).join('');
   document.querySelectorAll('#facturas-tbody [data-anular]').forEach((el) => el.addEventListener('click', async () => {
@@ -183,7 +183,7 @@ async function abrirFormularioFacturaCompra() {
     if (!texto) { resultados.style.display = 'none'; return; }
     timeoutProveedor = setTimeout(async () => {
       const encontrados = await window.puntoXCompras.buscarProveedores({ texto, limite: 10 });
-      resultados.innerHTML = encontrados.map((p, i) => `<div class="buscador-resultados__item" data-i="${i}"><div class="buscador-resultados__nombre">${p.nombre}</div></div>`).join('') || '<div class="buscador-resultados__vacio">Sin resultados</div>';
+      resultados.innerHTML = encontrados.map((p, i) => `<div class="buscador-resultados__item" data-i="${i}"><div class="buscador-resultados__nombre">${esc(p.nombre)}</div></div>`).join('') || '<div class="buscador-resultados__vacio">Sin resultados</div>';
       resultados.querySelectorAll('[data-i]').forEach((el) => el.addEventListener('click', () => {
         proveedorSel = encontrados[Number(el.dataset.i)];
         document.getElementById('fc-proveedor-sel').textContent = `Seleccionado: ${proveedorSel.nombre}`;
@@ -199,9 +199,9 @@ async function abrirFormularioFacturaCompra() {
       ? '<div class="empty-state" style="padding:10px;">Agrega productos con el buscador de arriba.</div>'
       : lineas.map((l, i) => `
         <div class="linea-dinamica">
-          <span style="flex-grow:1; font-size:13px;">${l.descripcion}</span>
-          <input type="number" step="0.01" min="0.01" value="${l.cantidad}" data-i="${i}" data-campo="cantidad" style="width:70px;" placeholder="Cant." />
-          <input type="number" step="0.01" min="0" value="${l.costoUnitario}" data-i="${i}" data-campo="costoUnitario" style="width:90px;" placeholder="Costo" />
+          <span style="flex-grow:1; font-size:13px;">${esc(l.descripcion)}</span>
+          <input type="number" step="0.01" min="0.01" value="${esc(l.cantidad)}" data-i="${i}" data-campo="cantidad" style="width:70px;" placeholder="Cant." />
+          <input type="number" step="0.01" min="0" value="${esc(l.costoUnitario)}" data-i="${i}" data-campo="costoUnitario" style="width:90px;" placeholder="Costo" />
           <span class="carrito-quitar" data-quitar="${i}">✕</span>
         </div>
       `).join('');
@@ -226,7 +226,7 @@ async function abrirFormularioFacturaCompra() {
     if (!texto) { resultados.style.display = 'none'; return; }
     timeoutProducto = setTimeout(async () => {
       const encontrados = await window.puntoXInventario.buscarProductos({ texto, almacenId: state.info.almacenId, limite: 10 });
-      resultados.innerHTML = encontrados.map((p, i) => `<div class="buscador-resultados__item" data-i="${i}"><div class="buscador-resultados__nombre">${p.descripcion}</div><div class="buscador-resultados__meta">Costo actual: ${fmt(p.costo_promedio)}</div></div>`).join('') || '<div class="buscador-resultados__vacio">Sin resultados</div>';
+      resultados.innerHTML = encontrados.map((p, i) => `<div class="buscador-resultados__item" data-i="${i}"><div class="buscador-resultados__nombre">${esc(p.descripcion)}</div><div class="buscador-resultados__meta">Costo actual: ${fmt(p.costo_promedio)}</div></div>`).join('') || '<div class="buscador-resultados__vacio">Sin resultados</div>';
       resultados.querySelectorAll('[data-i]').forEach((el) => el.addEventListener('click', () => {
         const p = encontrados[Number(el.dataset.i)];
         lineas.push({ productoId: p.id, descripcion: p.descripcion, cantidad: 1, costoUnitario: p.costo_promedio, tasaItbisPct: p.tasa_itbis_pct });
@@ -274,7 +274,7 @@ document.getElementById('pagar-buscar-proveedor').addEventListener('input', (e) 
   if (!texto) { resultados.style.display = 'none'; return; }
   timeoutBuscarProveedorPago = setTimeout(async () => {
     const encontrados = await window.puntoXCompras.buscarProveedores({ texto, limite: 10 });
-    resultados.innerHTML = encontrados.map((p, i) => `<div class="buscador-resultados__item" data-i="${i}"><div class="buscador-resultados__nombre">${p.nombre}</div></div>`).join('') || '<div class="buscador-resultados__vacio">Sin resultados</div>';
+    resultados.innerHTML = encontrados.map((p, i) => `<div class="buscador-resultados__item" data-i="${i}"><div class="buscador-resultados__nombre">${esc(p.nombre)}</div></div>`).join('') || '<div class="buscador-resultados__vacio">Sin resultados</div>';
     resultados.querySelectorAll('[data-i]').forEach((el) => el.addEventListener('click', async () => {
       state.proveedorPago = await window.puntoXCompras.obtenerProveedor({ proveedorId: encontrados[Number(el.dataset.i)].id });
       resultados.style.display = 'none';
@@ -299,9 +299,9 @@ function bloqueSaldoAFavor(proveedor) {
 function abrirFormularioReembolso() {
   const proveedor = state.proveedorPago;
   window.PuntoXModal.abrirModal('Reembolso del proveedor', `
-    <p style="font-size:13px; margin:0 0 12px;">${proveedor.nombre} tiene <strong>${fmt(proveedor.saldo_a_favor)}</strong> a favor.</p>
+    <p style="font-size:13px; margin:0 0 12px;">${esc(proveedor.nombre)} tiene <strong>${fmt(proveedor.saldo_a_favor)}</strong> a favor.</p>
     <div class="form-grid">
-      <div class="form-field"><label>Monto recibido *</label><input id="re-monto" type="number" step="0.01" min="0" max="${proveedor.saldo_a_favor}" value="${proveedor.saldo_a_favor}" /></div>
+      <div class="form-field"><label>Monto recibido *</label><input id="re-monto" type="number" step="0.01" min="0" max="${esc(proveedor.saldo_a_favor)}" value="${esc(proveedor.saldo_a_favor)}" /></div>
       <div class="form-field"><label>Recibido en</label>
         <select id="re-forma"><option value="efectivo">Efectivo (entra a la caja)</option><option value="transferencia">Transferencia (entra al banco)</option></select>
       </div>
@@ -337,7 +337,7 @@ async function renderPagar() {
 
   const facturas = await window.puntoXCxp.facturasAbiertas({ proveedorId: proveedor.id });
   if (facturas.length === 0) {
-    contenedor.innerHTML = `${bloqueSaldoAFavor(proveedor)}<div class="empty-state">${proveedor.nombre} no tiene facturas abiertas a crédito.</div>`;
+    contenedor.innerHTML = `${bloqueSaldoAFavor(proveedor)}<div class="empty-state">${esc(proveedor.nombre)} no tiene facturas abiertas a crédito.</div>`;
     const btn = document.getElementById('btn-reembolso');
     if (btn) btn.addEventListener('click', abrirFormularioReembolso);
     return;
@@ -345,14 +345,14 @@ async function renderPagar() {
 
   contenedor.innerHTML = `
     ${bloqueSaldoAFavor(proveedor)}
-    <div style="font-weight:700; margin-bottom:10px;">${proveedor.nombre} — saldo total: ${fmt(proveedor.saldo_pendiente)}</div>
+    <div style="font-weight:700; margin-bottom:10px;">${esc(proveedor.nombre)} — saldo total: ${fmt(proveedor.saldo_pendiente)}</div>
     <table class="data-table">
       <thead><tr><th>Documento</th><th>Vencimiento</th><th>Total</th><th>Saldo</th><th style="width:140px;">Monto a pagar</th></tr></thead>
       <tbody>
         ${facturas.map((f) => `
           <tr>
-            <td>${f.tipo === 'nota_debito' ? 'Nota de débito' : 'Factura'} ${f.numero}</td><td>${fechaCorta(f.fecha_vencimiento)}</td><td>${fmt(f.total)}</td><td>${fmt(f.saldo_pendiente)}</td>
-            <td><input type="number" step="0.01" min="0" max="${f.saldo_pendiente}" value="0" class="input-aplicacion" data-id="${f.id}" data-max="${f.saldo_pendiente}" style="width:120px; padding:6px 8px; border:1px solid var(--color-border-input); border-radius:6px;" /></td>
+            <td>${f.tipo === 'nota_debito' ? 'Nota de débito' : 'Factura'} ${esc(f.numero)}</td><td>${fechaCorta(f.fecha_vencimiento)}</td><td>${fmt(f.total)}</td><td>${fmt(f.saldo_pendiente)}</td>
+            <td><input type="number" step="0.01" min="0" max="${esc(f.saldo_pendiente)}" value="0" class="input-aplicacion" data-id="${esc(f.id)}" data-max="${esc(f.saldo_pendiente)}" style="width:120px; padding:6px 8px; border:1px solid var(--color-border-input); border-radius:6px;" /></td>
           </tr>
         `).join('')}
       </tbody>
@@ -428,9 +428,9 @@ async function cargarPagos() {
   const pagos = await window.puntoXCxp.listarPagos({});
   document.getElementById('pagos-tbody').innerHTML = pagos.map((p) => `
     <tr>
-      <td>${p.numero}</td><td>${p.proveedor_nombre}</td><td>${FORMA_PAGO_ETIQUETA[p.forma_pago] || p.forma_pago}</td><td>${fmt(p.monto_total)}</td><td>${fechaCorta(p.fecha)}</td>
-      <td><span class="pill-estado" style="background:${p.estado === 'anulado' ? 'var(--color-danger)' : 'var(--color-success)'};">${p.estado}</span></td>
-      <td>${p.estado !== 'anulado' ? `<span class="enlace-accion" data-permiso="cxp.pago.anular" data-anular="${p.id}">Anular</span>` : ''}</td>
+      <td>${esc(p.numero)}</td><td>${esc(p.proveedor_nombre)}</td><td>${esc(FORMA_PAGO_ETIQUETA[p.forma_pago] || p.forma_pago)}</td><td>${fmt(p.monto_total)}</td><td>${fechaCorta(p.fecha)}</td>
+      <td><span class="pill-estado" style="background:${p.estado === 'anulado' ? 'var(--color-danger)' : 'var(--color-success)'};">${esc(p.estado)}</span></td>
+      <td>${p.estado !== 'anulado' ? `<span class="enlace-accion" data-permiso="cxp.pago.anular" data-anular="${esc(p.id)}">Anular</span>` : ''}</td>
     </tr>
   `).join('');
   document.querySelectorAll('#pagos-tbody [data-anular]').forEach((el) => el.addEventListener('click', async () => {
@@ -451,7 +451,7 @@ async function cargarAntiguedad() {
   document.getElementById('antiguedad-vacio').style.display = filas.length === 0 ? 'block' : 'none';
   document.getElementById('antiguedad-tbody').innerHTML = filas.map((f) => `
     <tr>
-      <td>${f.proveedorNombre}</td>
+      <td>${esc(f.proveedorNombre)}</td>
       <td>${fmt(f.tramos.corriente)}</td>
       <td>${fmt(f.tramos.dias_0_30)}</td>
       <td style="color:${f.tramos.dias_31_60 > 0 ? 'var(--color-warning)' : 'inherit'};">${fmt(f.tramos.dias_31_60)}</td>
@@ -469,7 +469,7 @@ async function cargarProximas() {
   document.getElementById('proximas-vacio').style.display = filas.length === 0 ? 'block' : 'none';
   document.getElementById('proximas-tbody').innerHTML = filas.map((f) => `
     <tr>
-      <td>${f.proveedor_nombre}</td><td>${f.numero}</td><td>${fechaCorta(f.fecha_vencimiento)}</td><td>${fmt(f.saldo_pendiente)}</td>
+      <td>${esc(f.proveedor_nombre)}</td><td>${esc(f.numero)}</td><td>${fechaCorta(f.fecha_vencimiento)}</td><td>${fmt(f.saldo_pendiente)}</td>
       <td style="color:${f.dias_restantes < 0 ? 'var(--color-danger)' : 'var(--color-warning)'}; font-weight:700;">${f.dias_restantes < 0 ? `Vencida (${-f.dias_restantes} días)` : `${f.dias_restantes} días`}</td>
     </tr>
   `).join('');
@@ -482,9 +482,9 @@ async function cargarCheques() {
   document.getElementById('cheques-vacio').style.display = cheques.length === 0 ? 'block' : 'none';
   document.getElementById('cheques-tbody').innerHTML = cheques.map((c) => `
     <tr>
-      <td>${c.numero}</td><td>${c.proveedor_nombre}</td><td>${c.numero_cheque}</td><td>${c.banco_cheque || '—'}</td><td>${fmt(c.monto_total)}</td>
+      <td>${esc(c.numero)}</td><td>${esc(c.proveedor_nombre)}</td><td>${esc(c.numero_cheque)}</td><td>${esc(c.banco_cheque || '—')}</td><td>${fmt(c.monto_total)}</td>
       <td>${fechaCorta(c.fecha_cheque)}</td>
-      <td><span class="enlace-accion" data-cobrado="${c.id}">Marcar cobrado</span></td>
+      <td><span class="enlace-accion" data-cobrado="${esc(c.id)}">Marcar cobrado</span></td>
     </tr>
   `).join('');
   document.querySelectorAll('[data-cobrado]').forEach((el) => el.addEventListener('click', async () => {

@@ -95,16 +95,16 @@ async function cargarUsuarios() {
   const usuarios = await window.puntoXConfig.listarUsuarios();
   document.getElementById('usuarios-tbody').innerHTML = usuarios.map((u) => `
     <tr>
-      <td>${u.nombre_completo}</td><td>${u.usuario}</td><td>${u.rol_nombre}</td><td>${u.pct_comision}%</td>
+      <td>${esc(u.nombre_completo)}</td><td>${esc(u.usuario)}</td><td>${esc(u.rol_nombre)}</td><td>${esc(u.pct_comision)}%</td>
       <td>${u.activo ? '<span class="pill-estado" style="background:var(--color-success);">Activo</span>' : '<span class="pill-estado" style="background:var(--color-text-faint);">Inactivo</span>'}</td>
-      <td><span class="enlace-accion" data-permiso="configuracion.gestionar" data-editar="${u.id}">Editar</span></td>
+      <td><span class="enlace-accion" data-permiso="configuracion.gestionar" data-editar="${esc(u.id)}">Editar</span></td>
     </tr>
   `).join('');
   document.querySelectorAll('[data-editar]').forEach((el) => el.addEventListener('click', () => abrirFormularioUsuario(el.dataset.editar)));
 }
 
 function opciones(lista, valorSel, etiquetaFn) {
-  return lista.map((x) => `<option value="${x.id}" ${x.id === valorSel ? 'selected' : ''}>${etiquetaFn(x)}</option>`).join('');
+  return lista.map((x) => `<option value="${esc(x.id)}" ${x.id === valorSel ? 'selected' : ''}>${etiquetaFn(x)}</option>`).join('');
 }
 
 async function abrirFormularioUsuario(usuarioId) {
@@ -114,8 +114,8 @@ async function abrirFormularioUsuario(usuarioId) {
 
   window.PuntoXModal.abrirModal(esEdicion ? 'Editar usuario' : 'Nuevo usuario', `
     <div class="form-grid">
-      <div class="form-field"><label>Nombre completo *</label><input id="u-nombre" value="${usuario ? usuario.nombre_completo : ''}" /></div>
-      <div class="form-field"><label>Usuario (acceso) *</label><input id="u-usuario" value="${usuario ? usuario.usuario : ''}" ${esEdicion ? 'disabled' : ''} /></div>
+      <div class="form-field"><label>Nombre completo *</label><input id="u-nombre" value="${esc(usuario ? usuario.nombre_completo : '')}" /></div>
+      <div class="form-field"><label>Usuario (acceso) *</label><input id="u-usuario" value="${esc(usuario ? usuario.usuario : '')}" ${esEdicion ? 'disabled' : ''} /></div>
       <div class="form-field"><label>Rol *</label><select id="u-rol">${opciones(state.roles, usuario ? usuario.rol_id : null, (r) => r.nombre)}</select></div>
       <div class="form-field"><label>% Comisión de vendedor</label><input id="u-comision" type="number" step="0.01" value="${usuario ? usuario.pct_comision : 0}" /></div>
       <div class="form-field"><label>${esEdicion ? 'Nueva contraseña (opcional)' : 'Contraseña *'}</label><input id="u-password" type="password" placeholder="${esEdicion ? 'Dejar en blanco para no cambiarla' : 'Mínimo 8 caracteres; la persona la cambiará al entrar'}" /></div>
@@ -162,10 +162,10 @@ async function cargarRoles() {
   state.permisos = await window.puntoXConfig.listarPermisos();
 
   document.getElementById('roles-lista').innerHTML = state.roles.map((r) => `
-    <div class="rol-card ${r.id === state.rolSeleccionadoId ? 'is-active' : ''}" data-rol="${r.id}">
+    <div class="rol-card ${r.id === state.rolSeleccionadoId ? 'is-active' : ''}" data-rol="${esc(r.id)}">
       <div>
-        <div style="font-weight:700; font-size:13px;">${r.nombre}</div>
-        <div style="font-size:11px; color:var(--color-text-muted);">${r.total_usuarios} usuario${r.total_usuarios === 1 ? '' : 's'}</div>
+        <div style="font-weight:700; font-size:13px;">${esc(r.nombre)}</div>
+        <div style="font-size:11px; color:var(--color-text-muted);">${esc(r.total_usuarios)} usuario${r.total_usuarios === 1 ? '' : 's'}</div>
       </div>
     </div>
   `).join('');
@@ -189,12 +189,12 @@ async function renderDetalleRol() {
   document.getElementById('rol-detalle').innerHTML = `
     <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px;">
       <div>
-        <div style="font-weight:800; font-size:16px;">${rol.nombre}</div>
-        <div style="font-size:12px; color:var(--color-text-muted);">${rol.descripcion}</div>
+        <div style="font-weight:800; font-size:16px;">${esc(rol.nombre)}</div>
+        <div style="font-size:12px; color:var(--color-text-muted);">${esc(rol.descripcion)}</div>
       </div>
       <div class="form-field" style="width:200px;">
         <label>Límite de descuento (%)</label>
-        <input id="rol-limite-descuento" type="number" step="0.01" class="input-normal" value="${rol.limite_descuento_pct}" ${rol.es_rol_sistema && rol.nombre === 'Administrador/Dueño' ? 'disabled' : ''} />
+        <input id="rol-limite-descuento" type="number" step="0.01" class="input-normal" value="${esc(rol.limite_descuento_pct)}" ${rol.es_rol_sistema && rol.nombre === 'Administrador/Dueño' ? 'disabled' : ''} />
       </div>
     </div>
     <div id="rol-permisos-lista">
@@ -203,8 +203,8 @@ async function renderDetalleRol() {
           <div class="permisos-modulo__titulo">${MODULO_ETIQUETA[modulo] || modulo}</div>
           ${permisos.map((p) => `
             <div class="permiso-item">
-              <input type="checkbox" data-permiso="${p.id}" ${permisosActivos.has(p.id) ? 'checked' : ''} />
-              <label>${p.descripcion}</label>
+              <input type="checkbox" data-permiso="${esc(p.id)}" ${permisosActivos.has(p.id) ? 'checked' : ''} />
+              <label>${esc(p.descripcion)}</label>
             </div>
           `).join('')}
         </div>
@@ -235,10 +235,10 @@ async function cargarFiscal() {
   const tasas = await window.puntoXConfig.listarTasasItbis();
   document.getElementById('tasas-tbody').innerHTML = tasas.map((t) => `
     <tr>
-      <td>${t.nombre}</td><td>${(t.porcentaje * 100).toFixed(2)}%</td>
+      <td>${esc(t.nombre)}</td><td>${(t.porcentaje * 100).toFixed(2)}%</td>
       <td>${t.es_default ? '<span class="pill-estado" style="background:var(--color-accent);">Por defecto</span>' : ''}</td>
       <td>${t.activo ? '<span class="pill-estado" style="background:var(--color-success);">Activa</span>' : '<span class="pill-estado" style="background:var(--color-text-faint);">Inactiva</span>'}</td>
-      <td><span class="enlace-accion" data-permiso="configuracion.gestionar" data-tasa-default="${t.id}">Marcar por defecto</span></td>
+      <td><span class="enlace-accion" data-permiso="configuracion.gestionar" data-tasa-default="${esc(t.id)}">Marcar por defecto</span></td>
     </tr>
   `).join('');
   document.querySelectorAll('[data-tasa-default]').forEach((el) => el.addEventListener('click', async () => {
@@ -252,10 +252,10 @@ async function cargarFiscal() {
   const tipos = await window.puntoXConfig.listarTiposNcf();
   document.getElementById('ncf-tbody').innerHTML = tipos.map((t) => `
     <tr>
-      <td>${t.codigo}</td><td>${t.nombre}</td><td>${t.aplica_cliente}</td>
-      <td>${t.secuencia_actual} / ${t.secuencia_hasta}</td>
+      <td>${esc(t.codigo)}</td><td>${esc(t.nombre)}</td><td>${esc(t.aplica_cliente)}</td>
+      <td>${esc(t.secuencia_actual)} / ${esc(t.secuencia_hasta)}</td>
       <td>${t.activo ? '<span class="pill-estado" style="background:var(--color-success);">Activo</span>' : '<span class="pill-estado" style="background:var(--color-text-faint);">Inactivo</span>'}</td>
-      <td><span class="enlace-accion" data-permiso="configuracion.gestionar" data-ampliar="${t.id}">Ampliar rango</span></td>
+      <td><span class="enlace-accion" data-permiso="configuracion.gestionar" data-ampliar="${esc(t.id)}">Ampliar rango</span></td>
     </tr>
   `).join('');
   document.querySelectorAll('[data-ampliar]').forEach((el) => el.addEventListener('click', async () => {
@@ -342,18 +342,18 @@ const OPCIONES_PARAMETRO = {
 
 function campoParametro(p) {
   const opciones = OPCIONES_PARAMETRO[p.clave];
-  if (!opciones) return `<input class="input-normal" type="number" data-clave="${p.clave}" value="${p.valor}" />`;
-  return `<select class="input-normal" data-clave="${p.clave}">${opciones.map(([valor, etiqueta]) => `<option value="${valor}" ${p.valor === valor ? 'selected' : ''}>${etiqueta}</option>`).join('')}</select>`;
+  if (!opciones) return `<input class="input-normal" type="number" data-clave="${esc(p.clave)}" value="${esc(p.valor)}" />`;
+  return `<select class="input-normal" data-clave="${esc(p.clave)}">${opciones.map(([valor, etiqueta]) => `<option value="${valor}" ${p.valor === valor ? 'selected' : ''}>${etiqueta}</option>`).join('')}</select>`;
 }
 
 async function cargarParametros() {
   const parametros = await window.puntoXConfig.listarParametrosNegocio();
   document.getElementById('parametros-lista').innerHTML = parametros.map((p) => `
     <div class="form-field" style="max-width:500px; margin-bottom:14px;">
-      <label>${ETIQUETA_PARAMETRO[p.clave] || p.descripcion || p.clave}</label>
+      <label>${esc(ETIQUETA_PARAMETRO[p.clave] || p.descripcion || p.clave)}</label>
       <div style="display:flex; gap:8px;">
         ${campoParametro(p)}
-        <button class="btn btn-secundario btn-chico" data-permiso="configuracion.gestionar" data-guardar-parametro="${p.clave}">Guardar</button>
+        <button class="btn btn-secundario btn-chico" data-permiso="configuracion.gestionar" data-guardar-parametro="${esc(p.clave)}">Guardar</button>
       </div>
     </div>
   `).join('');
@@ -370,12 +370,12 @@ async function cargarParametros() {
 
 async function cargarSucursales() {
   const sucursales = await window.puntoXConfig.listarSucursales();
-  document.getElementById('sucursales-tbody').innerHTML = sucursales.map((s) => `<tr><td>${s.nombre}</td><td>${s.direccion || '—'}</td><td>${s.telefono || '—'}</td></tr>`).join('');
+  document.getElementById('sucursales-tbody').innerHTML = sucursales.map((s) => `<tr><td>${esc(s.nombre)}</td><td>${esc(s.direccion || '—')}</td><td>${esc(s.telefono || '—')}</td></tr>`).join('');
 
   const almacenes = await window.puntoXInventario.listarAlmacenes();
   document.getElementById('almacenes-tbody').innerHTML = almacenes.map((a) => {
     const sucursal = sucursales.find((s) => s.id === a.sucursal_id);
-    return `<tr><td>${a.nombre}</td><td>${sucursal ? sucursal.nombre : '—'}</td></tr>`;
+    return `<tr><td>${esc(a.nombre)}</td><td>${esc(sucursal ? sucursal.nombre : '—')}</td></tr>`;
   }).join('');
 
   window.__sucursalesCache = sucursales;
@@ -432,24 +432,20 @@ document.getElementById('btn-nuevo-almacen').addEventListener('click', async () 
 
 const TIPO_IMPRESORA_ETIQUETA = { factura: 'Factura (carta)', tique: 'Tique (80mm)', etiqueta: 'Etiqueta' };
 
-function escaparHtml(texto) {
-  return String(texto ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-}
-
 async function cargarImpresoras() {
   const impresoras = await window.puntoXImpresion.listarImpresoras();
   state.impresoras = impresoras;
   document.getElementById('impresoras-vacio').style.display = impresoras.length === 0 ? 'block' : 'none';
   document.getElementById('impresoras-tbody').innerHTML = impresoras.map((i) => `
     <tr>
-      <td>${escaparHtml(i.nombre)}</td>
-      <td>${TIPO_IMPRESORA_ETIQUETA[i.tipo] || i.tipo}</td>
-      <td>${escaparHtml(i.deviceName) || '<span style="color:var(--color-text-faint);">Predeterminada de Windows</span>'}</td>
-      <td>${i.copias}</td>
+      <td>${esc(i.nombre)}</td>
+      <td>${esc(TIPO_IMPRESORA_ETIQUETA[i.tipo] || i.tipo)}</td>
+      <td>${esc(i.deviceName) || '<span style="color:var(--color-text-faint);">Predeterminada de Windows</span>'}</td>
+      <td>${esc(i.copias)}</td>
       <td>${i.activo ? '<span class="pill-estado" style="background:var(--color-success);">Activa</span>' : '<span class="pill-estado" style="background:var(--color-text-faint);">Inactiva</span>'}</td>
       <td>
-        <span class="enlace-accion" data-editar-impresora="${i.id}">Editar</span> ·
-        <span class="enlace-accion" data-eliminar-impresora="${i.id}" style="color:var(--color-danger);">Quitar</span>
+        <span class="enlace-accion" data-editar-impresora="${esc(i.id)}">Editar</span> ·
+        <span class="enlace-accion" data-eliminar-impresora="${esc(i.id)}" style="color:var(--color-danger);">Quitar</span>
       </td>
     </tr>
   `).join('');
@@ -470,14 +466,14 @@ async function abrirFormularioImpresora(impresoraId) {
 
   const opcionesDispositivo = [
     `<option value="">Predeterminada de Windows</option>`,
-    ...dispositivos.map((d) => `<option value="${escaparHtml(d.nombre)}" ${impresora && impresora.deviceName === d.nombre ? 'selected' : ''}>${escaparHtml(d.nombreVisible)}${d.esPredeterminada ? ' (predeterminada)' : ''}</option>`),
+    ...dispositivos.map((d) => `<option value="${esc(d.nombre)}" ${impresora && impresora.deviceName === d.nombre ? 'selected' : ''}>${esc(d.nombreVisible)}${d.esPredeterminada ? ' (predeterminada)' : ''}</option>`),
   ].join('');
   const opcionesTipo = Object.entries(TIPO_IMPRESORA_ETIQUETA)
     .map(([v, e]) => `<option value="${v}" ${impresora && impresora.tipo === v ? 'selected' : ''}>${e}</option>`).join('');
 
   window.PuntoXModal.abrirModal(impresora ? 'Editar impresora' : 'Nueva impresora', `
     <div class="form-grid">
-      <div class="form-field"><label>Nombre *</label><input id="imp-nombre" value="${impresora ? escaparHtml(impresora.nombre) : ''}" placeholder="Ej: Caja 1 — tiquera" /></div>
+      <div class="form-field"><label>Nombre *</label><input id="imp-nombre" value="${impresora ? esc(impresora.nombre) : ''}" placeholder="Ej: Caja 1 — tiquera" /></div>
       <div class="form-field"><label>Tipo *</label><select id="imp-tipo">${opcionesTipo}</select></div>
       <div class="form-field" style="grid-column: span 2;"><label>Dispositivo</label><select id="imp-dispositivo">${opcionesDispositivo}</select></div>
       <div class="form-field"><label>Copias</label><input id="imp-copias" type="number" min="1" value="${impresora ? impresora.copias : 1}" /></div>
@@ -521,12 +517,12 @@ async function cargarMonedas() {
     <div class="card" style="margin-bottom:14px; max-width:640px;">
       <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
         <div>
-          <div style="font-weight:800;">${m.nombre} (${m.codigo})</div>
+          <div style="font-weight:800;">${esc(m.nombre)} (${esc(m.codigo)})</div>
           <div style="font-size:12px; color:${m.tasa_hoy ? 'var(--color-text-muted)' : 'var(--color-danger)'};">${m.tasa_hoy ? `Tasa de hoy: RD$ ${m.tasa_hoy}` : 'Sin tasa registrada hoy'}</div>
         </div>
         <div style="display:flex; gap:8px; align-items:center;">
-          <input class="input-normal" type="number" step="0.0001" min="0" data-tasa-moneda="${m.id}" value="${m.tasa_hoy || ''}" placeholder="RD$ por 1 ${m.codigo}" style="width:170px;" />
-          <button class="btn btn-primario btn-chico" data-guardar-tasa="${m.id}">Guardar tasa de hoy</button>
+          <input class="input-normal" type="number" step="0.0001" min="0" data-tasa-moneda="${esc(m.id)}" value="${esc(m.tasa_hoy || '')}" placeholder="RD$ por 1 ${esc(m.codigo)}" style="width:170px;" />
+          <button class="btn btn-primario btn-chico" data-guardar-tasa="${esc(m.id)}">Guardar tasa de hoy</button>
         </div>
       </div>
       ${m.historial.length ? `<div style="font-size:12px; color:var(--color-text-muted); margin-top:10px;">Últimas: ${m.historial.map((h) => `${fechaSimple(h.fecha)} RD$ ${h.tasa}`).join(' · ')}</div>` : ''}
@@ -546,11 +542,11 @@ async function cargarModulos() {
   document.getElementById('modulos-lista').innerHTML = modulos.map((m) => `
     <div style="display:flex; justify-content:space-between; align-items:center; gap:16px; padding:14px 16px; border:1px solid var(--color-border); border-radius:var(--radius-md); margin-bottom:10px; max-width:760px;">
       <div>
-        <div style="font-weight:700; font-size:14px;">${escaparHtml(m.nombre)}</div>
-        <div style="font-size:12px; color:var(--color-text-muted); margin-top:2px;">${escaparHtml(m.descripcion)}</div>
+        <div style="font-weight:700; font-size:14px;">${esc(m.nombre)}</div>
+        <div style="font-size:12px; color:var(--color-text-muted); margin-top:2px;">${esc(m.descripcion)}</div>
       </div>
       <label style="display:flex; align-items:center; gap:8px; font-size:13px; font-weight:600; white-space:nowrap; cursor:pointer;">
-        <input type="checkbox" data-modulo="${m.clave}" ${m.activo ? 'checked' : ''} style="width:18px; height:18px;" />
+        <input type="checkbox" data-modulo="${esc(m.clave)}" ${m.activo ? 'checked' : ''} style="width:18px; height:18px;" />
         ${m.activo ? 'Activado' : 'Desactivado'}
       </label>
     </div>
@@ -578,8 +574,8 @@ async function cargarBitacora() {
   document.getElementById('bitacora-vacio').style.display = entradas.length === 0 ? 'block' : 'none';
   document.getElementById('bitacora-tbody').innerHTML = entradas.map((e) => `
     <tr>
-      <td>${fechaHora(e.created_at)}</td><td>${e.usuario_nombre || '—'}</td><td>${MODULO_ETIQUETA[e.modulo] || e.modulo}</td>
-      <td>${e.entidad}</td><td>${e.accion}</td><td style="font-size:11px; color:var(--color-text-muted);">${e.detalle || ''}</td>
+      <td>${fechaHora(e.created_at)}</td><td>${esc(e.usuario_nombre || '—')}</td><td>${esc(MODULO_ETIQUETA[e.modulo] || e.modulo)}</td>
+      <td>${esc(e.entidad)}</td><td>${esc(e.accion)}</td><td style="font-size:11px; color:var(--color-text-muted);">${esc(e.detalle || '')}</td>
     </tr>
   `).join('');
 }

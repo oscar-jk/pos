@@ -21,9 +21,6 @@ function mesAnterior() {
   d.setMonth(d.getMonth() - 1);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 }
-function esc(texto) {
-  return String(texto ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-}
 
 const FORMA_PAGO_606 = { '01': 'Efectivo', '02': 'Cheque/transferencia', '03': 'Tarjeta', '04': 'Crédito', '05': 'Permuta', '06': 'Nota de crédito', '07': 'Mixto' };
 
@@ -43,12 +40,12 @@ function renderReporte606(r) {
     </div>
     <div id="aviso-606" style="display:none; font-size:12px; margin-bottom:12px; color:var(--color-success); font-weight:600;"></div>
     <p style="font-size:12px; color:var(--color-text-muted); margin:0 0 14px;">
-      Periodo ${periodoTexto} · RNC informante ${esc(r.rncNegocio) || '—'}. Formato según la Norma General 07-2018.
+      Periodo ${esc(periodoTexto)} · RNC informante ${esc(r.rncNegocio) || '—'}. Formato según la Norma General 07-2018.
       Facturas de compra como tipo 09; notas de crédito con forma de pago 06 y notas de débito con 04, ambas con el NCF de la factura afectada.
       <strong>Revisa el archivo con tu contador antes del primer envío.</strong>
     </p>
     ${r.excluidos.length ? `
-      <div class="reportes-panel__header" style="margin-top:4px;"><h3 style="font-size:14px; margin:0;">No incluidos en el 606 (${r.excluidos.length})</h3></div>
+      <div class="reportes-panel__header" style="margin-top:4px;"><h3 style="font-size:14px; margin:0;">No incluidos en el 606 (${esc(r.excluidos.length)})</h3></div>
       ${renderTabla([
         { label: 'Documento', key: (e) => `${e.origen} ${e.numero}` }, { label: 'Proveedor', key: 'proveedor' },
         { label: 'Fecha', key: 'fecha', formato: 'fecha' }, { label: 'Total', key: 'total', formato: 'moneda', alinear: 'right' },
@@ -90,7 +87,7 @@ function renderTabla(columnas, filas) {
   if (!filas || filas.length === 0) return '<div class="empty-state">Sin datos para los filtros seleccionados.</div>';
   return `
     <table class="data-table">
-      <thead><tr>${columnas.map((c) => `<th${c.alinear ? ` style="text-align:${c.alinear};"` : ''}>${c.label}</th>`).join('')}</tr></thead>
+      <thead><tr>${columnas.map((c) => `<th${c.alinear ? ` style="text-align:${c.alinear};"` : ''}>${esc(c.label)}</th>`).join('')}</tr></thead>
       <tbody>
         ${filas.map((f) => `<tr>${columnas.map((c) => `<td${c.alinear ? ` style="text-align:${c.alinear};"` : ''}>${formatearValor(valorColumna(f, c.key), c.formato)}</td>`).join('')}</tr>`).join('')}
       </tbody>
@@ -100,7 +97,7 @@ function renderTabla(columnas, filas) {
 function renderTarjetas(items) {
   return `<div class="reportes-resumen">${items.map((i) => `
     <div class="reportes-resumen__tarjeta">
-      <div class="label">${i.label}</div>
+      <div class="label">${esc(i.label)}</div>
       <div class="valor"${i.color ? ` style="color:${i.color};"` : ''}>${i.formato === 'moneda' ? fmt(i.valor) : i.valor}</div>
     </div>
   `).join('')}</div>`;
@@ -112,18 +109,18 @@ async function renderFiltros(filtros) {
   if (!filtros || filtros.length === 0) return '';
   const partes = await Promise.all(filtros.map(async (f) => {
     if (f.tipo === 'fecha') {
-      return `<div class="form-field"><label>${f.label}</label><input type="date" class="input-normal" id="filtro-${f.clave}" value="${f.valorDefault || ''}" /></div>`;
+      return `<div class="form-field"><label>${esc(f.label)}</label><input type="date" class="input-normal" id="filtro-${esc(f.clave)}" value="${esc(f.valorDefault || '')}" /></div>`;
     }
     if (f.tipo === 'mes') {
-      return `<div class="form-field"><label>${f.label}</label><input type="month" class="input-normal" id="filtro-${f.clave}" value="${f.valorDefault || ''}" /></div>`;
+      return `<div class="form-field"><label>${esc(f.label)}</label><input type="month" class="input-normal" id="filtro-${esc(f.clave)}" value="${esc(f.valorDefault || '')}" /></div>`;
     }
     if (f.tipo === 'select') {
-      return `<div class="form-field"><label>${f.label}</label><select class="input-normal" id="filtro-${f.clave}">${f.opciones.map((o) => `<option value="${o.value}" ${o.value === f.valorDefault ? 'selected' : ''}>${o.label}</option>`).join('')}</select></div>`;
+      return `<div class="form-field"><label>${esc(f.label)}</label><select class="input-normal" id="filtro-${esc(f.clave)}">${f.opciones.map((o) => `<option value="${esc(o.value)}" ${o.value === f.valorDefault ? 'selected' : ''}>${esc(o.label)}</option>`).join('')}</select></div>`;
     }
     if (f.tipo === 'producto') {
       const productos = await window.puntoXInventario.listarProductos({ limite: 500 });
-      const opciones = productos.map((p) => `<option value="${p.id}">${p.codigo_interno} — ${p.descripcion}</option>`).join('');
-      return `<div class="form-field"><label>${f.label}</label><select class="input-normal" id="filtro-${f.clave}">${opciones || '<option value="">Sin productos</option>'}</select></div>`;
+      const opciones = productos.map((p) => `<option value="${esc(p.id)}">${esc(p.codigo_interno)} — ${esc(p.descripcion)}</option>`).join('');
+      return `<div class="form-field"><label>${esc(f.label)}</label><select class="input-normal" id="filtro-${esc(f.clave)}">${opciones || '<option value="">Sin productos</option>'}</select></div>`;
     }
     return '';
   }));
@@ -602,8 +599,8 @@ function renderNav() {
   const nav = document.getElementById('reportes-nav');
   nav.innerHTML = CATALOGO.map((g) => `
     <div class="reportes-nav__grupo">
-      <div class="reportes-nav__titulo">${g.grupo}</div>
-      ${g.reportes.filter((r) => !r.disponible || r.disponible()).map((r) => `<button class="reportes-nav__item" data-clave="${r.clave}">${r.etiqueta}</button>`).join('')}
+      <div class="reportes-nav__titulo">${esc(g.grupo)}</div>
+      ${g.reportes.filter((r) => !r.disponible || r.disponible()).map((r) => `<button class="reportes-nav__item" data-clave="${esc(r.clave)}">${esc(r.etiqueta)}</button>`).join('')}
     </div>
   `).join('');
   nav.querySelectorAll('[data-clave]').forEach((btn) => btn.addEventListener('click', () => seleccionarReporte(btn.dataset.clave)));

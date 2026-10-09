@@ -22,7 +22,7 @@ function fechaCorta(iso) {
 }
 
 function opciones(lista, valorSel, etiquetaFn) {
-  return lista.map((x) => `<option value="${x.id}" ${x.id === valorSel ? 'selected' : ''}>${etiquetaFn(x)}</option>`).join('');
+  return lista.map((x) => `<option value="${esc(x.id)}" ${x.id === valorSel ? 'selected' : ''}>${etiquetaFn(x)}</option>`).join('');
 }
 
 // --- Pestañas ---
@@ -59,14 +59,14 @@ async function cargarClientes() {
   document.getElementById('clientes-vacio').style.display = clientes.length === 0 ? 'block' : 'none';
   document.getElementById('clientes-tbody').innerHTML = clientes.map((c) => `
     <tr>
-      <td>${c.nombre}</td>
-      <td>${c.categoria_nombre || '—'}</td>
+      <td>${esc(c.nombre)}</td>
+      <td>${esc(c.categoria_nombre || '—')}</td>
       <td>${fmt(c.limite_credito)}</td>
       <td style="color:${c.saldo_pendiente > 0 ? 'var(--color-warning)' : 'inherit'};">${fmt(c.saldo_pendiente)}</td>
       <td>${c.bloqueado ? '<span class="pill-estado" style="background:var(--color-danger);">Bloqueado</span>' : '<span class="pill-estado" style="background:var(--color-success);">Activo</span>'}</td>
       <td>
-        <span class="enlace-accion" data-permiso="cxc.cliente.editar" data-editar="${c.id}">Editar</span> ·
-        <span class="enlace-accion" data-estado="${c.id}" data-nombre="${c.nombre}">Estado de cuenta</span>
+        <span class="enlace-accion" data-permiso="cxc.cliente.editar" data-editar="${esc(c.id)}">Editar</span> ·
+        <span class="enlace-accion" data-estado="${esc(c.id)}" data-nombre="${esc(c.nombre)}">Estado de cuenta</span>
       </td>
     </tr>
   `).join('');
@@ -87,8 +87,8 @@ async function abrirFormularioCliente(clienteId) {
 
   window.PuntoXModal.abrirModal(esEdicion ? 'Editar cliente' : 'Nuevo cliente', `
     <div class="form-grid">
-      <div class="form-field"><label>Nombre *</label><input id="c-nombre" value="${cliente ? cliente.nombre : ''}" /></div>
-      <div class="form-field"><label>RNC / Cédula</label><input id="c-rnc" value="${cliente ? cliente.rnc_cedula || '' : ''}" /></div>
+      <div class="form-field"><label>Nombre *</label><input id="c-nombre" value="${esc(cliente ? cliente.nombre : '')}" /></div>
+      <div class="form-field"><label>RNC / Cédula</label><input id="c-rnc" value="${esc(cliente ? cliente.rnc_cedula || '' : '')}" /></div>
       <div class="form-field"><label>Categoría</label><select id="c-categoria"><option value="">— Sin categoría —</option>${opciones(state.categorias, cliente ? cliente.categoria_id : null, (x) => x.nombre)}</select></div>
       <div class="form-field"><label>Tipo de comprobante por defecto</label>
         <select id="c-ncf">
@@ -100,15 +100,15 @@ async function abrirFormularioCliente(clienteId) {
       </div>
       <div class="form-field"><label>Límite de crédito</label><input id="c-limite" type="number" step="0.01" value="${cliente ? cliente.limite_credito : 0}" /></div>
       <div class="form-field"><label>Días de crédito</label><input id="c-dias" type="number" step="1" value="${cliente ? cliente.dias_credito : 30}" /></div>
-      <div class="form-field"><label>Teléfono</label><input id="c-telefono" value="${cliente ? cliente.telefono || '' : ''}" /></div>
-      <div class="form-field"><label>Email</label><input id="c-email" value="${cliente ? cliente.email || '' : ''}" /></div>
-      <div class="form-field" style="grid-column: span 2;"><label>Dirección</label><input id="c-direccion" value="${cliente ? cliente.direccion || '' : ''}" /></div>
+      <div class="form-field"><label>Teléfono</label><input id="c-telefono" value="${esc(cliente ? cliente.telefono || '' : '')}" /></div>
+      <div class="form-field"><label>Email</label><input id="c-email" value="${esc(cliente ? cliente.email || '' : '')}" /></div>
+      <div class="form-field" style="grid-column: span 2;"><label>Dirección</label><input id="c-direccion" value="${esc(cliente ? cliente.direccion || '' : '')}" /></div>
       <div class="form-field form-field--checkbox"><input id="c-retencion" type="checkbox" ${cliente?.es_agente_retencion ? 'checked' : ''} /><label>Es agente de retención</label></div>
       <div></div>
       <div class="form-field"><label>% Retención ISR</label><input id="c-ret-isr" type="number" step="0.01" value="${cliente ? cliente.pct_retencion_isr : 0}" /></div>
       <div class="form-field"><label>% Retención ITBIS</label><input id="c-ret-itbis" type="number" step="0.01" value="${cliente ? cliente.pct_retencion_itbis : 0}" /></div>
       <div class="form-field form-field--checkbox"><input id="c-bloqueado" type="checkbox" ${cliente?.bloqueado ? 'checked' : ''} /><label>Bloqueado manualmente</label></div>
-      <div class="form-field"><label>Motivo de bloqueo</label><input id="c-motivo-bloqueo" value="${cliente ? cliente.motivo_bloqueo || '' : ''}" /></div>
+      <div class="form-field"><label>Motivo de bloqueo</label><input id="c-motivo-bloqueo" value="${esc(cliente ? cliente.motivo_bloqueo || '' : '')}" /></div>
     </div>
     <div class="form-seccion" style="display:flex; justify-content:flex-end; gap:8px;">
       <button type="button" class="btn btn-secundario" id="c-cancelar">Cancelar</button>
@@ -154,7 +154,7 @@ async function verEstadoCuenta(clienteId, nombre) {
           <tr>
             <td>${fechaCorta(m.fecha)}</td>
             <td>${m.tipo === 'factura' ? 'Factura' : 'Recibo de cobro'}</td>
-            <td>${m.numero}</td>
+            <td>${esc(m.numero)}</td>
             <td style="color:${m.tipo === 'factura' ? 'var(--color-text)' : 'var(--color-success)'};">${m.tipo === 'factura' ? fmt(m.total) : '- ' + fmt(m.total)}</td>
             <td style="font-weight:700;">${fmt(m.saldo_acumulado)}</td>
           </tr>
@@ -174,7 +174,7 @@ document.getElementById('cobrar-buscar-cliente').addEventListener('input', (e) =
   if (!texto) { resultados.style.display = 'none'; return; }
   timeoutBuscarClienteCobro = setTimeout(async () => {
     const encontrados = await window.puntoXCxc.buscarClientes({ texto, limite: 10 });
-    resultados.innerHTML = encontrados.map((c, i) => `<div class="buscador-resultados__item" data-i="${i}"><div class="buscador-resultados__nombre">${c.nombre}</div><div class="buscador-resultados__meta">${c.rnc_cedula || ''}</div></div>`).join('') || '<div class="buscador-resultados__vacio">Sin resultados</div>';
+    resultados.innerHTML = encontrados.map((c, i) => `<div class="buscador-resultados__item" data-i="${i}"><div class="buscador-resultados__nombre">${esc(c.nombre)}</div><div class="buscador-resultados__meta">${esc(c.rnc_cedula || '')}</div></div>`).join('') || '<div class="buscador-resultados__vacio">Sin resultados</div>';
     resultados.querySelectorAll('[data-i]').forEach((el) => el.addEventListener('click', async () => {
       state.clienteCobro = await window.puntoXCxc.obtenerCliente({ clienteId: encontrados[Number(el.dataset.i)].id });
       resultados.style.display = 'none';
@@ -191,19 +191,19 @@ async function renderCobrar() {
 
   const facturas = await window.puntoXCxc.facturasAbiertas({ clienteId: state.clienteCobro.id });
   if (facturas.length === 0) {
-    contenedor.innerHTML = `<div class="empty-state">${state.clienteCobro.nombre} no tiene facturas abiertas a crédito.</div>`;
+    contenedor.innerHTML = `<div class="empty-state">${esc(state.clienteCobro.nombre)} no tiene facturas abiertas a crédito.</div>`;
     return;
   }
 
   contenedor.innerHTML = `
-    <div style="font-weight:700; margin-bottom:10px;">${state.clienteCobro.nombre} — saldo total: ${fmt(state.clienteCobro.saldo_pendiente)}</div>
+    <div style="font-weight:700; margin-bottom:10px;">${esc(state.clienteCobro.nombre)} — saldo total: ${fmt(state.clienteCobro.saldo_pendiente)}</div>
     <table class="data-table">
       <thead><tr><th>Factura</th><th>Fecha</th><th>Total</th><th>Saldo</th><th style="width:140px;">Monto a aplicar</th></tr></thead>
       <tbody>
         ${facturas.map((f) => `
           <tr>
-            <td>${f.numero}</td><td>${fechaCorta(f.fecha)}</td><td>${fmt(f.total)}</td><td>${fmt(f.saldo_pendiente)}</td>
-            <td><input type="number" step="0.01" min="0" max="${f.saldo_pendiente}" value="0" class="input-aplicacion" data-id="${f.id}" data-max="${f.saldo_pendiente}" style="width:120px; padding:6px 8px; border:1px solid var(--color-border-input); border-radius:6px;" /></td>
+            <td>${esc(f.numero)}</td><td>${fechaCorta(f.fecha)}</td><td>${fmt(f.total)}</td><td>${fmt(f.saldo_pendiente)}</td>
+            <td><input type="number" step="0.01" min="0" max="${esc(f.saldo_pendiente)}" value="0" class="input-aplicacion" data-id="${esc(f.id)}" data-max="${esc(f.saldo_pendiente)}" style="width:120px; padding:6px 8px; border:1px solid var(--color-border-input); border-radius:6px;" /></td>
           </tr>
         `).join('')}
       </tbody>
@@ -284,9 +284,9 @@ async function cargarRecibos() {
   const recibos = await window.puntoXCxc.listarRecibos({});
   document.getElementById('recibos-tbody').innerHTML = recibos.map((r) => `
     <tr>
-      <td>${r.numero}</td><td>${r.cliente_nombre}</td><td>${r.forma_pago}</td><td>${fmt(r.monto_total)}${(r.retencion_isr || 0) + (r.retencion_itbis || 0) > 0 ? `<div style="font-size:11px; color:var(--color-text-muted);">+ retenido ${fmt((r.retencion_isr || 0) + (r.retencion_itbis || 0))}</div>` : ''}</td><td>${fechaCorta(r.fecha)}</td>
-      <td><span class="pill-estado" style="background:${r.estado === 'anulado' ? 'var(--color-danger)' : 'var(--color-success)'};">${r.estado}</span></td>
-      <td>${r.estado !== 'anulado' ? `<span class="enlace-accion" data-permiso="cxc.recibo.anular" data-anular="${r.id}">Anular</span>` : ''}</td>
+      <td>${esc(r.numero)}</td><td>${esc(r.cliente_nombre)}</td><td>${esc(r.forma_pago)}</td><td>${fmt(r.monto_total)}${(r.retencion_isr || 0) + (r.retencion_itbis || 0) > 0 ? `<div style="font-size:11px; color:var(--color-text-muted);">+ retenido ${fmt((r.retencion_isr || 0) + (r.retencion_itbis || 0))}</div>` : ''}</td><td>${fechaCorta(r.fecha)}</td>
+      <td><span class="pill-estado" style="background:${r.estado === 'anulado' ? 'var(--color-danger)' : 'var(--color-success)'};">${esc(r.estado)}</span></td>
+      <td>${r.estado !== 'anulado' ? `<span class="enlace-accion" data-permiso="cxc.recibo.anular" data-anular="${esc(r.id)}">Anular</span>` : ''}</td>
     </tr>
   `).join('');
   document.querySelectorAll('[data-anular]').forEach((el) => el.addEventListener('click', async () => {
@@ -307,7 +307,7 @@ async function cargarAntiguedad() {
   document.getElementById('antiguedad-vacio').style.display = filas.length === 0 ? 'block' : 'none';
   document.getElementById('antiguedad-tbody').innerHTML = filas.map((f) => `
     <tr>
-      <td>${f.clienteNombre}</td>
+      <td>${esc(f.clienteNombre)}</td>
       <td>${fmt(f.tramos.corriente)}</td>
       <td>${fmt(f.tramos.dias_0_30)}</td>
       <td style="color:${f.tramos.dias_31_60 > 0 ? 'var(--color-warning)' : 'inherit'};">${fmt(f.tramos.dias_31_60)}</td>
@@ -325,9 +325,9 @@ async function cargarVencidas() {
   document.getElementById('vencidas-vacio').style.display = filas.length === 0 ? 'block' : 'none';
   document.getElementById('vencidas-tbody').innerHTML = filas.map((f) => `
     <tr>
-      <td>${f.cliente_nombre}</td><td>${f.cliente_telefono || '—'}</td><td>${f.numero}</td><td>${fechaCorta(f.fecha)}</td>
+      <td>${esc(f.cliente_nombre)}</td><td>${esc(f.cliente_telefono || '—')}</td><td>${esc(f.numero)}</td><td>${fechaCorta(f.fecha)}</td>
       <td>${fmt(f.saldo_pendiente)}</td>
-      <td style="color:var(--color-danger); font-weight:700;">${f.dias_mora} días</td>
+      <td style="color:var(--color-danger); font-weight:700;">${esc(f.dias_mora)} días</td>
     </tr>
   `).join('');
 }
@@ -341,7 +341,7 @@ async function cargarGestion() {
   const filas = await window.puntoXCxc.listarGestionCobros({});
   document.getElementById('gestion-vacio').style.display = filas.length === 0 ? 'block' : 'none';
   document.getElementById('gestion-tbody').innerHTML = filas.map((g) => `
-    <tr><td>${g.cliente_nombre}</td><td>${g.tipo_contacto}</td><td>${g.notas || '—'}</td><td>${g.resultado || '—'}</td><td>${fechaCorta(g.proxima_fecha_contacto)}</td><td>${fechaCorta(g.fecha_contacto)}</td></tr>
+    <tr><td>${esc(g.cliente_nombre)}</td><td>${esc(g.tipo_contacto)}</td><td>${esc(g.notas || '—')}</td><td>${esc(g.resultado || '—')}</td><td>${fechaCorta(g.proxima_fecha_contacto)}</td><td>${fechaCorta(g.fecha_contacto)}</td></tr>
   `).join('');
 }
 
@@ -378,7 +378,7 @@ async function abrirFormularioGestion() {
     if (!texto) { resultados.style.display = 'none'; return; }
     timeoutBuscar = setTimeout(async () => {
       const encontrados = await window.puntoXCxc.buscarClientes({ texto, limite: 10 });
-      resultados.innerHTML = encontrados.map((c, i) => `<div class="buscador-resultados__item" data-i="${i}"><div class="buscador-resultados__nombre">${c.nombre}</div></div>`).join('') || '<div class="buscador-resultados__vacio">Sin resultados</div>';
+      resultados.innerHTML = encontrados.map((c, i) => `<div class="buscador-resultados__item" data-i="${i}"><div class="buscador-resultados__nombre">${esc(c.nombre)}</div></div>`).join('') || '<div class="buscador-resultados__vacio">Sin resultados</div>';
       resultados.querySelectorAll('[data-i]').forEach((el) => el.addEventListener('click', () => {
         clienteSel = encontrados[Number(el.dataset.i)];
         document.getElementById('gc-seleccionado').textContent = `Seleccionado: ${clienteSel.nombre}`;
@@ -414,10 +414,10 @@ async function cargarEmpleados() {
   document.getElementById('empleados-vacio').style.display = filas.length === 0 ? 'block' : 'none';
   document.getElementById('empleados-tbody').innerHTML = filas.map((e) => `
     <tr>
-      <td>${e.empleado_nombre}</td><td>${e.tipo}</td><td>${fmt(e.monto)}</td><td>${fmt(e.saldo_pendiente)}</td>
-      <td><span class="pill-estado" style="background:${e.estado === 'pagado' ? 'var(--color-success)' : 'var(--color-warning)'};">${e.estado}</span></td>
+      <td>${esc(e.empleado_nombre)}</td><td>${esc(e.tipo)}</td><td>${fmt(e.monto)}</td><td>${fmt(e.saldo_pendiente)}</td>
+      <td><span class="pill-estado" style="background:${e.estado === 'pagado' ? 'var(--color-success)' : 'var(--color-warning)'};">${esc(e.estado)}</span></td>
       <td>${fechaCorta(e.fecha)}</td>
-      <td>${e.estado !== 'pagado' ? `<span class="enlace-accion" data-pagar="${e.id}" data-max="${e.saldo_pendiente}">Registrar pago</span>` : ''}</td>
+      <td>${e.estado !== 'pagado' ? `<span class="enlace-accion" data-pagar="${esc(e.id)}" data-max="${esc(e.saldo_pendiente)}">Registrar pago</span>` : ''}</td>
     </tr>
   `).join('');
 

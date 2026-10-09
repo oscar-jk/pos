@@ -26,10 +26,6 @@ function fechaSimple(aaaammdd) {
   return aaaammdd ? aaaammdd.slice(0, 10).split('-').reverse().join('/') : '—';
 }
 
-function esc(texto) {
-  return String(texto ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-}
-
 // --- Lotes ---
 
 async function lotesDe(productoId, almacenId) {
@@ -39,7 +35,7 @@ async function lotesDe(productoId, almacenId) {
 function selectorLote(lotes, seleccionado, atributos) {
   return `<select ${atributos}>
     <option value="">Automático (el que vence primero)</option>
-    ${lotes.map((l) => `<option value="${l.lote_id}" ${l.lote_id === seleccionado ? 'selected' : ''}>${esc(l.numero_lote)}${l.fecha_vencimiento ? ` · vence ${fechaSimple(l.fecha_vencimiento)}` : ''} · ${l.cantidad} disp.</option>`).join('')}
+    ${lotes.map((l) => `<option value="${esc(l.lote_id)}" ${l.lote_id === seleccionado ? 'selected' : ''}>${esc(l.numero_lote)}${l.fecha_vencimiento ? ` · vence ${fechaSimple(l.fecha_vencimiento)}` : ''} · ${esc(l.cantidad)} disp.</option>`).join('')}
   </select>`;
 }
 
@@ -86,15 +82,15 @@ async function cargarProductos() {
 
   tbody.innerHTML = productos.map((p) => `
     <tr>
-      <td>${p.codigo_interno}</td>
-      <td>${p.descripcion}${p.es_kit ? ' <span class="pill-estado" style="background:var(--color-info);">KIT</span>' : ''}</td>
-      <td>${p.categoria_nombre || '—'}</td>
+      <td>${esc(p.codigo_interno)}</td>
+      <td>${esc(p.descripcion)}${p.es_kit ? ' <span class="pill-estado" style="background:var(--color-info);">KIT</span>' : ''}</td>
+      <td>${esc(p.categoria_nombre || '—')}</td>
       <td>RD$ ${fmt(p.precio_detalle)}</td>
       <td>RD$ ${fmt(p.costo_promedio)}</td>
-      <td>${p.es_kit ? '—' : p.existencia_total}${!p.es_kit && p.existencia_total <= p.stock_minimo ? ' ⚠️' : ''}</td>
+      <td>${esc(p.es_kit ? '—' : p.existencia_total)}${!p.es_kit && p.existencia_total <= p.stock_minimo ? ' ⚠️' : ''}</td>
       <td>
-        <span class="enlace-accion" data-permiso="inventario.producto.editar" data-editar="${p.id}">Editar</span> ·
-        <span class="enlace-accion" data-kardex="${p.id}" data-nombre="${p.descripcion}">Kardex</span>
+        <span class="enlace-accion" data-permiso="inventario.producto.editar" data-editar="${esc(p.id)}">Editar</span> ·
+        <span class="enlace-accion" data-kardex="${esc(p.id)}" data-nombre="${esc(p.descripcion)}">Kardex</span>
       </td>
     </tr>
   `).join('');
@@ -110,7 +106,7 @@ document.getElementById('buscar-productos').addEventListener('input', () => {
 });
 
 function opciones(lista, valorSel, etiquetaFn) {
-  return lista.map((x) => `<option value="${x.id}" ${x.id === valorSel ? 'selected' : ''}>${etiquetaFn(x)}</option>`).join('');
+  return lista.map((x) => `<option value="${esc(x.id)}" ${x.id === valorSel ? 'selected' : ''}>${etiquetaFn(x)}</option>`).join('');
 }
 
 async function abrirFormularioProducto(productoId) {
@@ -119,8 +115,8 @@ async function abrirFormularioProducto(productoId) {
 
   const contenido = window.PuntoXModal.abrirModal(esEdicion ? 'Editar producto' : 'Nuevo producto', `
     <div class="form-grid">
-      <div class="form-field"><label>Código interno *</label><input id="f-codigo" value="${producto ? producto.codigo_interno : ''}" /></div>
-      <div class="form-field"><label>Descripción *</label><input id="f-descripcion" value="${producto ? producto.descripcion : ''}" /></div>
+      <div class="form-field"><label>Código interno *</label><input id="f-codigo" value="${esc(producto ? producto.codigo_interno : '')}" /></div>
+      <div class="form-field"><label>Descripción *</label><input id="f-descripcion" value="${esc(producto ? producto.descripcion : '')}" /></div>
       <div class="form-field"><label>Categoría ${window.puntoXInventario.crearCategoria ? '<span id="f-nueva-categoria" style="float:right; color:var(--color-accent); font-weight:700; cursor:pointer;">+ Nueva</span>' : ''}</label><select id="f-categoria"><option value="">— Sin categoría —</option>${opciones(state.categorias, producto ? producto.categoria_id : null, (c) => c.nombre)}</select></div>
       <div class="form-field"><label>Unidad de medida base *</label><select id="f-unidad">${opciones(state.unidades, producto ? producto.unidad_medida_base_id : state.unidades[0]?.id, (u) => u.nombre)}</select></div>
       <div class="form-field"><label>Tasa de ITBIS *</label><select id="f-tasa">${opciones(state.tasas, producto ? producto.tasa_itbis_id : state.tasas.find((t) => t.es_default)?.id, (t) => `${t.nombre} (${(t.porcentaje * 100).toFixed(0)}%)`)}</select></div>
@@ -131,13 +127,13 @@ async function abrirFormularioProducto(productoId) {
           <option value="peps" ${producto?.metodo_valoracion === 'peps' ? 'selected' : ''}>PEPS (primero en entrar, primero en salir)</option>
         </select>
       </div>
-      <div class="form-field"><label>Precio detalle (ITBIS incluido) *</label><input id="f-precio-detalle" type="number" step="0.01" value="${producto ? producto.precio_detalle : ''}" /></div>
-      <div class="form-field"><label>Precio mayorista</label><input id="f-precio-mayorista" type="number" step="0.01" value="${producto ? producto.precio_mayorista : ''}" /></div>
-      <div class="form-field"><label>Precio distribuidor</label><input id="f-precio-distribuidor" type="number" step="0.01" value="${producto ? producto.precio_distribuidor : ''}" /></div>
+      <div class="form-field"><label>Precio detalle (ITBIS incluido) *</label><input id="f-precio-detalle" type="number" step="0.01" value="${esc(producto ? producto.precio_detalle : '')}" /></div>
+      <div class="form-field"><label>Precio mayorista</label><input id="f-precio-mayorista" type="number" step="0.01" value="${esc(producto ? producto.precio_mayorista : '')}" /></div>
+      <div class="form-field"><label>Precio distribuidor</label><input id="f-precio-distribuidor" type="number" step="0.01" value="${esc(producto ? producto.precio_distribuidor : '')}" /></div>
       ${!esEdicion ? `<div class="form-field"><label>Costo inicial</label><input id="f-costo" type="number" step="0.01" value="0" /></div>` : ''}
       <div class="form-field"><label>Stock mínimo</label><input id="f-stock-min" type="number" step="1" value="${producto ? producto.stock_minimo : 0}" /></div>
-      <div class="form-field"><label>Stock máximo</label><input id="f-stock-max" type="number" step="1" value="${producto && producto.stock_maximo ? producto.stock_maximo : ''}" /></div>
-      ${!esEdicion ? `<div class="form-field"><label>Existencia inicial (${state.almacenes[0]?.nombre || 'almacén principal'})</label><input id="f-existencia-inicial" type="number" step="1" value="0" /></div>` : ''}
+      <div class="form-field"><label>Stock máximo</label><input id="f-stock-max" type="number" step="1" value="${esc(producto && producto.stock_maximo ? producto.stock_maximo : '')}" /></div>
+      ${!esEdicion ? `<div class="form-field"><label>Existencia inicial (${esc(state.almacenes[0]?.nombre || 'almacén principal')})</label><input id="f-existencia-inicial" type="number" step="1" value="0" /></div>` : ''}
       <div class="form-field form-field--checkbox"><input id="f-controla-lote" type="checkbox" ${producto?.controla_lote ? 'checked' : ''} /><label>Controla lote y vencimiento</label></div>
       <div class="form-field form-field--checkbox"><input id="f-venta-negativo" type="checkbox" ${producto?.permite_venta_negativo ? 'checked' : ''} /><label>Permite venta en negativo</label></div>
       <div class="form-field form-field--checkbox"><input id="f-es-kit" type="checkbox" ${producto?.es_kit ? 'checked' : ''} /><label>Es un kit / combo</label></div>
@@ -180,9 +176,9 @@ async function abrirFormularioProducto(productoId) {
   function renderCodigosBarra() {
     document.getElementById('lista-codigos-barra').innerHTML = codigosBarra.map((c, i) => `
       <div class="linea-dinamica">
-        <input placeholder="Código de barra" value="${c.codigoBarra}" data-i="${i}" data-campo="codigoBarra" style="flex-grow:1;" />
-        <input placeholder="Presentación" value="${c.presentacion}" data-i="${i}" data-campo="presentacion" style="width:110px;" />
-        <input type="number" step="0.01" placeholder="Factor" value="${c.factorConversion}" data-i="${i}" data-campo="factorConversion" style="width:70px;" />
+        <input placeholder="Código de barra" value="${esc(c.codigoBarra)}" data-i="${i}" data-campo="codigoBarra" style="flex-grow:1;" />
+        <input placeholder="Presentación" value="${esc(c.presentacion)}" data-i="${i}" data-campo="presentacion" style="width:110px;" />
+        <input type="number" step="0.01" placeholder="Factor" value="${esc(c.factorConversion)}" data-i="${i}" data-campo="factorConversion" style="width:70px;" />
         <span class="carrito-quitar" data-quitar-codigo="${i}">✕</span>
       </div>
     `).join('');
@@ -196,7 +192,7 @@ async function abrirFormularioProducto(productoId) {
     document.getElementById('lista-unidades-alt').innerHTML = unidadesAlt.map((u, i) => `
       <div class="linea-dinamica">
         <select data-i="${i}" data-campo="unidadId" style="flex-grow:1;">${opciones(state.unidades, u.unidadId, (x) => x.nombre)}</select>
-        <input type="number" step="0.01" placeholder="Factor (unidades base)" value="${u.factorConversion}" data-i="${i}" data-campo="factorConversion" style="width:170px;" />
+        <input type="number" step="0.01" placeholder="Factor (unidades base)" value="${esc(u.factorConversion)}" data-i="${i}" data-campo="factorConversion" style="width:170px;" />
         <span class="carrito-quitar" data-quitar-unidad="${i}">✕</span>
       </div>
     `).join('');
@@ -211,8 +207,8 @@ async function abrirFormularioProducto(productoId) {
       ? '<div class="empty-state" style="padding:10px;">Sin componentes agregados.</div>'
       : componentes.map((c, i) => `
         <div class="linea-dinamica">
-          <span style="flex-grow:1; font-size:13px;">${c.descripcion}</span>
-          <input type="number" step="0.01" value="${c.cantidad}" data-i="${i}" style="width:80px;" />
+          <span style="flex-grow:1; font-size:13px;">${esc(c.descripcion)}</span>
+          <input type="number" step="0.01" value="${esc(c.cantidad)}" data-i="${i}" style="width:80px;" />
           <span class="carrito-quitar" data-quitar-componente="${i}">✕</span>
         </div>
       `).join('');
@@ -243,7 +239,7 @@ async function abrirFormularioProducto(productoId) {
       const encontrados = (await window.puntoXInventario.buscarProductos({ texto, almacenId: state.info.almacenId, limite: 10 }))
         .filter((p) => p.id !== productoId);
       resultados.innerHTML = encontrados.map((p, i) => `
-        <div class="buscador-resultados__item" data-i="${i}"><div class="buscador-resultados__nombre">${p.descripcion}</div><div class="buscador-resultados__meta">${p.codigo_interno}</div></div>
+        <div class="buscador-resultados__item" data-i="${i}"><div class="buscador-resultados__nombre">${esc(p.descripcion)}</div><div class="buscador-resultados__meta">${esc(p.codigo_interno)}</div></div>
       `).join('') || '<div class="buscador-resultados__vacio">Sin resultados</div>';
       resultados.querySelectorAll('[data-i]').forEach((el) => el.addEventListener('click', () => {
         const p = encontrados[Number(el.dataset.i)];
@@ -327,12 +323,12 @@ async function verKardex(productoId, nombre) {
         ${movimientos.map((m) => `
           <tr>
             <td>${new Date(m.created_at).toLocaleString('es-DO', { dateStyle: 'short', timeStyle: 'short' })}</td>
-            <td>${m.tipo_movimiento}</td>
-            <td>${m.almacen_nombre}</td>
+            <td>${esc(m.tipo_movimiento)}</td>
+            <td>${esc(m.almacen_nombre)}</td>
             <td>${m.numero_lote ? esc(m.numero_lote) : '—'}</td>
-            <td style="color:${m.cantidad < 0 ? 'var(--color-danger)' : 'var(--color-success)'};">${m.cantidad > 0 ? '+' : ''}${m.cantidad}</td>
+            <td style="color:${m.cantidad < 0 ? 'var(--color-danger)' : 'var(--color-success)'};">${m.cantidad > 0 ? '+' : ''}${esc(m.cantidad)}</td>
             <td>RD$ ${fmt(m.costo_unitario)}</td>
-            <td>${m.saldo_cantidad}</td>
+            <td>${esc(m.saldo_cantidad)}</td>
           </tr>
         `).join('')}
       </tbody>
@@ -350,7 +346,7 @@ async function cargarExistencias() {
     let estado = '<span class="pill-estado" style="background:var(--color-success);">Normal</span>';
     if (bajo) estado = '<span class="pill-estado" style="background:var(--color-danger);">Bajo mínimo</span>';
     else if (excedido) estado = '<span class="pill-estado" style="background:var(--color-warning);">Sobre-stock</span>';
-    return `<tr><td>${p.codigo_interno}</td><td>${p.descripcion}</td><td>${p.existencia_total}</td><td>${p.comprometida_total}</td><td>${p.stock_minimo}</td><td>${estado}</td></tr>`;
+    return `<tr><td>${esc(p.codigo_interno)}</td><td>${esc(p.descripcion)}</td><td>${esc(p.existencia_total)}</td><td>${esc(p.comprometida_total)}</td><td>${esc(p.stock_minimo)}</td><td>${estado}</td></tr>`;
   }).join('');
 }
 
@@ -361,12 +357,12 @@ async function cargarAjustes() {
   document.getElementById('ajustes-vacio').style.display = ajustes.length === 0 ? 'block' : 'none';
   document.getElementById('ajustes-tbody').innerHTML = ajustes.map((a) => `
     <tr>
-      <td>${a.numero}</td>
-      <td><span class="pill-estado" style="background:${a.tipo === 'entrada' ? 'var(--color-success)' : 'var(--color-danger)'};">${a.tipo}</span></td>
-      <td>${a.almacen_nombre}</td>
-      <td>${a.motivo}${a.motivo_detalle ? ' — ' + a.motivo_detalle : ''}</td>
+      <td>${esc(a.numero)}</td>
+      <td><span class="pill-estado" style="background:${a.tipo === 'entrada' ? 'var(--color-success)' : 'var(--color-danger)'};">${esc(a.tipo)}</span></td>
+      <td>${esc(a.almacen_nombre)}</td>
+      <td>${esc(a.motivo)}${a.motivo_detalle ? ' — ' + a.motivo_detalle : ''}</td>
       <td>${fechaCorta(a.fecha)}</td>
-      <td>${a.usuario_nombre || ''}</td>
+      <td>${esc(a.usuario_nombre || '')}</td>
     </tr>
   `).join('');
 }
@@ -406,7 +402,7 @@ async function abrirFormularioAjuste() {
     if (!l.controlaLote) return '';
     if (document.getElementById('fa-tipo').value === 'entrada') {
       return `<input placeholder="Lote *" data-lote="${i}" value="${esc(l.numeroLote || '')}" style="width:110px;" />
-        <input type="date" data-vence="${i}" value="${l.fechaVencimiento || ''}" title="Vencimiento" style="width:140px;" />`;
+        <input type="date" data-vence="${i}" value="${esc(l.fechaVencimiento || '')}" title="Vencimiento" style="width:140px;" />`;
     }
     return selectorLote(l.lotes || [], l.loteId, `data-lote-sel="${i}" style="width:230px;"`);
   }
@@ -415,9 +411,9 @@ async function abrirFormularioAjuste() {
       ? '<div class="empty-state" style="padding:10px;">Agrega productos con el buscador de arriba.</div>'
       : lineas.map((l, i) => `
         <div class="linea-dinamica">
-          <span style="flex-grow:1; font-size:13px;">${l.descripcion}</span>
+          <span style="flex-grow:1; font-size:13px;">${esc(l.descripcion)}</span>
           ${campoLote(l, i)}
-          <input type="number" step="0.01" value="${l.cantidad}" data-i="${i}" style="width:80px;" />
+          <input type="number" step="0.01" value="${esc(l.cantidad)}" data-i="${i}" style="width:80px;" />
           <span class="carrito-quitar" data-quitar="${i}">✕</span>
         </div>
       `).join('');
@@ -444,7 +440,7 @@ async function abrirFormularioAjuste() {
     if (!texto) { resultados.style.display = 'none'; return; }
     timeoutBuscar = setTimeout(async () => {
       const encontrados = await window.puntoXInventario.buscarProductos({ texto, almacenId: document.getElementById('fa-almacen').value, limite: 10 });
-      resultados.innerHTML = encontrados.map((p, i) => `<div class="buscador-resultados__item" data-i="${i}"><div class="buscador-resultados__nombre">${p.descripcion}</div><div class="buscador-resultados__meta">${p.codigo_interno} · Disp: ${p.cantidad_disponible}</div></div>`).join('') || '<div class="buscador-resultados__vacio">Sin resultados</div>';
+      resultados.innerHTML = encontrados.map((p, i) => `<div class="buscador-resultados__item" data-i="${i}"><div class="buscador-resultados__nombre">${esc(p.descripcion)}</div><div class="buscador-resultados__meta">${esc(p.codigo_interno)} · Disp: ${esc(p.cantidad_disponible)}</div></div>`).join('') || '<div class="buscador-resultados__vacio">Sin resultados</div>';
       resultados.querySelectorAll('[data-i]').forEach((el) => el.addEventListener('click', async () => {
         const p = encontrados[Number(el.dataset.i)];
         const lotes = p.controla_lote ? await lotesDe(p.id, document.getElementById('fa-almacen').value) : [];
@@ -485,7 +481,7 @@ async function cargarMermas() {
   const mermas = await window.puntoXInventario.listarMermas({});
   document.getElementById('mermas-vacio').style.display = mermas.length === 0 ? 'block' : 'none';
   document.getElementById('mermas-tbody').innerHTML = mermas.map((m) => `
-    <tr><td>${m.numero}</td><td>${m.producto_descripcion}${m.numero_lote ? ` <span style="color:var(--color-text-muted);">· lote ${esc(m.numero_lote)}</span>` : ''}</td><td>${m.almacen_nombre}</td><td>${m.cantidad}</td><td>${m.motivo}</td><td>${fechaCorta(m.fecha)}</td></tr>
+    <tr><td>${esc(m.numero)}</td><td>${esc(m.producto_descripcion)}${m.numero_lote ? ` <span style="color:var(--color-text-muted);">· lote ${esc(m.numero_lote)}</span>` : ''}</td><td>${esc(m.almacen_nombre)}</td><td>${esc(m.cantidad)}</td><td>${esc(m.motivo)}</td><td>${fechaCorta(m.fecha)}</td></tr>
   `).join('');
 }
 
@@ -520,7 +516,7 @@ async function abrirFormularioMerma() {
     if (!texto) { resultados.style.display = 'none'; return; }
     timeoutBuscar = setTimeout(async () => {
       const encontrados = await window.puntoXInventario.buscarProductos({ texto, almacenId: document.getElementById('fm-almacen').value, limite: 10 });
-      resultados.innerHTML = encontrados.map((p, i) => `<div class="buscador-resultados__item" data-i="${i}"><div class="buscador-resultados__nombre">${p.descripcion}</div><div class="buscador-resultados__meta">${p.codigo_interno} · Disp: ${p.cantidad_disponible}</div></div>`).join('') || '<div class="buscador-resultados__vacio">Sin resultados</div>';
+      resultados.innerHTML = encontrados.map((p, i) => `<div class="buscador-resultados__item" data-i="${i}"><div class="buscador-resultados__nombre">${esc(p.descripcion)}</div><div class="buscador-resultados__meta">${esc(p.codigo_interno)} · Disp: ${esc(p.cantidad_disponible)}</div></div>`).join('') || '<div class="buscador-resultados__vacio">Sin resultados</div>';
       resultados.querySelectorAll('[data-i]').forEach((el) => el.addEventListener('click', () => {
         productoSel = encontrados[Number(el.dataset.i)];
         document.getElementById('fm-seleccionado').textContent = `Seleccionado: ${productoSel.descripcion}`;
@@ -569,7 +565,7 @@ async function cargarTransferencias() {
   const transferencias = await window.puntoXInventario.listarTransferencias({});
   document.getElementById('transferencias-vacio').style.display = transferencias.length === 0 ? 'block' : 'none';
   document.getElementById('transferencias-tbody').innerHTML = transferencias.map((t) => `
-    <tr><td>${t.numero}</td><td>${t.almacen_origen_nombre}</td><td>${t.almacen_destino_nombre}</td><td>${fechaCorta(t.fecha)}</td><td>${t.usuario_nombre || ''}</td></tr>
+    <tr><td>${esc(t.numero)}</td><td>${esc(t.almacen_origen_nombre)}</td><td>${esc(t.almacen_destino_nombre)}</td><td>${fechaCorta(t.fecha)}</td><td>${esc(t.usuario_nombre || '')}</td></tr>
   `).join('');
 }
 
@@ -600,9 +596,9 @@ async function abrirFormularioTransferencia() {
       ? '<div class="empty-state" style="padding:10px;">Agrega productos con el buscador de arriba.</div>'
       : lineas.map((l, i) => `
         <div class="linea-dinamica">
-          <span style="flex-grow:1; font-size:13px;">${l.descripcion}</span>
+          <span style="flex-grow:1; font-size:13px;">${esc(l.descripcion)}</span>
           ${l.controlaLote ? selectorLote(l.lotes || [], l.loteId, `data-lote-sel="${i}" style="width:230px;"`) : ''}
-          <input type="number" step="0.01" value="${l.cantidad}" data-i="${i}" style="width:80px;" />
+          <input type="number" step="0.01" value="${esc(l.cantidad)}" data-i="${i}" style="width:80px;" />
           <span class="carrito-quitar" data-quitar="${i}">✕</span>
         </div>
       `).join('');
@@ -625,7 +621,7 @@ async function abrirFormularioTransferencia() {
     if (!texto) { resultados.style.display = 'none'; return; }
     timeoutBuscar = setTimeout(async () => {
       const encontrados = await window.puntoXInventario.buscarProductos({ texto, almacenId: document.getElementById('ft-origen').value, limite: 10 });
-      resultados.innerHTML = encontrados.map((p, i) => `<div class="buscador-resultados__item" data-i="${i}"><div class="buscador-resultados__nombre">${p.descripcion}</div><div class="buscador-resultados__meta">${p.codigo_interno} · Disp: ${p.cantidad_disponible}</div></div>`).join('') || '<div class="buscador-resultados__vacio">Sin resultados</div>';
+      resultados.innerHTML = encontrados.map((p, i) => `<div class="buscador-resultados__item" data-i="${i}"><div class="buscador-resultados__nombre">${esc(p.descripcion)}</div><div class="buscador-resultados__meta">${esc(p.codigo_interno)} · Disp: ${esc(p.cantidad_disponible)}</div></div>`).join('') || '<div class="buscador-resultados__vacio">Sin resultados</div>';
       resultados.querySelectorAll('[data-i]').forEach((el) => el.addEventListener('click', async () => {
         const p = encontrados[Number(el.dataset.i)];
         const lotes = p.controla_lote ? await lotesDe(p.id, document.getElementById('ft-origen').value) : [];
@@ -662,14 +658,14 @@ async function cargarConversiones() {
   document.getElementById('conversiones-vacio').style.display = lista.length === 0 ? 'block' : 'none';
   document.getElementById('conversiones-tbody').innerHTML = lista.map((c) => `
     <tr>
-      <td>${c.numero}</td>
-      <td>${c.cantidad_origen} × ${esc(c.origen_descripcion)}</td>
-      <td>${c.cantidad_destino} × ${esc(c.destino_descripcion)}</td>
+      <td>${esc(c.numero)}</td>
+      <td>${esc(c.cantidad_origen)} × ${esc(c.origen_descripcion)}</td>
+      <td>${esc(c.cantidad_destino)} × ${esc(c.destino_descripcion)}</td>
       <td>${esc(c.almacen_nombre)}</td>
       <td style="text-align:right;">${c.costo_total === null ? '—' : 'RD$ ' + fmt(c.costo_total)}</td>
       <td>${fechaCorta(c.fecha)}</td>
       <td><span class="pill-estado" style="background:${c.estado === 'anulada' ? 'var(--color-danger)' : 'var(--color-success)'};">${c.estado === 'anulada' ? 'Anulada' : 'Confirmada'}</span></td>
-      <td>${c.estado !== 'anulada' ? `<span class="enlace-accion" data-permiso="inventario.conversion.anular" data-anular-conversion="${c.id}" style="color:var(--color-danger); cursor:pointer; font-weight:700; font-size:12px;">Anular</span>` : ''}</td>
+      <td>${c.estado !== 'anulada' ? `<span class="enlace-accion" data-permiso="inventario.conversion.anular" data-anular-conversion="${esc(c.id)}" style="color:var(--color-danger); cursor:pointer; font-weight:700; font-size:12px;">Anular</span>` : ''}</td>
     </tr>`).join('');
   document.querySelectorAll('[data-anular-conversion]').forEach((el) => el.addEventListener('click', async () => {
     const motivo = await window.PuntoXModal.pedirTexto('Motivo de la anulación (el producto convertido vuelve a su origen):');
@@ -690,7 +686,7 @@ function buscadorEnFormulario(inputId, resultadosId, almacenFn, alElegir) {
     if (!texto) { resultados.style.display = 'none'; return; }
     espera = setTimeout(async () => {
       const encontrados = (await window.puntoXInventario.buscarProductos({ texto, almacenId: almacenFn(), limite: 10 })).filter((p) => !p.es_kit);
-      resultados.innerHTML = encontrados.map((p, i) => `<div class="buscador-resultados__item" data-i="${i}"><div class="buscador-resultados__nombre">${esc(p.descripcion)}</div><div class="buscador-resultados__meta">${esc(p.codigo_interno)} · Disp: ${p.cantidad_disponible}</div></div>`).join('') || '<div class="buscador-resultados__vacio">Sin resultados</div>';
+      resultados.innerHTML = encontrados.map((p, i) => `<div class="buscador-resultados__item" data-i="${i}"><div class="buscador-resultados__nombre">${esc(p.descripcion)}</div><div class="buscador-resultados__meta">${esc(p.codigo_interno)} · Disp: ${esc(p.cantidad_disponible)}</div></div>`).join('') || '<div class="buscador-resultados__vacio">Sin resultados</div>';
       resultados.querySelectorAll('[data-i]').forEach((el) => el.addEventListener('click', () => {
         alElegir(encontrados[Number(el.dataset.i)]);
         resultados.style.display = 'none';
@@ -784,7 +780,7 @@ function diasRestantes(l) {
   if (!l.fecha_vencimiento) return '<span style="color:var(--color-text-faint);">No vence</span>';
   if (l.dias_restantes < 0) return `<span style="color:var(--color-danger); font-weight:700;">Vencido hace ${-l.dias_restantes} días</span>`;
   if (l.dias_restantes === 0) return '<span style="color:var(--color-danger); font-weight:700;">Vence hoy</span>';
-  return `<span style="color:${l.dias_restantes <= 30 ? 'var(--color-warning)' : 'inherit'};">${l.dias_restantes} días</span>`;
+  return `<span style="color:${l.dias_restantes <= 30 ? 'var(--color-warning)' : 'inherit'};">${esc(l.dias_restantes)} días</span>`;
 }
 
 async function cargarVencimientos() {
@@ -799,7 +795,7 @@ async function cargarVencimientos() {
   vacio.style.display = lotes.length === 0 ? 'block' : 'none';
   document.getElementById('vencimientos-tbody').innerHTML = lotes.map((l) => `
     <tr>
-      <td>${esc(l.descripcion)}</td><td>${esc(l.numero_lote)}</td><td>${esc(l.almacen_nombre)}</td><td>${l.cantidad}</td>
+      <td>${esc(l.descripcion)}</td><td>${esc(l.numero_lote)}</td><td>${esc(l.almacen_nombre)}</td><td>${esc(l.cantidad)}</td>
       <td>${fechaSimple(l.fecha_vencimiento)}</td>
       <td>${diasRestantes(l)}</td>
     </tr>

@@ -103,8 +103,8 @@ function renderResultadosProducto(resultados) {
     contenedor.innerHTML = resultados.map((p, i) => `
       <div class="buscador-resultados__item" data-index="${i}">
         <div>
-          <div class="buscador-resultados__nombre">${p.descripcion}</div>
-          <div class="buscador-resultados__meta">${p.codigo_interno} · Disp: ${p.cantidad_disponible}${p.promocion ? ` · <span style="color:var(--color-success); font-weight:700;">Promoción ${textoPromocion(p.promocion)}</span>` : ""}</div>
+          <div class="buscador-resultados__nombre">${esc(p.descripcion)}</div>
+          <div class="buscador-resultados__meta">${esc(p.codigo_interno)} · Disp: ${esc(p.cantidad_disponible)}${p.promocion ? ` · <span style="color:var(--color-success); font-weight:700;">Promoción ${textoPromocion(p.promocion)}</span>` : ""}</div>
         </div>
         <div class="buscador-resultados__precio">${fmtV(precioPorNivel(p, state.nivelPrecio))}</div>
       </div>
@@ -154,8 +154,8 @@ function renderCarrito() {
     const montoManual = linea.modoDescuento === 'monto' ? linea.descuentoMonto : calc.manual;
     return `
       <tr data-index="${i}">
-        <td>${linea.producto.descripcion}${calc.promocion ? `<div class="linea-promo" title="${escHtml(calc.promocion.nombre || '')}">Promoción −${textoPromocion(calc.promocion)}</div>` : ''}</td>
-        <td style="text-align:center;"><input type="number" min="0.01" step="0.01" value="${linea.cantidad}" class="cant-input" ${bloqueado ? 'disabled' : ''} /></td>
+        <td>${esc(linea.producto.descripcion)}${calc.promocion ? `<div class="linea-promo" title="${esc(calc.promocion.nombre || '')}">Promoción −${textoPromocion(calc.promocion)}</div>` : ''}</td>
+        <td style="text-align:center;"><input type="number" min="0.01" step="0.01" value="${esc(linea.cantidad)}" class="cant-input" ${bloqueado ? 'disabled' : ''} /></td>
         <td style="text-align:center; white-space:nowrap;">
           <input type="number" min="0" max="100" step="0.01" value="${pctManual}" class="desc-input" title="Descuento en %" ${descuentoBloqueado ? 'disabled' : ''} />
           <input type="number" min="0" step="0.01" value="${montoManual}" class="desc-monto" title="Descuento en RD$" ${descuentoBloqueado ? 'disabled' : ''} />
@@ -313,8 +313,8 @@ function renderResultadosCliente(resultados) {
   const items = resultados.map((c, i) => `
     <div class="buscador-resultados__item" data-index="${i}">
       <div>
-        <div class="buscador-resultados__nombre">${c.nombre}</div>
-        <div class="buscador-resultados__meta">${c.rnc_cedula || 'Sin RNC/cédula'}${c.bloqueado ? ' · BLOQUEADO' : ''}</div>
+        <div class="buscador-resultados__nombre">${esc(c.nombre)}</div>
+        <div class="buscador-resultados__meta">${esc(c.rnc_cedula || 'Sin RNC/cédula')}${c.bloqueado ? ' · BLOQUEADO' : ''}</div>
       </div>
     </div>
   `).join('');
@@ -432,16 +432,16 @@ async function cargarHistorial() {
     const fecha = new Date(f.fecha).toLocaleString('es-DO', { dateStyle: 'short', timeStyle: 'short' });
     return `
       <tr>
-        <td>${f.numero}</td>
-        <td>${f.ncf}</td>
-        <td>${f.cliente_nombre}</td>
+        <td>${esc(f.numero)}</td>
+        <td>${esc(f.ncf)}</td>
+        <td>${esc(f.cliente_nombre)}</td>
         <td>${fecha}</td>
-        <td>${fmt(f.total)}${f.moneda_codigo && f.moneda_codigo !== 'DOP' ? ` <span style="font-size:11px; font-weight:700; color:var(--color-info);">${f.moneda_codigo}</span>` : ''}</td>
-        <td><span class="status-pill" style="background:${colorEstado};">${f.estado}</span></td>
+        <td>${fmt(f.total)}${f.moneda_codigo && f.moneda_codigo !== 'DOP' ? ` <span style="font-size:11px; font-weight:700; color:var(--color-info);">${esc(f.moneda_codigo)}</span>` : ''}</td>
+        <td><span class="status-pill" style="background:${colorEstado};">${esc(f.estado)}</span></td>
         <td>
-          ${f.estado !== 'anulado' ? `<a href="#" class="btn-anular" data-permiso="ventas.factura.anular" data-id="${f.id}" style="color:var(--color-danger); font-size:12px; font-weight:700;">Anular</a>` : ''}
-          ${f.estado !== 'anulado' ? ` · <a href="#" class="btn-devolver" data-permiso="ventas.devolucion.crear" data-id="${f.id}" style="color:var(--color-accent); font-size:12px; font-weight:700;">Devolver</a>` : ''}
-          ${window.puntoXImpresion ? ` · <a href="#" class="btn-reimprimir" data-permiso="ventas.factura.imprimir" data-id="${f.id}" style="color:var(--color-accent); font-size:12px; font-weight:700;">Imprimir</a>` : ''}
+          ${f.estado !== 'anulado' ? `<a href="#" class="btn-anular" data-permiso="ventas.factura.anular" data-id="${esc(f.id)}" style="color:var(--color-danger); font-size:12px; font-weight:700;">Anular</a>` : ''}
+          ${f.estado !== 'anulado' ? ` · <a href="#" class="btn-devolver" data-permiso="ventas.devolucion.crear" data-id="${esc(f.id)}" style="color:var(--color-accent); font-size:12px; font-weight:700;">Devolver</a>` : ''}
+          ${window.puntoXImpresion ? ` · <a href="#" class="btn-reimprimir" data-permiso="ventas.factura.imprimir" data-id="${esc(f.id)}" style="color:var(--color-accent); font-size:12px; font-weight:700;">Imprimir</a>` : ''}
         </td>
       </tr>
     `;
@@ -495,15 +495,15 @@ async function abrirFormularioDevolucion(facturaId) {
   if (lineasPendientes.length === 0) { mostrarError('Esta factura no tiene líneas pendientes de devolver.'); return; }
 
   const contenido = window.PuntoXModal.abrirModal(`Devolución — Factura ${factura.numero}`, `
-    <p style="font-size:13px; color:var(--color-text-muted); margin-bottom:12px;">Cliente: ${factura.cliente_nombre}</p>
+    <p style="font-size:13px; color:var(--color-text-muted); margin-bottom:12px;">Cliente: ${esc(factura.cliente_nombre)}</p>
     <table class="data-table">
       <thead><tr><th>Producto</th><th>Vendido</th><th>Ya devuelto</th><th style="width:120px;">Cantidad a devolver</th></tr></thead>
       <tbody>
         ${lineasPendientes.map((l) => `
           <tr>
-            <td>${l.producto_descripcion}</td><td>${l.cantidad}</td><td>${l.cantidad_devuelta}</td>
+            <td>${esc(l.producto_descripcion)}</td><td>${esc(l.cantidad)}</td><td>${esc(l.cantidad_devuelta)}</td>
             <td><input type="number" min="0" max="${redondear(l.cantidad - l.cantidad_devuelta)}" step="0.01" value="0"
-              class="input-devolver" data-detalle-id="${l.id}" data-max="${redondear(l.cantidad - l.cantidad_devuelta)}"
+              class="input-devolver" data-detalle-id="${esc(l.id)}" data-max="${redondear(l.cantidad - l.cantidad_devuelta)}"
               style="width:90px; padding:6px 8px; border:1px solid var(--color-border-input); border-radius:6px;" /></td>
           </tr>
         `).join('')}
@@ -569,7 +569,7 @@ async function abrirFormularioNotaDebito() {
       <div class="form-field"><label>Concepto *</label><input id="nd-concepto" class="input-normal" placeholder="Ej: flete, interés por mora, ajuste de precio..." /></div>
       <div class="form-field"><label>Monto (ITBIS incluido) *</label><input id="nd-monto" class="input-normal" type="number" step="0.01" min="0.01" /></div>
       <div class="form-field"><label>Tasa de ITBIS</label>
-        <select id="nd-tasa" class="input-normal">${tasas.map((t) => `<option value="${t.id}" ${t.es_default ? 'selected' : ''}>${t.nombre} (${(t.porcentaje * 100).toFixed(0)}%)</option>`).join('')}</select>
+        <select id="nd-tasa" class="input-normal">${tasas.map((t) => `<option value="${esc(t.id)}" ${t.es_default ? 'selected' : ''}>${esc(t.nombre)} (${(t.porcentaje * 100).toFixed(0)}%)</option>`).join('')}</select>
       </div>
     </div>
     <div class="form-seccion" style="display:flex; justify-content:flex-end; gap:8px; margin-top:16px; padding-top:14px; border-top:1px solid var(--color-border);">
@@ -586,7 +586,7 @@ async function abrirFormularioNotaDebito() {
     if (!texto) { resultados.style.display = 'none'; return; }
     timeoutCliente = setTimeout(async () => {
       const encontrados = await window.puntoXCxc.buscarClientes({ texto, limite: 10 });
-      resultados.innerHTML = encontrados.map((c, i) => `<div class="buscador-resultados__item" data-i="${i}"><div class="buscador-resultados__nombre">${c.nombre}</div></div>`).join('') || '<div class="buscador-resultados__vacio">Sin resultados</div>';
+      resultados.innerHTML = encontrados.map((c, i) => `<div class="buscador-resultados__item" data-i="${i}"><div class="buscador-resultados__nombre">${esc(c.nombre)}</div></div>`).join('') || '<div class="buscador-resultados__vacio">Sin resultados</div>';
       resultados.querySelectorAll('[data-i]').forEach((el) => el.addEventListener('click', async () => {
         clienteSel = encontrados[Number(el.dataset.i)];
         document.getElementById('nd-cliente-sel').textContent = `Seleccionado: ${clienteSel.nombre}`;
@@ -597,7 +597,7 @@ async function abrirFormularioNotaDebito() {
         const select = document.getElementById('nd-factura');
         select.disabled = false;
         select.innerHTML = '<option value="">— Ninguna (cargo general a la cuenta) —</option>'
-          + facturasCliente.filter((f) => f.estado !== 'anulado').map((f) => `<option value="${f.id}">${f.numero} — ${fmt(f.total)}</option>`).join('');
+          + facturasCliente.filter((f) => f.estado !== 'anulado').map((f) => `<option value="${esc(f.id)}">${esc(f.numero)} — ${fmt(f.total)}</option>`).join('');
       }));
       resultados.style.display = 'block';
     }, 200);
@@ -643,15 +643,15 @@ async function cargarNotas() {
     const permisoAnular = esCredito ? 'ventas.devolucion.crear' : 'ventas.nota_debito.crear';
     return `
       <tr>
-        <td>${n.numero}</td>
+        <td>${esc(n.numero)}</td>
         <td><span class="status-pill" style="background:${esCredito ? 'var(--color-info)' : 'var(--color-warning)'};">${esCredito ? 'Crédito' : 'Débito'}</span></td>
-        <td>${n.cliente_nombre || 'Consumidor final'}</td>
-        <td>${n.factura_origen_numero || '—'}</td>
-        <td>${n.concepto || '—'}</td>
+        <td>${esc(n.cliente_nombre || 'Consumidor final')}</td>
+        <td>${esc(n.factura_origen_numero || '—')}</td>
+        <td>${esc(n.concepto || '—')}</td>
         <td>${fecha}</td>
         <td>${fmt(n.total)}</td>
-        <td><span class="status-pill" style="background:${colorEstado};">${n.estado}</span></td>
-        <td>${n.estado !== 'anulado' ? `<a href="#" class="btn-anular-nota" data-permiso="${permisoAnular}" data-id="${n.id}" data-tipo="${n.tipo}" style="color:var(--color-danger); font-size:12px; font-weight:700;">Anular</a>` : ''}</td>
+        <td><span class="status-pill" style="background:${colorEstado};">${esc(n.estado)}</span></td>
+        <td>${n.estado !== 'anulado' ? `<a href="#" class="btn-anular-nota" data-permiso="${permisoAnular}" data-id="${esc(n.id)}" data-tipo="${esc(n.tipo)}" style="color:var(--color-danger); font-size:12px; font-weight:700;">Anular</a>` : ''}</td>
       </tr>
     `;
   }).join('');
@@ -675,10 +675,6 @@ async function cargarNotas() {
 
 // --- Inicialización ---
 
-function escHtml(texto) {
-  return String(texto ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-}
-
 function mostrarExitoDocumento(doc) {
   const exito = document.getElementById('factura-exito');
   const titulo = { factura: 'Factura', cotizacion: 'Cotización', conduce: 'Conduce', pedido: 'Pedido' }[doc.tipo];
@@ -692,7 +688,7 @@ function mostrarExitoDocumento(doc) {
   const enMoneda = doc.moneda_codigo && doc.moneda_codigo !== 'DOP' && doc.tasa_cambio > 0
     ? `${doc.moneda_codigo === 'USD' ? 'US$' : doc.moneda_codigo} ${(doc.total / doc.tasa_cambio).toLocaleString('es-DO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (${fmt(doc.total)} a tasa ${doc.tasa_cambio})`
     : fmt(doc.total);
-  exito.innerHTML = `${titulo} <strong>${doc.numero}</strong>${detalle}. Total ${enMoneda}.` +
+  exito.innerHTML = `${titulo} <strong>${esc(doc.numero)}</strong>${esc(detalle)}. Total ${esc(enMoneda)}.` +
     (window.puntoXImpresion ? `
       <span data-permiso="ventas.factura.imprimir" style="margin-left:10px;">
         <button type="button" class="btn btn-secundario btn-chico" data-imprimir="factura">Imprimir ${titulo.toLowerCase()}</button>
@@ -722,7 +718,7 @@ async function configurarMonedas() {
   if (state.monedas.length === 0) return;
   const select = document.getElementById('select-moneda');
   select.innerHTML = '<option value="">RD$ — Peso dominicano</option>'
-    + state.monedas.map((m) => `<option value="${m.id}">${m.codigo} — ${m.nombre}</option>`).join('');
+    + state.monedas.map((m) => `<option value="${esc(m.id)}">${esc(m.codigo)} — ${esc(m.nombre)}</option>`).join('');
   select.addEventListener('change', () => setMoneda(select.value));
   actualizarBloqueMoneda();
 }
@@ -802,7 +798,7 @@ async function cargarCuentaParaCobro(cuentaId) {
     else porProducto.set(l.producto_id, { producto: l.producto, cantidad: l.cantidad, descuentoPct: 0 });
   }
   aplicarOrigen({ tipo: 'cuenta', id: cuenta.id }, [...porProducto.values()]);
-  mostrarAvisoOrigen(`Cobrando la cuenta <strong>${escHtml(cuenta.nombre)}</strong> (${cuenta.lineas.length} línea(s)). Los productos se cambian en la cuenta. <a href="./cuentas-abiertas.html?cuenta=${encodeURIComponent(cuenta.id)}" style="font-weight:700; color:var(--color-accent);">Volver a la cuenta</a>`);
+  mostrarAvisoOrigen(`Cobrando la cuenta <strong>${esc(cuenta.nombre)}</strong> (${esc(cuenta.lineas.length)} línea(s)). Los productos se cambian en la cuenta. <a href="./cuentas-abiertas.html?cuenta=${encodeURIComponent(cuenta.id)}" style="font-weight:700; color:var(--color-accent);">Volver a la cuenta</a>`);
 }
 
 async function seleccionarClientePorId(clienteId) {
@@ -821,7 +817,7 @@ async function cargarCotizacionParaFacturar(cotizacionId) {
   const brutoLineas = cot.lineas.reduce((a, l) => a + l.total_linea, 0);
   document.getElementById('input-descuento-global').value = brutoLineas > 0 ? redondear((cot.descuento_total / brutoLineas) * 100) : 0;
   aplicarOrigen({ tipo: 'cotizacion', id: cot.id }, carrito);
-  mostrarAvisoOrigen(`Facturando la cotización <strong>${cot.numero}</strong> con sus precios. Para cambiar productos o precios, haz una nueva cotización. <a href="./documentos.html" style="font-weight:700; color:var(--color-accent);">Volver</a>`);
+  mostrarAvisoOrigen(`Facturando la cotización <strong>${esc(cot.numero)}</strong> con sus precios. Para cambiar productos o precios, haz una nueva cotización. <a href="./documentos.html" style="font-weight:700; color:var(--color-accent);">Volver</a>`);
 }
 
 async function cargarPedidoParaFacturar(pedidoId) {
@@ -835,7 +831,7 @@ async function cargarPedidoParaFacturar(pedidoId) {
   const brutoLineas = pedido.lineas.reduce((a, l) => a + l.total_linea, 0);
   document.getElementById('input-descuento-global').value = brutoLineas > 0 ? redondear((pedido.descuento_total / brutoLineas) * 100) : 0;
   aplicarOrigen({ tipo: 'pedido', id: pedido.id }, carrito);
-  mostrarAvisoOrigen(`Facturando el pedido <strong>${pedido.numero}</strong> de ${escHtml(pedido.cliente_nombre || '')} con sus precios. Para cambiarlo, anúlalo y haz uno nuevo. <a href="./documentos.html#pedidos" style="font-weight:700; color:var(--color-accent);">Volver</a>`);
+  mostrarAvisoOrigen(`Facturando el pedido <strong>${esc(pedido.numero)}</strong> de ${esc(pedido.cliente_nombre || '')} con sus precios. Para cambiarlo, anúlalo y haz uno nuevo. <a href="./documentos.html#pedidos" style="font-weight:700; color:var(--color-accent);">Volver</a>`);
 }
 
 async function cargarConducesParaFacturar(ids) {
@@ -857,7 +853,7 @@ async function cargarConducesParaFacturar(ids) {
   const carrito = await Promise.all([...porProducto.values()].map(async (l) => ({ ...l, producto: await productoParaCarrito(l.productoId) })));
   await seleccionarClientePorId(conduces[0].cliente_id);
   aplicarOrigen({ tipo: 'conduces', ids: conduces.map((c) => c.id) }, carrito);
-  mostrarAvisoOrigen(`Facturando ${conduces.length === 1 ? 'el conduce' : `${conduces.length} conduces`} <strong>${conduces.map((c) => c.numero).join(', ')}</strong> de ${escHtml(conduces[0].cliente_nombre)}. La mercancía ya se entregó. <a href="./documentos.html#conduces" style="font-weight:700; color:var(--color-accent);">Volver</a>`);
+  mostrarAvisoOrigen(`Facturando ${conduces.length === 1 ? 'el conduce' : `${conduces.length} conduces`} <strong>${conduces.map((c) => c.numero).join(', ')}</strong> de ${esc(conduces[0].cliente_nombre)}. La mercancía ya se entregó. <a href="./documentos.html#conduces" style="font-weight:700; color:var(--color-accent);">Volver</a>`);
 }
 
 function terminarOrigen() {

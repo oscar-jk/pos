@@ -20,7 +20,8 @@
   "devDependencies": {
     "@electron/rebuild": "^4.2.0",
     "electron": "^32.0.0",
-    "electron-builder": "^25.0.0"
+    "electron-builder": "^25.0.0",
+    "typescript": "^5.9.3"
   },
   "build": {
     "appId": "com.odteamx.puntox",
