@@ -260,7 +260,7 @@ function crearCuentaBancaria(db, { nombre, banco, numeroCuenta, monedaId }) {
   if (!nombre || !banco) throw new Error('Nombre y banco son obligatorios');
   const id = crypto.randomUUID();
   db.prepare('INSERT INTO cuentas_bancarias (id, nombre, banco, numero_cuenta, moneda_id, activo) VALUES (?, ?, ?, ?, ?, 1)')
-    .run(id, nombre, banco, numeroCuenta || null, monedaId);
+    .run(id, nombre, banco, numeroCuenta || null, monedaId || db.prepare('SELECT id FROM monedas WHERE es_local = 1').get().id);
   return db.prepare('SELECT * FROM cuentas_bancarias WHERE id = ?').get(id);
 }
 
