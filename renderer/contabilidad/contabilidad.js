@@ -160,7 +160,7 @@ async function cargarDiario() {
   `).join('');
 
   document.querySelectorAll('[data-anular]').forEach((el) => el.addEventListener('click', async () => {
-    const motivo = prompt('Motivo de la anulación:');
+    const motivo = await window.PuntoXModal.pedirTexto('Motivo de la anulación:');
     if (!motivo) return;
     try {
       await window.puntoXContabilidad.anularAsiento({ asientoId: el.dataset.anular, motivo, usuarioId: state.info.usuario.id });

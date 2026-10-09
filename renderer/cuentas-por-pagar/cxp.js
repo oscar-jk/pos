@@ -121,7 +121,7 @@ async function cargarFacturas() {
     </tr>
   `).join('');
   document.querySelectorAll('#facturas-tbody [data-anular]').forEach((el) => el.addEventListener('click', async () => {
-    const motivo = prompt('Motivo de la anulación:');
+    const motivo = await window.PuntoXModal.pedirTexto('Motivo de la anulación:');
     if (!motivo) return;
     try {
       await window.puntoXCompras.anularFacturaCompra({ documentoId: el.dataset.anular, motivo, usuarioId: state.info.usuario.id });
@@ -434,7 +434,7 @@ async function cargarPagos() {
     </tr>
   `).join('');
   document.querySelectorAll('#pagos-tbody [data-anular]').forEach((el) => el.addEventListener('click', async () => {
-    const motivo = prompt('Motivo de la anulación:');
+    const motivo = await window.PuntoXModal.pedirTexto('Motivo de la anulación:');
     if (!motivo) return;
     try {
       await window.puntoXCxp.anularPago({ pagoId: el.dataset.anular, motivo, usuarioId: state.info.usuario.id });
