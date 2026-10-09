@@ -450,7 +450,7 @@ async function cargarHistorial() {
   tbody.querySelectorAll('.btn-anular').forEach((btn) => {
     btn.addEventListener('click', async (e) => {
       e.preventDefault();
-      const motivo = prompt('Motivo de la anulación:');
+      const motivo = await window.PuntoXModal.pedirTexto('Motivo de la anulación:');
       if (!motivo) return;
       try {
         await window.puntoXVentas.anularFactura({
@@ -659,7 +659,7 @@ async function cargarNotas() {
   tbody.querySelectorAll('.btn-anular-nota').forEach((btn) => {
     btn.addEventListener('click', async (e) => {
       e.preventDefault();
-      const motivo = prompt('Motivo de la anulación:');
+      const motivo = await window.PuntoXModal.pedirTexto('Motivo de la anulación:');
       if (!motivo) return;
       try {
         const metodo = btn.dataset.tipo === 'nota_credito' ? 'anularNotaCredito' : 'anularNotaDebito';

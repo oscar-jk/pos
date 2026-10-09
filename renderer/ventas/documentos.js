@@ -67,7 +67,7 @@ async function cargarCotizaciones() {
   }).join('');
   document.querySelectorAll('#cotizaciones-tbody [data-imprimir]').forEach((el) => el.addEventListener('click', () => imprimir(el.dataset.imprimir)));
   document.querySelectorAll('[data-anular-cotizacion]').forEach((el) => el.addEventListener('click', async () => {
-    const motivo = prompt('Motivo de la anulación:');
+    const motivo = await window.PuntoXModal.pedirTexto('Motivo de la anulación:');
     if (!motivo) return;
     const r = await ejecutar(() => window.puntoXVentas.anularCotizacion({ documentoId: el.dataset.anularCotizacion, motivo, usuarioId: state.info.usuario.id }));
     if (r) cargarCotizaciones();
@@ -98,7 +98,7 @@ async function cargarPedidos() {
     </tr>`).join('');
   document.querySelectorAll('#pedidos-tbody [data-imprimir]').forEach((el) => el.addEventListener('click', () => imprimir(el.dataset.imprimir)));
   document.querySelectorAll('[data-anular-pedido]').forEach((el) => el.addEventListener('click', async () => {
-    const motivo = prompt('Motivo de la anulación (la mercancía reservada queda libre):');
+    const motivo = await window.PuntoXModal.pedirTexto('Motivo de la anulación (la mercancía reservada queda libre):');
     if (!motivo) return;
     const r = await ejecutar(() => window.puntoXVentas.anularPedido({ documentoId: el.dataset.anularPedido, motivo, usuarioId: state.info.usuario.id }));
     if (r) cargarPedidos();
@@ -135,7 +135,7 @@ async function cargarConduces() {
     actualizarBotonFacturar();
   }));
   document.querySelectorAll('[data-anular-conduce]').forEach((el) => el.addEventListener('click', async () => {
-    const motivo = prompt('Motivo de la anulación (la mercancía vuelve al inventario):');
+    const motivo = await window.PuntoXModal.pedirTexto('Motivo de la anulación (la mercancía vuelve al inventario):');
     if (!motivo) return;
     const r = await ejecutar(() => window.puntoXVentas.anularConduce({ documentoId: el.dataset.anularConduce, motivo, usuarioId: state.info.usuario.id }));
     if (r) cargarConduces();

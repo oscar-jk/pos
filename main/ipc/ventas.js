@@ -97,7 +97,8 @@ function prepararLineasVenta(db, {
   lineas, almacenId, nivelPrecio, usuarioId, descuentoGlobalPct, validarExistencia,
   descuentosAutorizados = new Map(), descuentoGlobalAutorizadoPct = 0,
 }) {
-  const limiteRol = obtenerLimiteDescuentoRol(db, usuarioId);
+  // El tope sale del usuario con sesión abierta: el usuarioId del payload lo manda la pantalla.
+  const limiteRol = obtenerLimiteDescuentoRol(db, session.usuarioActualId());
   const puedeExceder = Boolean(limiteRol.puede_exceder);
 
   const lineasCalculadas = lineas.map((l) => {
@@ -112,13 +113,20 @@ function prepararLineasVenta(db, {
       }
     }
 
-    const precioUnitario = l.precioUnitario ?? precioProducto(producto, nivelPrecio);
+    const precioLista = precioProducto(producto, nivelPrecio);
+    const precioUnitario = l.precioUnitario ?? precioLista;
+    if (!(precioUnitario >= 0)) throw new Error(`El precio de "${producto.descripcion}" no es válido`);
     const bruto = redondear(precioUnitario * l.cantidad);
     const d = descuentoLinea({ bruto, cantidad: l.cantidad, promocion: producto.promocion, descuentoPct: l.descuentoPct, descuentoMonto: l.descuentoMonto });
     if (d.manual > bruto + 0.001) throw new Error(`El descuento de "${producto.descripcion}" es mayor que el importe de la línea`);
+    // Bajar el precio a mano es un descuento: cuenta contra el tope del rol igual que uno explícito.
+    const brutoLista = redondear(precioLista * l.cantidad);
+    const rebajaPrecio = Math.max(0, redondear(brutoLista - bruto));
+    const manualEfectivo = d.manual + rebajaPrecio;
     // El tope del rol limita solo el descuento manual (la promoción la autorizó quien la creó).
-    const yaAutorizado = d.manual <= (descuentosAutorizados.get(producto.id) || 0) + 0.01;
-    if (!d.promocionId && !puedeExceder && !yaAutorizado && bruto > 0 && (d.manual / bruto) * 100 > limiteRol.limite_descuento_pct + 0.01) {
+    const yaAutorizado = manualEfectivo <= (descuentosAutorizados.get(producto.id) || 0) + 0.01
+      || (rebajaPrecio > 0 && descuentosAutorizados.has(producto.id) && d.manual <= (descuentosAutorizados.get(producto.id) || 0) + 0.01);
+    if (!d.promocionId && !puedeExceder && !yaAutorizado && brutoLista > 0 && (manualEfectivo / brutoLista) * 100 > limiteRol.limite_descuento_pct + 0.01) {
       throw new Error(`El descuento de la línea "${producto.descripcion}" excede el límite permitido (${limiteRol.limite_descuento_pct}%)`);
     }
     const calc = calcularLinea({ cantidad: l.cantidad, precioUnitario, descuentoMonto: d.descuento, tasaItbisPct: producto.tasa_itbis_pct });
@@ -885,6 +893,15 @@ function anularFactura(db, { documentoId, motivo, usuarioId }) {
   if (notas.length > 0) {
     throw new Error(`La factura tiene devoluciones activas (nota de crédito ${notas.map((n) => n.numero).join(', ')}). Anúlelas primero.`);
   }
+  const cobros = db
+    .prepare(
+      `SELECT r.numero FROM recibos_ingreso_aplicaciones a JOIN recibos_ingreso r ON r.id = a.recibo_id
+       WHERE a.documento_venta_id = ? AND r.estado != 'anulado'`
+    )
+    .all(documentoId);
+  if (cobros.length > 0) {
+    throw new Error(`La factura tiene cobros aplicados (recibo ${cobros.map((c) => c.numero).join(', ')}). Anule los recibos primero.`);
+  }
 
   db.prepare(
     `UPDATE documentos_venta SET estado = 'anulado', motivo_anulacion = ?, usuario_anulo_id = ?,
@@ -919,8 +936,15 @@ function anularFactura(db, { documentoId, motivo, usuarioId }) {
     .prepare("SELECT * FROM movimientos_caja WHERE documento_origen_tipo = 'documentos_venta' AND documento_origen_id = ?")
     .all(documentoId);
   for (const m of movimientosCaja) {
+    // Un turno cerrado ya se arqueó: el efectivo devuelto sale del turno abierto de esa caja.
+    const turnoOriginal = db.prepare('SELECT * FROM turnos_caja WHERE id = ?').get(m.turno_caja_id);
+    let turnoDestino = turnoOriginal;
+    if (turnoOriginal.estado !== 'abierto') {
+      turnoDestino = caja.obtenerTurnoAbierto(db, turnoOriginal.caja_id);
+      if (!turnoDestino) throw new Error('El turno de esta venta ya cerró. Abra un turno de caja para devolver el efectivo.');
+    }
     caja.registrarMovimiento(db, {
-      turnoCajaId: m.turno_caja_id, tipo: 'venta_efectivo', concepto: `Anulación factura ${documento.numero}`,
+      turnoCajaId: turnoDestino.id, tipo: 'venta_efectivo', concepto: `Anulación factura ${documento.numero}`,
       monto: -m.monto, documentoOrigenTipo: 'documentos_venta_anulacion', documentoOrigenId: documentoId, usuarioId,
     });
   }
