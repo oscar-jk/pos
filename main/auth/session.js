@@ -26,6 +26,12 @@ function exigirSesionUtil() {
   if (sesionActual.debeCambiarPassword) throw new Error('Debe cambiar su contraseña antes de continuar.');
 }
 
+// Cambio del rol o de los permisos del rol del usuario conectado (se aplica de inmediato).
+function actualizarRol({ rolId, rolNombre, permisos }) {
+  if (!sesionActual) return;
+  Object.assign(sesionActual, { rolId, rolNombre, permisos });
+}
+
 function marcarPasswordCambiada() {
   if (sesionActual) sesionActual.debeCambiarPassword = false;
 }
@@ -57,5 +63,5 @@ function usuarioActualId() {
 
 module.exports = {
   iniciarSesion, cerrarSesion, obtenerSesion, tienePermiso, requerirPermiso, requerirAlgunPermiso, usuarioActualId,
-  exigirSesionUtil, marcarPasswordCambiada,
+  exigirSesionUtil, marcarPasswordCambiada, actualizarRol,
 };

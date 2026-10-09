@@ -224,6 +224,9 @@ async function renderDetalleRol() {
     const permisoIds = Array.from(document.querySelectorAll('#rol-permisos-lista input[type="checkbox"]:checked')).map((c) => c.dataset.permiso);
     try {
       await window.puntoXConfig.actualizarPermisosRol({ rolId: rol.id, permisoIds, usuarioId: state.info.usuario.id });
+      // Si es el rol propio, los permisos ya cambiaron en la sesión: recargar para que la
+      // pantalla muestre y oculte botones con los nuevos.
+      if (rol.id === state.info.usuario.rolId) { window.location.hash = 'roles'; window.location.reload(); return; }
       mostrarExito('Permisos actualizados.');
     } catch (err) { mostrarError(err.message); }
   });

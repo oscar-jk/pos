@@ -209,6 +209,7 @@ function actualizarUsuario(db, usuarioId, { nombreCompleto, rolId, sucursalId, p
     db.prepare("UPDATE usuarios SET password_hash = ?, debe_cambiar_password = 1, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?").run(hashPassword(password), usuarioId);
   }
   registrarAuditoria(db, { usuarioId: usuarioEditorId, modulo: 'configuracion', entidad: 'usuarios', entidadId: usuarioId, accion: 'editar', detalle: { rolId, activo } });
+  refrescarSesion(db);
 }
 
 // =========================================================================
@@ -239,9 +240,35 @@ function permisosDeRol(db, rolId) {
 // permiso_id), así que un permiso que se quita y luego se vuelve a asignar no puede
 // re-insertarse (la fila borrada lógicamente sigue ocupando esa combinación) — hay que
 // restaurarla en vez de insertar una duplicada, coherente con "nunca borrar físicamente".
+// Permisos activos de un rol, en códigos.
+function codigosPermisosRol(db, rolId) {
+  return db
+    .prepare(
+      `SELECT p.codigo FROM roles_permisos rp JOIN permisos p ON p.id = rp.permiso_id
+       WHERE rp.rol_id = ? AND rp.deleted_at IS NULL AND p.deleted_at IS NULL`
+    )
+    .all(rolId)
+    .map((r) => r.codigo);
+}
+
+// La sesión activa guarda sus permisos al iniciar; si se cambia su rol o los permisos de su
+// rol, se recargan en el momento (sin esperar a que cierre sesión).
+function refrescarSesion(db) {
+  const sesion = session.obtenerSesion();
+  if (!sesion) return;
+  const usuario = db.prepare('SELECT u.rol_id, r.nombre AS rol_nombre FROM usuarios u JOIN roles r ON r.id = u.rol_id WHERE u.id = ?').get(sesion.usuarioId);
+  if (!usuario) return;
+  session.actualizarRol({ rolId: usuario.rol_id, rolNombre: usuario.rol_nombre, permisos: new Set(codigosPermisosRol(db, usuario.rol_id)) });
+}
+
 function actualizarPermisosRol(db, rolId, permisoIds, usuarioId) {
   session.requerirPermiso('configuracion.gestionar');
   const nuevoSet = new Set(permisoIds);
+  const sesion = session.obtenerSesion();
+  const gestionar = db.prepare("SELECT id FROM permisos WHERE codigo = 'configuracion.gestionar'").get();
+  if (sesion && sesion.rolId === rolId && gestionar && !nuevoSet.has(gestionar.id)) {
+    throw new Error('No puede quitarle a su propio rol el permiso de configuración: se quedaría sin acceso. Hágalo desde otro usuario administrador.');
+  }
   const filasExistentes = db.prepare('SELECT id, permiso_id, deleted_at FROM roles_permisos WHERE rol_id = ?').all(rolId);
   const filaPorPermiso = new Map(filasExistentes.map((f) => [f.permiso_id, f]));
 
@@ -259,6 +286,7 @@ function actualizarPermisosRol(db, rolId, permisoIds, usuarioId) {
   }
 
   registrarAuditoria(db, { usuarioId, modulo: 'configuracion', entidad: 'roles', entidadId: rolId, accion: 'editar_permisos', detalle: { totalPermisos: permisoIds.length } });
+  refrescarSesion(db);
 }
 
 function actualizarLimiteDescuentoRol(db, rolId, limitePct, usuarioId) {

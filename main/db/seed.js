@@ -334,8 +334,11 @@ function sincronizarPermisosFaltantes(db) {
       const rolRow = db.prepare('SELECT id FROM roles WHERE nombre = ? AND es_rol_sistema = 1').get(rol.nombre);
       if (!rolRow) continue; // rol de sistema renombrado/eliminado por el usuario: no se reconcilia
       const codigosEsperados = rol.permisos === 'ALL' ? PERMISOS.map((p) => p[1]) : rol.permisos;
+      // Cuenta también los quitados (deleted_at): si el administrador le quitó un permiso al rol,
+      // no se le vuelve a dar al reiniciar. Solo se agregan los permisos que el rol nunca tuvo
+      // (los nuevos de una versión posterior).
       const yaAsignados = new Set(
-        db.prepare('SELECT permiso_id FROM roles_permisos WHERE rol_id = ? AND deleted_at IS NULL').all(rolRow.id).map((r) => r.permiso_id)
+        db.prepare('SELECT permiso_id FROM roles_permisos WHERE rol_id = ?').all(rolRow.id).map((r) => r.permiso_id)
       );
       for (const codigo of codigosEsperados) {
         const permisoId = permisoIdByCodigo.get(codigo);
