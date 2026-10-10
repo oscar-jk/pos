@@ -10,6 +10,7 @@ const configuracion = require('./configuracion');
 const emision = require('../ecf/emision');
 const cola = require('../ecf/cola');
 const anulacion = require('../ecf/anulacion');
+const receptor = require('../ecf/receptor');
 const { crearClienteDgii } = require('../ecf/dgii');
 const { firmarXml } = require('../ecf/firma');
 const { TIPOS_ECF, SIN_VENCIMIENTO, rncValido } = require('../ecf/construir');
@@ -194,6 +195,7 @@ function listarEcf(db, { estado, tipoEcf, desde, hasta, texto, limite = 200 } = 
       `SELECT d.id, d.tipo_ecf, d.encf, d.ambiente, d.rnc_comprador, d.fecha_emision, d.fecha_firma, d.monto_total, d.total_itbis,
               d.codigo_seguridad, d.via, d.estado, d.track_id, d.mensajes, d.contingencia, d.intentos, d.ultimo_error,
               d.proximo_intento_at, d.enviado_at, d.respondido_at, d.created_at,
+              d.entrega_estado, d.entrega_error, d.acuse_estado, d.aprobacion_estado, d.aprobacion_motivo,
               v.id AS documento_id, v.tipo AS documento_tipo, v.numero AS documento_numero, v.estado AS documento_estado,
               COALESCE(c.nombre, 'Consumidor final') AS cliente_nombre
        FROM ecf_documentos d
@@ -217,6 +219,26 @@ function listarAnulaciones(db) {
     )
     .all()
     .map((a) => ({ ...a, respuesta: parsearJson(a.respuesta) }));
+}
+
+const ACUSE_TEXTO = { 0: 'Recibido', 1: 'No recibido' };
+
+function listarRecibidos(db, { texto, limite = 200 } = {}) {
+  session.requerirPermiso('compras.ecf.recibir');
+  const cond = ['r.deleted_at IS NULL'];
+  const params = [];
+  if (texto) { cond.push('(r.encf LIKE ? OR r.rnc_emisor LIKE ? OR r.razon_social_emisor LIKE ?)'); params.push(`%${texto}%`, `%${texto}%`, `%${texto}%`); }
+  params.push(Math.min(Number(limite) || 200, 1000));
+  return db
+    .prepare(
+      `SELECT r.id, r.tipo_ecf, r.encf, r.rnc_emisor, r.razon_social_emisor, r.fecha_emision, r.monto_total, r.total_itbis, r.via,
+              r.acuse_estado, r.acuse_motivo, r.aprobacion_estado, r.aprobacion_motivo, r.aprobacion_envio, r.aprobacion_error,
+              r.aprobacion_enviada_at, r.created_at, p.nombre AS proveedor_nombre
+       FROM ecf_recibidos r LEFT JOIN proveedores p ON REPLACE(REPLACE(p.rnc, '-', ''), ' ', '') = r.rnc_emisor AND p.deleted_at IS NULL
+       WHERE ${cond.join(' AND ')} ORDER BY r.created_at DESC LIMIT ?`
+    )
+    .all(...params)
+    .map((r) => ({ ...r, nombre_tipo: TIPOS_ECF[r.tipo_ecf] || null, acuse_texto: ACUSE_TEXTO[r.acuse_estado], motivo_texto: r.acuse_motivo ? receptor.MOTIVO_NO_RECIBIDO[r.acuse_motivo] : null }));
 }
 
 function ventanaDe(event) {
@@ -308,6 +330,39 @@ function register(ipcMain, getDb) {
     db.prepare("UPDATE ecf_anulaciones SET proximo_intento_at = NULL WHERE estado = 'pendiente'").run();
     return (await cola.ejecutar()) || { enviados: 0, aceptados: 0, rechazados: 0, enProceso: 0, anulaciones: 0, errores: 0 };
   });
+  // e-CF que un proveedor envió por correo u otro medio: se verifica la firma y que el
+  // comprador seamos nosotros, igual que si llegara por el servicio de recepción.
+  ipcMain.handle('ecf:importarRecibido', async (event, payload) => {
+    session.requerirPermiso('compras.ecf.recibir');
+    const eleccion = await dialog.showOpenDialog(ventanaDe(event), {
+      title: 'e-CF recibido (XML)', properties: ['openFile', 'multiSelections'], filters: [{ name: 'XML', extensions: ['xml'] }],
+    });
+    if (eleccion.canceled || !eleccion.filePaths.length) return { cancelado: true };
+    const db = getDb();
+    const resultados = eleccion.filePaths.map((ruta) => {
+      const r = db.transaction(() => receptor.recibirEcf(db, fs.readFileSync(ruta, 'utf8'), { via: 'importado', usuarioId: payload && payload.usuarioId }))();
+      return { archivo: ruta.split(/[\\/]/).pop(), encf: r.datos ? r.datos.encf : null, recibido: r.estado === 0, motivo: r.motivoTexto };
+    });
+    return { resultados };
+  });
+  ipcMain.handle('ecf:listarRecibidos', (event, filtros) => listarRecibidos(getDb(), filtros || {}));
+  ipcMain.handle('ecf:obtenerXmlRecibido', (event, { id }) => {
+    session.requerirPermiso('compras.ecf.recibir');
+    const fila = getDb().prepare('SELECT encf, xml, acuse_xml, aprobacion_xml FROM ecf_recibidos WHERE id = ?').get(id);
+    if (!fila) throw new Error('Comprobante no encontrado');
+    return fila;
+  });
+  ipcMain.handle('ecf:aprobarRecibido', (event, payload) => {
+    session.requerirPermiso('compras.ecf.recibir');
+    const db = getDb();
+    db.transaction(() => {
+      receptor.aprobarComercialmente(db, payload.id, { aprobado: Boolean(payload.aprobado), motivo: payload.motivo, usuarioId: payload.usuarioId });
+      configuracion.registrarAuditoria(db, { usuarioId: payload.usuarioId, modulo: 'compras', entidad: 'ecf_recibidos', entidadId: payload.id, accion: payload.aprobado ? 'aprobar' : 'rechazar', detalle: { motivo: payload.motivo || null } });
+    })();
+    cola.programar();
+    return listarRecibidos(db, {}).find((r) => r.id === payload.id) || null;
+  });
+
   ipcMain.handle('ecf:anularSecuencias', (event, payload) => {
     session.requerirPermiso('ventas.ecf.gestionar');
     const db = getDb();
@@ -323,5 +378,5 @@ function register(ipcMain, getDb) {
 
 module.exports = {
   register, estadoGeneral, guardarModo, cambiarContingencia, registrarSecuencia, actualizarSecuencia,
-  listarEcf, listarAnulaciones, alertas, requisitosParaActivar,
+  listarEcf, listarAnulaciones, listarRecibidos, alertas, requisitosParaActivar,
 };

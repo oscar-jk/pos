@@ -14,6 +14,7 @@ const MIGRACIONES = [
   require('./010_cambio_password'),
   require('./011_columnas_sync'),
   require('./012_facturacion_electronica'),
+  require('./013_ecf_receptor'),
 ];
 
 function columnasDe(db, tabla) {

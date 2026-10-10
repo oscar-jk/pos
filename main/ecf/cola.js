@@ -2,7 +2,7 @@
 // se transmite (recepción o RFCE), se consulta su resultado por TrackId y, si no hay conexión,
 // se reintenta con espera creciente. El plazo legal para enviar lo emitido sin conexión es de
 // 72 horas (Informe Técnico e-CF §19).
-const { crearClienteDgii, ErrorConexionDgii } = require('./dgii');
+const { crearClienteDgii, crearClienteContribuyente, ErrorConexionDgii } = require('./dgii');
 const { firmarXml } = require('./firma');
 const emision = require('./emision');
 
@@ -124,11 +124,80 @@ async function enviarAnulacion(db, an, cliente, ahora, resumen) {
   }
 }
 
-// opciones: { ahora, limite, soloId, crearCliente (pruebas) }
+// Paso 3 del modelo emisor-receptor (Informe Técnico e-CF §8): aceptado por la DGII, el e-CF se
+// entrega al comprador si es receptor electrónico (directorio de la DGII) y se guarda su acuse.
+// Si no lo es, el comprador recibe la representación impresa.
+async function entregarAlComprador(db, doc, cliente, opciones, ahora, resumen) {
+  const nombre = `${doc.rnc_emisor}${doc.encf}.xml`;
+  try {
+    const directorio = await cliente.consultarDirectorio(doc.rnc_comprador);
+    if (!directorio) {
+      db.prepare("UPDATE ecf_documentos SET entrega_estado = 'no_electronico', entrega_error = NULL, entrega_proximo_at = NULL, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?").run(doc.id);
+      return;
+    }
+    const contribuyente = opciones.crearContribuyente
+      ? opciones.crearContribuyente(directorio)
+      : crearClienteContribuyente({ ...directorio, firmar: (xml) => firmarXml(xml, emision.certificadoActivo(db)).xml });
+    const r = await contribuyente.enviarEcf(doc.xml, nombre);
+    const acuse = typeof r.cuerpo === 'string' && /<ARECF[\s>]/.test(r.cuerpo) ? r.cuerpo : null;
+    if (r.status >= 200 && r.status < 300 && acuse) {
+      const estado = Number((acuse.match(/<Estado>(\d)<\/Estado>/) || [])[1]);
+      db.prepare(
+        `UPDATE ecf_documentos SET entrega_estado = ?, entrega_url = ?, acuse_xml = ?, acuse_estado = ?, entrega_error = ?, entrega_proximo_at = NULL,
+           updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?`
+      ).run(estado === 0 ? 'entregado' : 'no_recibido', directorio.urlRecepcion, acuse, Number.isFinite(estado) ? estado : null,
+        estado === 0 ? null : `El comprador no lo recibió (motivo ${(acuse.match(/<CodigoMotivoNoRecibido>(\d)</) || [])[1] || '—'})`, doc.id);
+      resumen.entregados += 1;
+      return;
+    }
+    throw new Error(`El receptor respondió HTTP ${r.status} sin acuse de recibo`);
+  } catch (e) {
+    const intentos = (doc.entrega_intentos || 0) + 1;
+    db.prepare(
+      `UPDATE ecf_documentos SET entrega_estado = 'pendiente', entrega_intentos = ?, entrega_error = ?, entrega_proximo_at = ?,
+         updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?`
+    ).run(intentos, e.message, masMinutos(ahora, ESPERAS_MIN[Math.min(intentos, ESPERAS_MIN.length) - 1]), doc.id);
+    resumen.errores += 1;
+  }
+}
+
+// Nuestra aprobación o rechazo comercial de un e-CF recibido: copia a la DGII y, si el emisor
+// es receptor electrónico, también a él.
+async function enviarAprobacionPropia(db, r, cliente, opciones, ahora, resumen) {
+  const nombre = `${r.rnc_comprador}${r.encf}.xml`;
+  const actualizar = (campos) => {
+    const claves = Object.keys(campos);
+    db.prepare(`UPDATE ecf_recibidos SET ${claves.map((c) => `${c} = ?`).join(', ')}, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?`)
+      .run(...claves.map((c) => campos[c]), r.id);
+  };
+  try {
+    const resp = await cliente.enviarAprobacionComercial(r.aprobacion_xml, nombre);
+    if (resp.status < 200 || resp.status >= 300) {
+      actualizar({ aprobacion_envio: 'error', aprobacion_error: [].concat(resp.mensaje || []).join('; ') || `La DGII respondió HTTP ${resp.status}`, aprobacion_proximo_at: null });
+      resumen.errores += 1;
+      return;
+    }
+    const directorio = await cliente.consultarDirectorio(r.rnc_emisor).catch(() => null);
+    if (directorio && directorio.urlAceptacion) {
+      const contribuyente = opciones.crearContribuyente
+        ? opciones.crearContribuyente(directorio)
+        : crearClienteContribuyente({ ...directorio, firmar: (xml) => firmarXml(xml, emision.certificadoActivo(db)).xml });
+      await contribuyente.enviarAprobacion(r.aprobacion_xml, nombre).catch(() => null); // la copia a la DGII es la que cuenta
+    }
+    actualizar({ aprobacion_envio: 'enviada', aprobacion_enviada_at: ahora.toISOString(), aprobacion_error: null, aprobacion_proximo_at: null });
+    resumen.aprobaciones += 1;
+  } catch (e) {
+    const intentos = (r.aprobacion_intentos || 0) + 1;
+    actualizar({ aprobacion_intentos: intentos, aprobacion_error: e.message, aprobacion_proximo_at: masMinutos(ahora, ESPERAS_MIN[Math.min(intentos, ESPERAS_MIN.length) - 1]) });
+    resumen.errores += 1;
+  }
+}
+
+// opciones: { ahora, limite, soloId, crearCliente / crearContribuyente (pruebas) }
 async function procesarCola(db, opciones = {}) {
   const ahora = opciones.ahora || new Date();
   const limite = opciones.limite || 50;
-  const resumen = { enviados: 0, aceptados: 0, rechazados: 0, enProceso: 0, anulaciones: 0, errores: 0 };
+  const resumen = { enviados: 0, aceptados: 0, rechazados: 0, enProceso: 0, anulaciones: 0, entregados: 0, aprobaciones: 0, errores: 0 };
   const clientes = new Map();
   const filtroId = opciones.soloId ? 'AND id = ?' : '';
   const listos = (tabla, estado) => db
@@ -144,6 +213,26 @@ async function procesarCola(db, opciones = {}) {
   if (!opciones.soloId) {
     for (const an of listos('ecf_anulaciones', 'pendiente')) {
       await enviarAnulacion(db, an, clienteParaAmbiente(db, an.ambiente, opciones, clientes), ahora, resumen);
+    }
+    const porEntregar = db
+      .prepare(
+        `SELECT * FROM ecf_documentos
+         WHERE estado IN ('aceptado', 'aceptado_condicional') AND rnc_comprador IS NOT NULL AND via = 'recepcion' AND deleted_at IS NULL
+           AND (entrega_estado IS NULL OR (entrega_estado = 'pendiente' AND (entrega_proximo_at IS NULL OR entrega_proximo_at <= ?)))
+         ORDER BY created_at LIMIT ?`
+      )
+      .all(ahora.toISOString(), limite);
+    for (const doc of porEntregar) {
+      await entregarAlComprador(db, doc, clienteParaAmbiente(db, doc.ambiente, opciones, clientes), opciones, ahora, resumen);
+    }
+    const aprobaciones = db
+      .prepare(
+        `SELECT * FROM ecf_recibidos WHERE aprobacion_envio = 'pendiente' AND deleted_at IS NULL
+           AND (aprobacion_proximo_at IS NULL OR aprobacion_proximo_at <= ?) ORDER BY created_at LIMIT ?`
+      )
+      .all(ahora.toISOString(), limite);
+    for (const r of aprobaciones) {
+      await enviarAprobacionPropia(db, r, clienteParaAmbiente(db, emision.ambienteEcf(db), opciones, clientes), opciones, ahora, resumen);
     }
   }
   return resumen;
@@ -165,7 +254,9 @@ const estado = { getDb: null, corriendo: null, temporizador: null, pronto: null,
 
 function hayTrabajo(db) {
   return Boolean(db.prepare("SELECT 1 FROM ecf_documentos WHERE estado IN ('pendiente', 'en_proceso') AND deleted_at IS NULL LIMIT 1").get()
-    || db.prepare("SELECT 1 FROM ecf_anulaciones WHERE estado = 'pendiente' AND deleted_at IS NULL LIMIT 1").get());
+    || db.prepare("SELECT 1 FROM ecf_anulaciones WHERE estado = 'pendiente' AND deleted_at IS NULL LIMIT 1").get()
+    || db.prepare("SELECT 1 FROM ecf_documentos WHERE estado IN ('aceptado', 'aceptado_condicional') AND rnc_comprador IS NOT NULL AND via = 'recepcion' AND (entrega_estado IS NULL OR entrega_estado = 'pendiente') AND deleted_at IS NULL LIMIT 1").get()
+    || db.prepare("SELECT 1 FROM ecf_recibidos WHERE aprobacion_envio = 'pendiente' AND deleted_at IS NULL LIMIT 1").get());
 }
 
 function ejecutar(opciones = {}) {

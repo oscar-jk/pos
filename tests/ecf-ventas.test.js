@@ -47,6 +47,7 @@ function dgiiSimulada(guion = {}) {
     async enviarEcf(xml, nombre) { llamadas.push(['ecf', nombre]); return guion.ecf ? guion.ecf(xml) : { status: 200, trackId: 'trk-1' }; },
     async consultarResultado(trackId) { llamadas.push(['consulta', trackId]); return guion.consulta ? guion.consulta(trackId) : { status: 200, codigo: 1, estado: 'Aceptado', mensajes: [] }; },
     async anularRangos(xml, nombre) { llamadas.push(['anecf', nombre]); return guion.anecf ? guion.anecf(xml) : { status: 200, codigo: '1', mensajes: ['Las secuencias fueron anuladas correctamente'] }; },
+    async consultarDirectorio(rnc) { llamadas.push(['directorio', rnc]); return guion.directorio ? guion.directorio(rnc) : null; },
   };
   return { llamadas, crearCliente: () => cliente };
 }
@@ -139,7 +140,8 @@ test('cola: RFCE aceptado; recepción con TrackId y consulta; sin conexión qued
   assert.equal(ecfDe(db, consumo).estado, 'aceptado');
   assert.equal(ecfDe(db, credito).estado, 'aceptado', 'se envió, recibió TrackId y se consultó en la misma pasada');
   assert.equal(ecfDe(db, credito).track_id, 'trk-1');
-  assert.deepEqual(dgii.llamadas.map((l) => l[0]), ['rfce', 'ecf', 'consulta']);
+  assert.deepEqual(dgii.llamadas.map((l) => l[0]), ['rfce', 'ecf', 'consulta', 'directorio']);
+  assert.equal(ecfDe(db, credito).entrega_estado, 'no_electronico', 'el comprador no está en el directorio: recibe la representación impresa');
   assert.equal(dgii.llamadas[0][1], `131880738${ecfDe(db, consumo).encf}.xml`, 'nombre de archivo RNC + e-NCF');
 });
 

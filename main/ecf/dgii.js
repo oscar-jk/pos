@@ -22,6 +22,60 @@ function urlsDe(ambiente) {
     consultaRfce: `${fc}/consultarfce/api/Consultas/Consulta`,
     anulacion: `${ecf}/anulacionrangos/api/operaciones/anularrango`,
     aprobacionComercial: `${ecf}/aprobacioncomercial/api/aprobacioncomercial`,
+    directorioPorRnc: `${ecf}/consultadirectorio/api/consultas/obtenerdirectorioporrnc`,
+  };
+}
+
+// Ejecuta una petición HTTP con espera máxima; la falta de red se distingue del resto.
+async function pedirHttp(fetchImpl, url, opciones = {}) {
+  let respuesta;
+  try {
+    respuesta = await fetchImpl(url, { ...opciones, signal: AbortSignal.timeout(TIEMPO_ESPERA_MS) });
+  } catch (e) {
+    throw new ErrorConexionDgii(`Sin conexión con ${new URL(url).host} (${e.cause && e.cause.code ? e.cause.code : e.name === 'TimeoutError' ? 'tiempo de espera agotado' : e.message})`);
+  }
+  const texto = await respuesta.text();
+  if (respuesta.status >= 500) throw new ErrorConexionDgii(`El servicio ${new URL(url).host} no está disponible (HTTP ${respuesta.status})`);
+  let cuerpo = texto;
+  if ((respuesta.headers.get('content-type') || '').includes('json') || /^\s*[[{]/.test(texto)) {
+    try { cuerpo = JSON.parse(texto); } catch { cuerpo = texto; }
+  }
+  return { status: respuesta.status, cuerpo };
+}
+
+function formularioXml(xml, nombreArchivo) {
+  const form = new FormData();
+  form.append('xml', new Blob([xml], { type: 'text/xml' }), nombreArchivo);
+  return form;
+}
+
+// Servicios de otro contribuyente electrónico (Descripción Técnica Emisores Electrónicos):
+// las URL vienen del directorio de la DGII; la autenticación es opcional y, si existe, sigue el
+// mismo esquema de semilla firmada.
+function crearClienteContribuyente({ urlRecepcion, urlAceptacion, urlOpcional, firmar, fetchImpl = globalThis.fetch }) {
+  const base = (u) => String(u || '').replace(/\/+$/, '');
+  let token = null;
+  async function encabezados() {
+    if (!urlOpcional) return {};
+    if (!token || Date.parse(token.expira) - 60000 <= Date.now()) {
+      const semilla = await pedirHttp(fetchImpl, `${base(urlOpcional)}/fe/autenticacion/api/semilla`, { headers: { accept: '*/*' } });
+      if (semilla.status !== 200 || typeof semilla.cuerpo !== 'string') throw new Error(`El receptor no entregó la semilla de autenticación (HTTP ${semilla.status})`);
+      const r = await pedirHttp(fetchImpl, `${base(urlOpcional)}/fe/autenticacion/api/validacioncertificado`, {
+        method: 'POST', headers: { accept: 'application/json' }, body: formularioXml(firmar(semilla.cuerpo), 'semilla.xml'),
+      });
+      if (r.status !== 200 || !r.cuerpo || !r.cuerpo.token) throw new Error('El receptor rechazó la autenticación');
+      token = { valor: r.cuerpo.token, expira: r.cuerpo.expira || new Date(Date.now() + 3600000).toISOString() };
+    }
+    return { authorization: `Bearer ${token.valor}` };
+  }
+  return {
+    // Devuelve el acuse de recibo (ARECF firmado) que responde el receptor.
+    async enviarEcf(xml, nombreArchivo) {
+      return pedirHttp(fetchImpl, `${base(urlRecepcion)}/fe/recepcion/api/ecf`, { method: 'POST', headers: { accept: '*/*', ...(await encabezados()) }, body: formularioXml(xml, nombreArchivo) });
+    },
+    async enviarAprobacion(xml, nombreArchivo) {
+      return pedirHttp(fetchImpl, `${base(urlAceptacion)}/fe/aprobacioncomercial/api/ecf`, { method: 'POST', headers: { accept: '*/*', ...(await encabezados()) }, body: formularioXml(xml, nombreArchivo) });
+    },
   };
 }
 
@@ -31,27 +85,11 @@ function crearClienteDgii({ ambiente, firmar, fetchImpl = globalThis.fetch }) {
   let token = null;
 
   async function pedir(url, opciones = {}) {
-    let respuesta;
-    try {
-      respuesta = await fetchImpl(url, { ...opciones, signal: AbortSignal.timeout(TIEMPO_ESPERA_MS) });
-    } catch (e) {
-      throw new ErrorConexionDgii(`Sin conexión con la DGII (${e.cause && e.cause.code ? e.cause.code : e.name === 'TimeoutError' ? 'tiempo de espera agotado' : e.message})`);
-    }
-    const texto = await respuesta.text();
-    if (respuesta.status === 401) token = null;
-    if (respuesta.status >= 500) throw new ErrorConexionDgii(`El servicio de la DGII no está disponible (HTTP ${respuesta.status})`);
-    let cuerpo = texto;
-    if ((respuesta.headers.get('content-type') || '').includes('json') || /^\s*[[{]/.test(texto)) {
-      try { cuerpo = JSON.parse(texto); } catch { cuerpo = texto; }
-    }
-    return { status: respuesta.status, cuerpo };
+    const r = await pedirHttp(fetchImpl, url, opciones);
+    if (r.status === 401) token = null; // token vencido o revocado: se pide otro en el próximo envío
+    return r;
   }
-
-  function formulario(xml, nombreArchivo) {
-    const form = new FormData();
-    form.append('xml', new Blob([xml], { type: 'text/xml' }), nombreArchivo);
-    return form;
-  }
+  const formulario = formularioXml;
 
   // Autenticación: semilla → semilla firmada → token (vigencia de una hora).
   async function autenticar() {
@@ -103,7 +141,14 @@ function crearClienteDgii({ ambiente, firmar, fetchImpl = globalThis.fetch }) {
       const r = await conToken(urls.aprobacionComercial, { method: 'POST', body: formulario(xml, nombreArchivo) });
       return { status: r.status, ...(typeof r.cuerpo === 'object' ? r.cuerpo : { mensaje: String(r.cuerpo) }) };
     },
+    // Directorio de contribuyentes electrónicos: null si el RNC no es receptor electrónico.
+    async consultarDirectorio(rnc) {
+      const r = await conToken(`${urls.directorioPorRnc}?RNC=${encodeURIComponent(rnc)}`);
+      const lista = Array.isArray(r.cuerpo) ? r.cuerpo : (r.cuerpo && typeof r.cuerpo === 'object' && r.cuerpo.rnc ? [r.cuerpo] : []);
+      const fila = lista.find((x) => String(x.rnc || '').replace(/\D/g, '') === String(rnc)) || lista[0];
+      return fila && fila.urlRecepcion ? { nombre: fila.nombre, urlRecepcion: fila.urlRecepcion, urlAceptacion: fila.urlAceptacion, urlOpcional: fila.urlOpcional || null } : null;
+    },
   };
 }
 
-module.exports = { crearClienteDgii, ErrorConexionDgii, urlsDe };
+module.exports = { crearClienteDgii, crearClienteContribuyente, ErrorConexionDgii, urlsDe };

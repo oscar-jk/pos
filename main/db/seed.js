@@ -76,6 +76,7 @@ const PERMISOS = [
   // Facturación electrónica
   ['ventas', 'ventas.ecf.ver', 'Ver el estado de los comprobantes electrónicos (e-CF) ante la DGII'],
   ['ventas', 'ventas.ecf.gestionar', 'Reenviar e-CF a la DGII y anular secuencias e-NCF no usadas'],
+  ['compras', 'compras.ecf.recibir', 'Recibir e-CF de proveedores y dar su aprobación o rechazo comercial'],
 ];
 
 // Matriz rol -> permisos, según los 6 roles propuestos en el documento fuente.
@@ -115,7 +116,7 @@ const ROLES = [
     limite_descuento_pct: 0,
     permisos: [
       'compras.orden.crear', 'compras.factura.crear', 'compras.devolucion.crear', 'compras.nota_debito.crear',
-      'compras.costos.ver', 'compras.reportes.ver', 'inventario.ver',
+      'compras.costos.ver', 'compras.reportes.ver', 'compras.ecf.recibir', 'inventario.ver',
     ],
   },
   {

@@ -280,4 +280,9 @@ contextBridge.exposeInMainWorld('puntoXEcf', {
   reintentar: invoke('ecf:reintentar'),
   enviarPendientes: invoke('ecf:enviarPendientes'),
   anularSecuencias: invoke('ecf:anularSecuencias'),
+  // e-CF recibidos de proveedores
+  importarRecibido: invoke('ecf:importarRecibido'),
+  listarRecibidos: invoke('ecf:listarRecibidos'),
+  aprobarRecibido: invoke('ecf:aprobarRecibido'),
+  obtenerXmlRecibido: invoke('ecf:obtenerXmlRecibido'),
 });

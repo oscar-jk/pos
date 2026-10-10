@@ -11,6 +11,13 @@ const ESTADOS = {
   rechazado: ['Rechazado', 'var(--color-danger)'],
   anulado: ['Anulado', 'var(--color-text-faint)'],
 };
+// Entrega al comprador electrónico (paso 3 del modelo emisor-receptor).
+const ENTREGA = {
+  entregado: 'Entregado al comprador electrónico (acuse recibido)',
+  no_recibido: 'El comprador electrónico no lo recibió',
+  no_electronico: 'El comprador no es receptor electrónico: entréguele la representación impresa',
+  pendiente: 'Entrega al comprador pendiente',
+};
 const ESTADOS_ANULACION = { pendiente: ['Pendiente', 'var(--color-warning)'], aceptada: ['Aceptada', 'var(--color-success)'], rechazada: ['Rechazada', 'var(--color-danger)'] };
 const DOCUMENTOS = { factura: 'Factura', nota_credito: 'Nota de crédito', nota_debito: 'Nota de débito' };
 const COLOR_ALERTA = { error: 'var(--color-danger)', aviso: 'var(--color-warning)' };
@@ -74,6 +81,8 @@ function celdaEstado(d) {
   if (d.estado === 'pendiente' && d.ultimo_error) detalle.push(`Último intento: ${d.ultimo_error}`);
   if (d.estado === 'pendiente' && d.contingencia) detalle.push('Emitido sin conexión (contingencia)');
   for (const m of d.mensajes || []) detalle.push(`${m.codigo ? `${m.codigo}: ` : ''}${m.valor}`);
+  if (d.entrega_estado) detalle.push(ENTREGA[d.entrega_estado] + (d.entrega_estado === 'pendiente' && d.entrega_error ? ` (${d.entrega_error})` : ''));
+  if (d.aprobacion_estado) detalle.push(`Cliente: ${d.aprobacion_estado === 1 ? 'aprobación comercial' : 'rechazo comercial'}${d.aprobacion_motivo ? ` — ${d.aprobacion_motivo}` : ''}`);
   return `<span class="pill-estado" style="background:${esc(color)};">${esc(texto)}</span>
     ${detalle.map((t) => `<div class="mensaje-dgii">${esc(t)}</div>`).join('')}`;
 }

@@ -58,3 +58,10 @@
   border-color: var(--color-accent);
   background: var(--color-accent-soft);
 }
+
+.enlace-accion {
+  color: var(--color-accent);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
