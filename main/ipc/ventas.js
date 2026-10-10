@@ -8,7 +8,7 @@ const configuracion = require('./configuracion');
 const session = require('../auth/session');
 const ecf = require('../ecf/emision');
 const ecfAnulacion = require('../ecf/anulacion');
-const { TIPO_ECF_POR_COMPROBANTE } = require('../ecf/construir');
+const { TIPO_ECF_POR_COMPROBANTE, TIPO_ECF_POR_CODIGO_B } = require('../ecf/construir');
 const colaEcf = require('../ecf/cola');
 
 const CUENTA_POR_FORMA_PAGO = {
@@ -48,7 +48,6 @@ function tomarNcf(db, codigoTipoNcf) {
 // contingencia), si no el NCF serie B. Las facturas siempre llevan comprobante; las notas
 // tradicionales (B03/B04) solo si el negocio registró esas secuencias.
 const CODIGO_B_POR_COMPROBANTE = { consumo: 'B02', credito_fiscal: 'B01', gubernamental: 'B14', regimen_especial: 'B15' };
-const TIPO_ECF_POR_CODIGO_B = { B01: 31, B02: 32, B14: 45, B15: 44, B03: 33, B04: 34 };
 
 function tomarComprobante(db, codigo, fechaIso, { opcional = false } = {}) {
   if (ecf.usaEcf(db)) {
@@ -1415,6 +1414,7 @@ function listarFacturas(db, { desde, hasta, estado, clienteId, limite = 50 }) {
     .prepare(
       `SELECT dv.id, dv.numero, dv.ncf, dv.fecha, dv.total, dv.estado, dv.condicion_pago, dv.tasa_cambio,
               (SELECT codigo FROM monedas WHERE id = dv.moneda_id) AS moneda_codigo,
+              (SELECT estado FROM ecf_documentos e WHERE e.origen_tipo = 'documentos_venta' AND e.origen_id = dv.id ORDER BY e.created_at DESC LIMIT 1) AS ecf_estado,
               dv.motivo_anulacion, ua.nombre_completo AS usuario_anulo_nombre,
               COALESCE(c.nombre, 'Consumidor final') AS cliente_nombre, u.nombre_completo AS vendedor_nombre
        FROM documentos_venta dv

@@ -24,6 +24,8 @@ const TIPOS_ECF = {
 
 // Tipo de e-CF de una venta según el comprobante que corresponde al cliente.
 const TIPO_ECF_POR_COMPROBANTE = { consumo: 32, credito_fiscal: 31, gubernamental: 45, regimen_especial: 44 };
+// Equivalencia NCF serie B → tipo de e-CF (Informe Técnico e-CF §6.1).
+const TIPO_ECF_POR_CODIGO_B = { B01: 31, B02: 32, B03: 33, B04: 34, B14: 45, B15: 44 };
 
 // Las facturas de consumo por debajo de este monto se reportan con el resumen (RFCE).
 const TOPE_CONSUMO_RFCE = 250000;
@@ -323,5 +325,5 @@ function construirAnecf({ rncEmisor, rangos, fecha = new Date() }) {
 
 module.exports = {
   construirEcf, construirRfce, construirAnecf, calcularMontos, indicadorFacturacion, rncValido, telefonoDgii,
-  TIPOS_ECF, TIPO_ECF_POR_COMPROBANTE, TOPE_CONSUMO_RFCE, SIN_VENCIMIENTO, CODIGO_MODIFICACION, FORMA_PAGO_DGII,
+  TIPOS_ECF, TIPO_ECF_POR_COMPROBANTE, TIPO_ECF_POR_CODIGO_B, TOPE_CONSUMO_RFCE, SIN_VENCIMIENTO, CODIGO_MODIFICACION, FORMA_PAGO_DGII,
 };

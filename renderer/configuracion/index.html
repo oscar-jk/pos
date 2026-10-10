@@ -29,6 +29,7 @@
         <button class="tab-btn" data-tab="usuarios">Usuarios</button>
         <button class="tab-btn" data-tab="roles">Roles y permisos</button>
         <button class="tab-btn" data-tab="fiscal">Parámetros fiscales</button>
+        <button class="tab-btn" data-tab="ecf" data-permiso="configuracion.ecf.gestionar">Facturación electrónica</button>
         <button class="tab-btn" data-tab="parametros">Parámetros de negocio</button>
         <button class="tab-btn" data-tab="sucursales">Sucursales y almacenes</button>
         <button class="tab-btn" data-tab="impresoras" data-permiso="configuracion.impresoras.gestionar">Impresoras</button>
@@ -43,6 +44,7 @@
           <div class="form-field"><label>Iniciales (distintivo del sidebar)</label><input id="neg-iniciales" class="input-normal" maxlength="3" /></div>
           <div class="form-field"><label>Color de acento</label><input id="neg-color" class="input-normal" type="color" /></div>
           <div class="form-field"><label>RNC del negocio</label><input id="neg-rnc" class="input-normal" placeholder="Se imprime en el encabezado de la factura" /></div>
+          <div class="form-field"><label>Razón social (como aparece en la DGII)</label><input id="neg-razon-social" class="input-normal" maxlength="150" placeholder="Emisor de los comprobantes electrónicos" /></div>
           <div class="form-field"><label>Teléfono</label><input id="neg-telefono" class="input-normal" /></div>
           <div class="form-field" style="grid-column: span 2;"><label>Dirección</label><input id="neg-direccion" class="input-normal" /></div>
         </div>
@@ -107,6 +109,10 @@
         </div>
       </div>
 
+      <div id="tab-ecf" class="tab-panel" style="display:none;">
+        <div id="ecf-contenido"></div>
+      </div>
+
       <div id="tab-impresoras" class="tab-panel" style="display:none;">
         <p style="font-size:13px; color:var(--color-text-muted); margin:0 0 14px; max-width:640px;">
           La impresora que configures para cada tipo se preselecciona en el diálogo de impresión de Windows.
@@ -167,5 +173,6 @@
   <script src="../shared/shell.js"></script>
   <script src="../shared/modal.js"></script>
   <script src="./configuracion.js"></script>
+  <script src="./ecf.js"></script>
 </body>
 </html>

@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'" />
+  <title>Punto X — Comprobantes electrónicos</title>
+  <link rel="stylesheet" href="../shared/styles.css" />
+  <link rel="stylesheet" href="./ventas.css" />
+  <style>
+    .tab-panel { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-lg); padding: 18px 20px; }
+    .enlace-accion { color: var(--color-accent); font-size: 12px; font-weight: 700; cursor: pointer; }
+    .pill-estado { font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 20px; color: #fff; white-space: nowrap; }
+    .filtros-ecf { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; margin-bottom: 14px; }
+    .filtros-ecf .form-field { min-width: 150px; }
+    .mensaje-dgii { font-size: 11px; color: var(--color-text-muted); margin-top: 3px; max-width: 360px; }
+    .xml-vista { white-space: pre-wrap; word-break: break-all; font-family: Consolas, monospace; font-size: 11px; max-height: 60vh; overflow: auto; background: var(--color-bg); padding: 10px; border-radius: var(--radius-sm); }
+    .kpi-grid { margin-bottom: 16px; }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <div id="sidebar-container"></div>
+    <div class="main-area">
+      <div id="topbar-container"></div>
+
+      <div class="page-header">
+        <div>
+          <h1>Comprobantes electrónicos</h1>
+          <p id="subtitulo-ecf">Estado de cada e-CF ante la DGII.</p>
+        </div>
+        <div id="acciones-pagina" style="display:flex; gap:8px;">
+          <button class="btn btn-secundario" id="btn-anular-secuencias" data-permiso="ventas.ecf.gestionar">Anular secuencias no usadas</button>
+          <button class="btn btn-primario" id="btn-enviar-pendientes" data-permiso="ventas.ecf.gestionar">Enviar pendientes</button>
+        </div>
+      </div>
+
+      <div id="mensaje-error" class="mensaje-error" style="display:none;"></div>
+      <div id="mensaje-exito" class="factura-exito" style="display:none;"></div>
+      <div id="alertas-ecf"></div>
+
+      <div class="kpi-grid" id="kpis-ecf"></div>
+
+      <div class="tab-panel" id="panel-ecf">
+        <div class="filtros-ecf">
+          <div class="form-field"><label>Estado</label>
+            <select id="f-estado" class="input-normal">
+              <option value="">Todos</option>
+              <option value="pendiente">Pendiente de envío</option>
+              <option value="con_error">Con error de envío</option>
+              <option value="en_proceso">En proceso en la DGII</option>
+              <option value="aceptado">Aceptado</option>
+              <option value="aceptado_condicional">Aceptado condicional</option>
+              <option value="rechazado">Rechazado</option>
+              <option value="anulado">Anulado</option>
+            </select>
+          </div>
+          <div class="form-field"><label>Tipo</label>
+            <select id="f-tipo" class="input-normal">
+              <option value="">Todos</option>
+              <option value="31">E31 Crédito fiscal</option>
+              <option value="32">E32 Consumo</option>
+              <option value="33">E33 Nota de débito</option>
+              <option value="34">E34 Nota de crédito</option>
+              <option value="44">E44 Regímenes especiales</option>
+              <option value="45">E45 Gubernamental</option>
+            </select>
+          </div>
+          <div class="form-field"><label>Desde</label><input id="f-desde" type="date" class="input-normal" /></div>
+          <div class="form-field"><label>Hasta</label><input id="f-hasta" type="date" class="input-normal" /></div>
+          <div class="form-field"><label>Buscar</label><input id="f-texto" class="input-normal" placeholder="e-NCF, número o cliente" /></div>
+        </div>
+        <table class="data-table">
+          <thead><tr><th>e-NCF</th><th>Documento</th><th>Cliente</th><th>Firma</th><th>Total</th><th>Estado DGII</th><th></th></tr></thead>
+          <tbody id="ecf-tbody"></tbody>
+        </table>
+        <div id="ecf-vacio" class="empty-state" style="display:none;">No hay comprobantes electrónicos con estos filtros.</div>
+      </div>
+
+      <div class="card" style="margin-top:20px;" id="panel-anulaciones">
+        <div class="card__header"><span class="card__title">Anulaciones de secuencias (ANECF)</span></div>
+        <table class="data-table">
+          <thead><tr><th>Desde</th><th>Hasta</th><th>Cantidad</th><th>Motivo</th><th>Usuario</th><th>Fecha</th><th>Estado</th></tr></thead>
+          <tbody id="anulaciones-tbody"></tbody>
+        </table>
+        <div id="anulaciones-vacio" class="empty-state" style="display:none;">No se han anulado secuencias.</div>
+      </div>
+    </div>
+  </div>
+
+  <script src="../shared/escape.js"></script>
+  <script src="../shared/web/store.js"></script>
+  <script src="../shared/web/api-auth-app.js"></script>
+  <script src="../shared/web/api-contabilidad.js"></script>
+  <script src="../shared/web/api-inventario.js"></script>
+  <script src="../shared/web/api-caja.js"></script>
+  <script src="../shared/web/api-cxc.js"></script>
+  <script src="../shared/web/api-compras.js"></script>
+  <script src="../shared/web/api-cxp.js"></script>
+  <script src="../shared/web/api-ventas.js"></script>
+  <script src="../shared/web/api-config.js"></script>
+  <script src="../shared/web/web-banner.js"></script>
+  <script src="../shared/sidebar.js"></script>
+  <script src="../shared/topbar.js"></script>
+  <script src="../shared/shell.js"></script>
+  <script src="../shared/modal.js"></script>
+  <script src="./ecf.js"></script>
+</body>
+</html>

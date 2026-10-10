@@ -137,6 +137,7 @@ async function abrirFormularioProducto(productoId) {
       <div class="form-field form-field--checkbox"><input id="f-controla-lote" type="checkbox" ${producto?.controla_lote ? 'checked' : ''} /><label>Controla lote y vencimiento</label></div>
       <div class="form-field form-field--checkbox"><input id="f-venta-negativo" type="checkbox" ${producto?.permite_venta_negativo ? 'checked' : ''} /><label>Permite venta en negativo</label></div>
       <div class="form-field form-field--checkbox"><input id="f-es-kit" type="checkbox" ${producto?.es_kit ? 'checked' : ''} /><label>Es un kit / combo</label></div>
+      <div class="form-field form-field--checkbox"><input id="f-es-servicio" type="checkbox" ${producto?.es_servicio ? 'checked' : ''} /><label>Es un servicio (no un bien) — así se reporta en el e-CF</label></div>
       ${esEdicion ? `<div class="form-field form-field--checkbox"><input id="f-activo" type="checkbox" ${producto?.activo ? 'checked' : ''} /><label>Activo</label></div>` : ''}
     </div>
 
@@ -285,6 +286,7 @@ async function abrirFormularioProducto(productoId) {
       controlaLote: document.getElementById('f-controla-lote').checked,
       permiteVentaNegativo: document.getElementById('f-venta-negativo').checked,
       esKit: document.getElementById('f-es-kit').checked,
+      esServicio: document.getElementById('f-es-servicio').checked,
       activo: esEdicion ? document.getElementById('f-activo').checked : true,
       codigosBarra, unidadesAlternativas: unidadesAlt, componentes,
     };

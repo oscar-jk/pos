@@ -16,6 +16,7 @@ const configuracionIpc = require('./ipc/configuracion');
 const impresion = require('./printing');
 const ecfIpc = require('./ipc/ecf');
 const colaEcf = require('./ecf/cola');
+const ecfEmision = require('./ecf/emision');
 
 let mainWindow = null;
 
@@ -57,6 +58,8 @@ function registerCoreIpc() {
       negocio,
       usuario,
       modulos: configuracionIpc.modulosActivos(db),
+      // Comprobantes que emite la caja: e-CF (E31, E32...) o NCF serie B (tradicional o contingencia).
+      fiscal: { modo: ecfEmision.modoEcf(db), contingencia: Boolean(ecfEmision.contingenciaDesde(db)), emiteEcf: ecfEmision.usaEcf(db) },
     };
   });
 

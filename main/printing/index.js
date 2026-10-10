@@ -6,6 +6,10 @@ const ventas = require('../ipc/ventas');
 const caja = require('../ipc/caja');
 const configuracion = require('../ipc/configuracion');
 const { plantillaFactura, plantillaTique, plantillaArqueoTurno, plantillaPrecuenta } = require('./plantillas');
+const colaEcf = require('../ecf/cola');
+const { urlConsultaTimbre, qrSvg } = require('../ecf/timbre');
+const { TIPOS_ECF, SIN_VENCIMIENTO, CODIGO_MODIFICACION } = require('../ecf/construir');
+const { fechaDgii } = require('../ecf/fechas');
 
 const TIPOS_IMPRESORA = ['factura', 'tique', 'etiqueta'];
 
@@ -91,9 +95,44 @@ function imprimirHtml(html, impresora) {
   });
 }
 
+// Representación impresa del e-CF (Informe Técnico e-CF §18): tipo en palabras, e-NCF,
+// vencimiento de la secuencia, QR de consulta, código de seguridad, fecha de firma y leyendas.
+const LEYENDA_CONTINGENCIA = 'e-CF emitido en modalidad de contingencia, el cual podrá ser consultado para su validez fiscal a partir de las setenta y dos (72) horas.';
+
+function representacionFiscal(db, doc) {
+  const e = doc.ecf;
+  // Facturas de contingencia regularizadas: el cliente recibió el NCF serie B y así se reimprimen.
+  if (!e || e.estado === 'anulado' || /^B/.test(doc.ncf || '')) return null;
+  const negocio = configuracion.obtenerDatosNegocio(db);
+  const secuencia = doc.tipo_ncf_id ? db.prepare('SELECT vencimiento FROM tipos_ncf WHERE id = ?').get(doc.tipo_ncf_id) : null;
+  const url = urlConsultaTimbre({
+    ambiente: e.ambiente, rncEmisor: e.rnc_emisor, rncComprador: e.rnc_comprador, encf: e.encf, fechaEmision: e.fecha_emision,
+    montoTotal: e.monto_total, fechaFirma: e.fecha_firma, codigoSeguridad: e.codigo_seguridad, via: e.via,
+  });
+  const leyendas = [];
+  if (e.ambiente !== 'eCF') leyendas.push('Emitido en el ambiente de pruebas de la DGII: este comprobante no tiene validez fiscal.');
+  if (e.estado === 'rechazado') leyendas.push('Comprobante rechazado por la DGII: no tiene validez fiscal.');
+  else if (e.contingencia && e.estado === 'pendiente') leyendas.push(LEYENDA_CONTINGENCIA);
+  let referencia = null;
+  if (doc.documento_referencia_id && (e.tipo_ecf === 33 || e.tipo_ecf === 34)) {
+    const original = db.prepare('SELECT ncf FROM documentos_venta WHERE id = ?').get(doc.documento_referencia_id);
+    const xml = db.prepare('SELECT xml FROM ecf_documentos WHERE id = ?').get(e.id).xml;
+    const codigo = (xml.match(/<CodigoModificacion>(\d)<\/CodigoModificacion>/) || [])[1];
+    referencia = { ncf: original ? original.ncf : null, codigo: CODIGO_MODIFICACION[codigo] || null };
+  }
+  return {
+    titulo: TIPOS_ECF[e.tipo_ecf], encf: e.encf,
+    vencimiento: !SIN_VENCIMIENTO.has(e.tipo_ecf) && secuencia && secuencia.vencimiento ? fechaDgii(secuencia.vencimiento) : null,
+    razonSocial: (negocio.negocio_razon_social || '').trim() || null,
+    rncComprador: e.rnc_comprador, fechaEmision: e.fecha_emision, fechaFirma: e.fecha_firma, codigoSeguridad: e.codigo_seguridad,
+    qrSvg: qrSvg(url), urlConsulta: url, leyendas, referencia,
+  };
+}
+
 function htmlFactura(db, documentoId, formato) {
   const factura = ventas.obtenerFactura(db, documentoId);
   if (!factura) throw new Error('Factura no encontrada');
+  factura.ri = representacionFiscal(db, factura);
   const negocio = datosNegocio(db);
   // Cotizaciones y conduces siempre en carta: el tique es solo para facturas.
   return formato === 'tique' && factura.tipo === 'factura' ? plantillaTique(factura, negocio) : plantillaFactura(factura, negocio);
@@ -146,6 +185,8 @@ function register(ipcMain, getDb) {
     session.requerirPermiso('ventas.factura.imprimir');
     const db = getDb();
     const tipo = formato === 'tique' ? 'tique' : 'factura';
+    // Un intento de envío antes de imprimir: si no hay conexión, la RI sale con la leyenda de contingencia.
+    await colaEcf.asegurarIntento(db, 'documentos_venta', documentoId);
     return imprimirHtml(htmlFactura(db, documentoId, tipo), impresoraPorTipo(db, tipo));
   });
 
@@ -162,4 +203,4 @@ function register(ipcMain, getDb) {
   });
 }
 
-module.exports = { register, listarImpresoras, guardarImpresora, eliminarImpresora, htmlFactura, htmlArqueo, htmlPrecuenta };
+module.exports = { register, listarImpresoras, guardarImpresora, eliminarImpresora, htmlFactura, htmlArqueo, htmlPrecuenta, representacionFiscal };

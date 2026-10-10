@@ -228,7 +228,7 @@ function guardarProducto(db, payload, productoIdExistente) {
     codigoInterno, descripcion, categoriaId, unidadMedidaBaseId, tasaItbisId,
     precioDetalle, precioMayorista, precioDistribuidor, costoPromedio,
     metodoValoracion, esKit, permiteVentaNegativo, controlaLote, stockMinimo, stockMaximo,
-    diasAlertaVencimiento, activo, codigosBarra, unidadesAlternativas, componentes,
+    diasAlertaVencimiento, activo, codigosBarra, unidadesAlternativas, componentes, esServicio,
   } = payload;
 
   if (!codigoInterno || !codigoInterno.trim()) throw new Error('El código interno es obligatorio');
@@ -244,27 +244,27 @@ function guardarProducto(db, payload, productoIdExistente) {
          tasa_itbis_id = ?, precio_detalle = ?, precio_mayorista = ?, precio_distribuidor = ?,
          metodo_valoracion = ?, es_kit = ?, permite_venta_negativo = ?, controla_lote = ?,
          stock_minimo = ?, stock_maximo = ?, dias_alerta_vencimiento = ?, activo = ?,
-         updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
+         es_servicio = COALESCE(?, es_servicio), updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
        WHERE id = ?`
     ).run(
       codigoInterno.trim(), descripcion.trim(), categoriaId || null, unidadMedidaBaseId, tasaItbisId,
       precioDetalle || 0, precioMayorista || 0, precioDistribuidor || 0,
       metodoValoracionValido(metodoValoracion), esKit ? 1 : 0, permiteVentaNegativo ? 1 : 0,
       controlaLote ? 1 : 0, stockMinimo || 0, stockMaximo || null, diasAlertaVencimiento || null,
-      activo === false ? 0 : 1, productoId
+      activo === false ? 0 : 1, esServicio === undefined ? null : (esServicio ? 1 : 0), productoId
     );
   } else {
     db.prepare(
       `INSERT INTO productos
          (id, codigo_interno, descripcion, categoria_id, unidad_medida_base_id, tasa_itbis_id,
           precio_detalle, precio_mayorista, precio_distribuidor, costo_promedio, metodo_valoracion,
-          es_kit, permite_venta_negativo, controla_lote, stock_minimo, stock_maximo, dias_alerta_vencimiento)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          es_kit, permite_venta_negativo, controla_lote, stock_minimo, stock_maximo, dias_alerta_vencimiento, es_servicio)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(
       productoId, codigoInterno.trim(), descripcion.trim(), categoriaId || null, unidadMedidaBaseId, tasaItbisId,
       precioDetalle || 0, precioMayorista || 0, precioDistribuidor || 0, costoPromedio || 0,
       metodoValoracionValido(metodoValoracion), esKit ? 1 : 0, permiteVentaNegativo ? 1 : 0,
-      controlaLote ? 1 : 0, stockMinimo || 0, stockMaximo || null, diasAlertaVencimiento || null
+      controlaLote ? 1 : 0, stockMinimo || 0, stockMaximo || null, diasAlertaVencimiento || null, esServicio ? 1 : 0
     );
   }
 

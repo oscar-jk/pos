@@ -203,6 +203,37 @@ function emitirParaVenta(db, documentoId, { tipoEcf, encf, vencimiento, lineas, 
   return registrarEcf(db, { origenTipo: 'documentos_venta', origenId: documentoId, construido });
 }
 
+// Al superar una contingencia por imposibilidad de emitir (Informe Técnico e-CF §19.3): cada
+// factura que salió con NCF serie B en ese periodo recibe su e-CF, que referencia el NCF con el
+// código 4 ("Reemplazo NCF emitido en contingencia") y se envía solo a la DGII; el cliente
+// conserva el comprobante serie B que recibió. Las notas de crédito y débito no se regularizan
+// solas (el e-CF admite una sola referencia): se informan para revisarlas.
+function regularizarContingencia(db, desdeIso) {
+  const facturas = db
+    .prepare(
+      `SELECT dv.* FROM documentos_venta dv
+       WHERE dv.tipo = 'factura' AND dv.estado != 'anulado' AND dv.fecha >= ? AND dv.ncf LIKE 'B%'
+         AND NOT EXISTS (SELECT 1 FROM ecf_documentos e WHERE e.origen_tipo = 'documentos_venta' AND e.origen_id = dv.id)
+       ORDER BY dv.fecha`
+    )
+    .all(desdeIso);
+  let regularizadas = 0;
+  for (const f of facturas) {
+    const tipoEcf = construir.TIPO_ECF_POR_CODIGO_B[f.ncf.slice(0, 3)];
+    if (!tipoEcf) throw new Error(`La factura ${f.numero} tiene un NCF (${f.ncf}) sin equivalente electrónico`);
+    const t = tomarEncf(db, tipoEcf);
+    emitirParaVenta(db, f.id, {
+      tipoEcf, encf: t.encf, vencimiento: t.vencimiento,
+      referencia: { ncf: f.ncf, fecha: f.fecha, codigoModificacion: 4 },
+    });
+    regularizadas += 1;
+  }
+  const notas = db
+    .prepare("SELECT COUNT(*) AS n FROM documentos_venta WHERE tipo IN ('nota_credito', 'nota_debito') AND estado != 'anulado' AND fecha >= ? AND ncf LIKE 'B%'")
+    .get(desdeIso).n;
+  return { regularizadas, notasPorRevisar: notas };
+}
+
 function ecfDeOrigen(db, origenTipo, origenId) {
   return db
     .prepare("SELECT * FROM ecf_documentos WHERE origen_tipo = ? AND origen_id = ? AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 1")
@@ -226,5 +257,5 @@ function prepararAnulacion(db, origenTipo, origenId, { notaSugerida }) {
 module.exports = {
   AMBIENTES, parametro, modoEcf, ambienteEcf, contingenciaDesde, usaEcf,
   certificadoActivo, guardarCertificado, resumenCertificado, cifrar, descifrar,
-  tomarEncf, datosEmisor, registrarEcf, emitirParaVenta, ecfDeOrigen, prepararAnulacion, lineasVenta,
+  tomarEncf, datosEmisor, registrarEcf, emitirParaVenta, ecfDeOrigen, prepararAnulacion, lineasVenta, regularizarContingencia,
 };

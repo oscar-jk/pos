@@ -34,18 +34,31 @@ function renderModuleGrid(modulosActivos) {
   `).join('');
 }
 
+// Avisos de facturación electrónica (plazos legales): solo si el usuario puede ver los e-CF.
+async function alertasEcf() {
+  if (!window.puntoXEcf) return [];
+  try {
+    const estado = await window.puntoXEcf.estado();
+    return estado.alertas.map((a) => ({ tag: 'e-CF', color: a.nivel === 'error' ? 'var(--color-danger)' : 'var(--color-warning)', texto: a.texto }));
+  } catch {
+    return [];
+  }
+}
+
 async function cargarAlertas() {
-  const [stockBajo, vencimientos, facturasVencidas, empleadosDeuda, facturasPorPagar] = await Promise.all([
+  const [stockBajo, vencimientos, facturasVencidas, empleadosDeuda, facturasPorPagar, avisosEcf] = await Promise.all([
     window.puntoXInventario.existencias({ soloBajoMinimo: true }),
     window.puntoXInventario.vencimientos(),
     window.puntoXCxc.facturasVencidas(),
     window.puntoXCxc.listarCxcEmpleados({}),
     window.puntoXCxp.facturasProximasAVencer(),
+    alertasEcf(),
   ]);
   const empleadosConSaldo = empleadosDeuda.filter((e) => e.saldo_pendiente > 0);
   const facturasPorPagarUrgentes = facturasPorPagar.filter((f) => f.dias_restantes <= 7);
 
   const alertas = [
+    ...avisosEcf,
     ...stockBajo.map((p) => ({
       tag: 'Stock bajo', color: 'var(--color-danger)',
       texto: `${p.descripcion} — quedan ${p.existencia_total}, mínimo ${p.stock_minimo}`,

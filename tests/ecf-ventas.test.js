@@ -276,3 +276,32 @@ test('migración 012 sobre una base existente: crea tablas y columna, idempotent
   assert.ok(db.prepare('PRAGMA table_info(productos)').all().some((c) => c.name === 'es_servicio'));
   aplicarMigraciones(db);
 });
+
+test('producto marcado como servicio: el e-CF lo reporta con IndicadorBienoServicio 2', () => {
+  const { db, ctx } = base();
+  const servicio = h.producto(db, ctx, { descripcion: 'Instalación', esServicio: true, permiteVentaNegativo: true });
+  assert.equal(db.prepare('SELECT es_servicio FROM productos WHERE id = ?').get(servicio).es_servicio, 1);
+  const f = h.facturar(db, ctx, [{ productoId: servicio, cantidad: 1 }], [{ formaPago: 'efectivo', monto: 118 }]);
+  assert.match(ecfDe(db, f).xml, /<NombreItem>Instalación<\/NombreItem><IndicadorBienoServicio>2<\/IndicadorBienoServicio>/);
+});
+
+test('fin de contingencia: cada factura serie B recibe su e-CF de reemplazo (código 4)', async () => {
+  const { db, ctx, p } = base();
+  h.tx(db, () => ecfIpc().cambiarContingencia(db, { activar: true, motivo: 'Certificado vencido' }, ctx.usuarioId));
+  const c = h.cliente(db, ctx, { rncCedula: '101000001' });
+  const consumo = h.facturar(db, ctx, [{ productoId: p, cantidad: 1 }], [{ formaPago: 'efectivo', monto: 118 }]);
+  const credito = h.facturar(db, ctx, [{ productoId: p, cantidad: 2 }], [{ formaPago: 'efectivo', monto: 236 }], { clienteId: c, tipoNcfCodigo: 'credito_fiscal' });
+  const ncfConsumo = ventas().obtenerFactura(db, consumo).ncf;
+  const r = h.tx(db, () => ecfIpc().cambiarContingencia(db, { activar: false }, ctx.usuarioId));
+  assert.deepEqual(r, { regularizadas: 2, notasPorRevisar: 0 });
+  const e32 = ecfDe(db, consumo);
+  assert.equal(e32.encf, 'E320000000001');
+  assert.match(e32.xml, new RegExp(`<NCFModificado>${ncfConsumo}</NCFModificado>`));
+  assert.match(e32.xml, /<CodigoModificacion>4<\/CodigoModificacion>/);
+  assert.equal(ventas().obtenerFactura(db, consumo).ncf, ncfConsumo, 'el documento conserva el NCF que recibió el cliente');
+  const e31 = ecfDe(db, credito);
+  assert.match(e31.xml, /<CodigoModificacion>4<\/CodigoModificacion>/);
+  assert.deepEqual((await validarContraXsd('ECF31', e31.xml)).errores, []);
+  assert.deepEqual((await validarContraXsd('ECF32', e32.xml)).errores, []);
+  assert.equal(require('../main/printing').representacionFiscal(db, ventas().obtenerFactura(db, consumo)), null, 'se reimprime como serie B');
+});

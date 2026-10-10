@@ -36,6 +36,8 @@ function secuenciasEcf(db) {
     .map((s) => ({ ...s, tipo_ecf: Number(s.codigo.slice(1)), nombre_tipo: TIPOS_ECF[Number(s.codigo.slice(1))], disponibles: Math.max(0, s.secuencia_hasta - s.secuencia_actual + 1) }));
 }
 
+const plural = (n, uno, varios) => `${n} ${n === 1 ? uno : varios}`;
+
 // Avisos para la pantalla de configuración y el monitor: lo que impide o pone en riesgo emitir.
 function alertas(db, ahora = new Date()) {
   const lista = [];
@@ -61,9 +63,15 @@ function alertas(db, ahora = new Date()) {
     lista.push({ nivel: dias >= 15 ? 'error' : 'aviso', texto: `Contingencia activa desde ${desde.slice(0, 10)} (${dias} días; la DGII admite hasta 15). Al superarla, emita los e-CF que reemplazan los NCF serie B en un máximo de 30 días.` });
   }
   const vencidos = cola.vencidosOPorVencer(db, ahora);
-  if (vencidos.length) lista.push({ nivel: 'error', texto: `${vencidos.length} e-CF sin enviar a la DGII se acercan o pasaron el plazo de 72 horas. Revise la conexión y use "Enviar pendientes".` });
+  if (vencidos.length) {
+    lista.push({ nivel: 'error', texto: `${plural(vencidos.length, 'e-CF sin enviar a la DGII se acerca o pasó', 'e-CF sin enviar a la DGII se acercan o pasaron')} el plazo de 72 horas. Revise la conexión y use "Enviar pendientes".` });
+  }
   const rechazados = db.prepare("SELECT COUNT(*) AS n FROM ecf_documentos d JOIN documentos_venta v ON v.id = d.origen_id WHERE d.estado = 'rechazado' AND v.estado != 'anulado'").get().n;
-  if (rechazados) lista.push({ nivel: 'error', texto: `${rechazados} e-CF rechazados por la DGII siguen vigentes en el sistema: anule esos documentos y emítalos de nuevo.` });
+  if (rechazados) {
+    lista.push({ nivel: 'error', texto: rechazados === 1
+      ? '1 e-CF rechazado por la DGII sigue vigente en el sistema: anule ese documento y emítalo de nuevo.'
+      : `${rechazados} e-CF rechazados por la DGII siguen vigentes en el sistema: anule esos documentos y emítalos de nuevo.` });
+  }
   if (emision.ambienteEcf(db) !== 'eCF' && modo === 'electronico') {
     lista.push({ nivel: 'aviso', texto: `Ambiente de ${emision.ambienteEcf(db) === 'TesteCF' ? 'pruebas' : 'certificación'}: los comprobantes NO tienen validez fiscal.` });
   }
@@ -117,6 +125,7 @@ function guardarModo(db, { modo, ambiente }, usuarioId) {
 // serie B autorizados, hasta 15 días, notificándolo a la DGII.
 function cambiarContingencia(db, { activar, motivo }, usuarioId) {
   session.requerirPermiso('configuracion.ecf.gestionar');
+  let resultado = null;
   if (activar) {
     if (emision.modoEcf(db) !== 'electronico') throw new Error('La contingencia solo aplica cuando el negocio emite e-CF');
     if (!motivo || !String(motivo).trim()) throw new Error('Indique el motivo de la contingencia');
@@ -124,9 +133,13 @@ function cambiarContingencia(db, { activar, motivo }, usuarioId) {
     if (!tieneB) throw new Error('Para operar en contingencia necesita secuencias NCF serie B (B01/B02) autorizadas y registradas');
     guardarParametro(db, 'ecf_contingencia_desde', new Date().toISOString());
   } else {
+    const desde = emision.contingenciaDesde(db);
     guardarParametro(db, 'ecf_contingencia_desde', '');
+    // Regularización: los e-CF que reemplazan los NCF serie B se emiten al terminar.
+    resultado = desde ? emision.regularizarContingencia(db, desde) : { regularizadas: 0, notasPorRevisar: 0 };
   }
-  configuracion.registrarAuditoria(db, { usuarioId, modulo: 'configuracion', entidad: 'parametros_negocio', entidadId: 'ecf_contingencia', accion: activar ? 'activar' : 'desactivar', detalle: { motivo: motivo || null } });
+  configuracion.registrarAuditoria(db, { usuarioId, modulo: 'configuracion', entidad: 'parametros_negocio', entidadId: 'ecf_contingencia', accion: activar ? 'activar' : 'desactivar', detalle: { motivo: motivo || null, ...resultado } });
+  return resultado;
 }
 
 function registrarSecuencia(db, { tipoEcf, desde, hasta, vencimiento }, usuarioId) {
@@ -219,8 +232,9 @@ function register(ipcMain, getDb) {
   });
   ipcMain.handle('ecf:cambiarContingencia', (event, payload) => {
     const db = getDb();
-    db.transaction(() => cambiarContingencia(db, payload, payload.usuarioId))();
-    return estadoGeneral(db);
+    const resultado = db.transaction(() => cambiarContingencia(db, payload, payload.usuarioId))();
+    cola.programar();
+    return { ...estadoGeneral(db), regularizacion: resultado };
   });
   ipcMain.handle('ecf:registrarSecuencia', (event, payload) => {
     const db = getDb();

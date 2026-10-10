@@ -47,6 +47,7 @@ function cambiarTab(tab) {
   if (tab === 'usuarios') cargarUsuarios();
   if (tab === 'roles') cargarRoles();
   if (tab === 'fiscal') cargarFiscal();
+  if (tab === 'ecf' && window.PuntoXConfigEcf) window.PuntoXConfigEcf.cargar();
   if (tab === 'parametros') cargarParametros();
   if (tab === 'sucursales') cargarSucursales();
   if (tab === 'impresoras') cargarImpresoras();
@@ -65,6 +66,7 @@ async function cargarNegocio() {
   document.getElementById('neg-iniciales').value = datos.negocio_iniciales || '';
   document.getElementById('neg-color').value = datos.negocio_color_acento || '#146356';
   document.getElementById('neg-rnc').value = datos.negocio_rnc || '';
+  document.getElementById('neg-razon-social').value = datos.negocio_razon_social || '';
   document.getElementById('neg-direccion').value = datos.negocio_direccion || '';
   document.getElementById('neg-telefono').value = datos.negocio_telefono || '';
 }
@@ -76,6 +78,7 @@ document.getElementById('btn-guardar-negocio').addEventListener('click', async (
         nombre: document.getElementById('neg-nombre').value, iniciales: document.getElementById('neg-iniciales').value,
         colorAcento: document.getElementById('neg-color').value,
         rnc: document.getElementById('neg-rnc').value.trim(),
+        razonSocial: document.getElementById('neg-razon-social').value.trim(),
         direccion: document.getElementById('neg-direccion').value.trim(),
         telefono: document.getElementById('neg-telefono').value.trim(),
       },
