@@ -72,6 +72,10 @@ const PERMISOS = [
   ['configuracion', 'configuracion.gestionar', 'Gestionar usuarios, roles y parámetros del sistema'],
   ['configuracion', 'configuracion.auditoria.ver', 'Ver bitácora de auditoría'],
   ['configuracion', 'configuracion.impresoras.gestionar', 'Configurar impresoras de factura, tique y etiqueta'],
+  ['configuracion', 'configuracion.ecf.gestionar', 'Configurar facturación electrónica: certificado digital, ambiente y secuencias e-NCF'],
+  // Facturación electrónica
+  ['ventas', 'ventas.ecf.ver', 'Ver el estado de los comprobantes electrónicos (e-CF) ante la DGII'],
+  ['ventas', 'ventas.ecf.gestionar', 'Reenviar e-CF a la DGII y anular secuencias e-NCF no usadas'],
 ];
 
 // Matriz rol -> permisos, según los 6 roles propuestos en el documento fuente.
@@ -90,7 +94,7 @@ const ROLES = [
     permisos: [
       'ventas.factura.crear', 'ventas.cotizacion.crear', 'ventas.pedido.crear',
       'ventas.conduce.crear', 'ventas.devolucion.crear', 'ventas.descuento.aplicar',
-      'ventas.comision.ver', 'ventas.factura.imprimir', 'ventas.cuenta_abierta.gestionar', 'inventario.ver', 'caja.apertura', 'caja.cierre',
+      'ventas.comision.ver', 'ventas.factura.imprimir', 'ventas.cuenta_abierta.gestionar', 'ventas.ecf.ver', 'inventario.ver', 'caja.apertura', 'caja.cierre',
       'caja.movimiento.crear', 'caja.tique.imprimir', 'cxc.recibo.crear',
     ],
   },
@@ -122,7 +126,7 @@ const ROLES = [
       'ventas.costos.ver', 'ventas.reportes_financieros.ver', 'inventario.ver', 'inventario.costos.ver',
       'compras.costos.ver', 'compras.reportes.ver', 'cxc.reportes.ver', 'cxp.reportes.ver',
       'contabilidad.ver', 'contabilidad.asiento_manual.crear', 'contabilidad.periodo.cerrar',
-      'contabilidad.periodo.reabrir', 'configuracion.auditoria.ver',
+      'contabilidad.periodo.reabrir', 'configuracion.auditoria.ver', 'ventas.ecf.ver',
     ],
   },
   {
@@ -140,6 +144,10 @@ const PARAMETROS_NEGOCIO_NUEVOS = [
   ['negocio_telefono', '', 'Teléfono del negocio, impreso en el encabezado de factura'],
   ['modulo_cuentas_abiertas', '0', 'Módulo opcional: cuentas abiertas tipo bar/mesa (1 = activo)'],
   ['metodo_valoracion', 'promedio_ponderado', 'Método de valoración de inventario para los productos que no definen uno propio'],
+  ['negocio_razon_social', '', 'Razón social registrada en la DGII; va como emisor en los e-CF'],
+  ['ecf_modo', 'tradicional', 'Comprobantes fiscales: tradicional (NCF serie B) o electronico (e-CF)'],
+  ['ecf_ambiente', 'TesteCF', 'Ambiente de la DGII para los e-CF: TesteCF (pruebas), CerteCF (certificación) o eCF (producción)'],
+  ['ecf_contingencia_desde', '', 'Fecha en que se activó la contingencia por imposibilidad de emitir e-CF (vacío = sin contingencia)'],
 ];
 
 const MONEDAS_EXTRANJERAS = [['USD', 'Dólar estadounidense']];

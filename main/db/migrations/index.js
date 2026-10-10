@@ -13,6 +13,7 @@ const MIGRACIONES = [
   require('./009_conversion_listas'),
   require('./010_cambio_password'),
   require('./011_columnas_sync'),
+  require('./012_facturacion_electronica'),
 ];
 
 function columnasDe(db, tabla) {

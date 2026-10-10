@@ -263,3 +263,21 @@ contextBridge.exposeInMainWorld('puntoXVentas', {
   resumenCobrosDelDia: invoke('ventas:reportes:resumenCobrosDelDia'),
   itbisGeneradoVentas: invoke('ventas:reportes:itbisGeneradoVentas'),
 });
+
+// Facturación electrónica (e-CF): configuración, monitor ante la DGII y anulación de secuencias.
+contextBridge.exposeInMainWorld('puntoXEcf', {
+  estado: invoke('ecf:estado'),
+  guardarModo: invoke('ecf:guardarModo'),
+  cambiarContingencia: invoke('ecf:cambiarContingencia'),
+  registrarSecuencia: invoke('ecf:registrarSecuencia'),
+  actualizarSecuencia: invoke('ecf:actualizarSecuencia'),
+  cargarCertificado: invoke('ecf:cargarCertificado'),
+  probarConexion: invoke('ecf:probarConexion'),
+  listar: invoke('ecf:listar'),
+  listarAnulaciones: invoke('ecf:listarAnulaciones'),
+  obtenerXml: invoke('ecf:obtenerXml'),
+  exportarXml: invoke('ecf:exportarXml'),
+  reintentar: invoke('ecf:reintentar'),
+  enviarPendientes: invoke('ecf:enviarPendientes'),
+  anularSecuencias: invoke('ecf:anularSecuencias'),
+});

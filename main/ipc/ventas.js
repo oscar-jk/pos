@@ -6,6 +6,10 @@ const caja = require('./caja');
 const contabilidad = require('./contabilidad');
 const configuracion = require('./configuracion');
 const session = require('../auth/session');
+const ecf = require('../ecf/emision');
+const ecfAnulacion = require('../ecf/anulacion');
+const { TIPO_ECF_POR_COMPROBANTE } = require('../ecf/construir');
+const colaEcf = require('../ecf/cola');
 
 const CUENTA_POR_FORMA_PAGO = {
   efectivo: '1100', // Caja
@@ -38,6 +42,32 @@ function tomarNcf(db, codigoTipoNcf) {
   db.prepare('UPDATE tipos_ncf SET secuencia_actual = secuencia_actual + 1, updated_at = strftime(\'%Y-%m-%dT%H:%M:%fZ\',\'now\') WHERE id = ?')
     .run(tipo.id);
   return { ncf, tipoNcfId: tipo.id };
+}
+
+// Comprobante fiscal de un documento: e-NCF si el negocio emite e-CF (y no está en
+// contingencia), si no el NCF serie B. Las facturas siempre llevan comprobante; las notas
+// tradicionales (B03/B04) solo si el negocio registró esas secuencias.
+const CODIGO_B_POR_COMPROBANTE = { consumo: 'B02', credito_fiscal: 'B01', gubernamental: 'B14', regimen_especial: 'B15' };
+const TIPO_ECF_POR_CODIGO_B = { B01: 31, B02: 32, B14: 45, B15: 44, B03: 33, B04: 34 };
+
+function tomarComprobante(db, codigo, fechaIso, { opcional = false } = {}) {
+  if (ecf.usaEcf(db)) {
+    const tipoEcf = TIPO_ECF_POR_COMPROBANTE[codigo] || TIPO_ECF_POR_CODIGO_B[codigo] || Number((/^E(\d{2})$/.exec(codigo) || [])[1]);
+    if (!tipoEcf) throw new Error(`El comprobante "${codigo}" no tiene equivalente electrónico`);
+    ecf.certificadoActivo(db); // certificado ausente o vencido: falla antes de mover inventario
+    const t = ecf.tomarEncf(db, tipoEcf, fechaIso);
+    return { ncf: t.encf, tipoNcfId: t.tipoNcfId, ecf: { tipoEcf, encf: t.encf, vencimiento: t.vencimiento } };
+  }
+  const codigoB = CODIGO_B_POR_COMPROBANTE[codigo] || codigo;
+  if (opcional && !db.prepare('SELECT 1 FROM tipos_ncf WHERE codigo = ? AND activo = 1').get(codigoB)) return { ncf: null, tipoNcfId: null, ecf: null };
+  return { ...tomarNcf(db, codigoB), ecf: null };
+}
+
+// Anular un documento que tiene e-CF: si la DGII ya lo recibió no se puede (se corrige con una
+// nota); si nunca se envió, su e-NCF se anula ante la DGII.
+function anularComprobanteDe(db, documentoId, { motivo, usuarioId, notaSugerida }) {
+  const pendiente = ecf.prepararAnulacion(db, 'documentos_venta', documentoId, { notaSugerida });
+  if (pendiente) ecfAnulacion.anularEcfNoEnviado(db, pendiente, { motivo, usuarioId });
 }
 
 function precioProducto(producto, nivelPrecio) {
@@ -267,12 +297,12 @@ function crearFactura(db, payload) {
   // --- Moneda: montos siempre en RD$; si se factura en otra moneda, la tasa del día queda congelada ---
   const { monedaFactura, tasaFactura } = monedaYTasa(db, monedaId, tasaCambio);
 
-  // --- NCF y número ---
+  // --- Comprobante fiscal (NCF o e-NCF) y número ---
   const codigoNcf = tipoNcfCodigo || (cliente ? cliente.tipo_comprobante_default : null) || 'consumo';
-  const codigoTipoNcfMap = { consumo: 'B02', credito_fiscal: 'B01', gubernamental: 'B14', regimen_especial: 'B15' };
-  const { ncf, tipoNcfId } = tomarNcf(db, codigoTipoNcfMap[codigoNcf] || codigoNcf);
-  const numero = siguienteNumero(db, 'factura');
   const fechaIso = new Date().toISOString();
+  const comprobante = tomarComprobante(db, codigoNcf, fechaIso);
+  const { ncf, tipoNcfId } = comprobante;
+  const numero = siguienteNumero(db, 'factura');
 
   // --- Insertar documento y líneas ---
   const documentoId = crypto.randomUUID();
@@ -388,6 +418,9 @@ function crearFactura(db, payload) {
       usuarioId, modulo: 'ventas', entidad: 'documentos_venta', entidadId: origen.id, accion: 'facturar', detalle: { tipo: origen.tipo, numero: origen.numero, factura: numero },
     });
   }
+
+  // e-CF firmado y en cola para la DGII, dentro de la misma transacción que la venta.
+  if (comprobante.ecf) ecf.emitirParaVenta(db, documentoId, comprobante.ecf);
 
   return documentoId;
 }
@@ -917,6 +950,7 @@ function anularFactura(db, { documentoId, motivo, usuarioId }) {
   if (cobros.length > 0) {
     throw new Error(`La factura tiene cobros aplicados (recibo ${cobros.map((c) => c.numero).join(', ')}). Anule los recibos primero.`);
   }
+  anularComprobanteDe(db, documentoId, { motivo, usuarioId, notaSugerida: 'una nota de crédito por el total de la factura' });
 
   db.prepare(
     `UPDATE documentos_venta SET estado = 'anulado', motivo_anulacion = ?, usuario_anulo_id = ?,
@@ -996,8 +1030,8 @@ function anularFactura(db, { documentoId, motivo, usuarioId }) {
 // Si la factura de origen tiene cliente registrado, acredita su cuenta (reduce lo que debe, o
 // genera saldo a favor si la factura era de contado). Si es una venta rápida sin cliente
 // registrado, no hay cuenta que acreditar: se devuelve en efectivo desde caja.
-// No se le asigna NCF propio — el documento fuente no detalla la secuencia fiscal (B04) para
-// notas de crédito, y CLAUDE.md prohíbe improvisar reglas de NCF/e-CF no explícitas.
+// Comprobante: en modo e-CF, Nota de Crédito Electrónica (E34) que referencia la factura
+// (Formato e-CF de la DGII). En modo tradicional, B04 solo si el negocio registró esa secuencia.
 // =========================================================================
 
 // Documentos con los que salió del inventario lo facturado: la factura misma o sus conduces.
@@ -1015,6 +1049,11 @@ function crearNotaCredito(db, { facturaOrigenId, lineas, motivo, cajaId, usuario
   if (!factura) throw new Error('Factura de origen no encontrada');
   if (factura.estado === 'anulado') throw new Error('No se puede devolver mercancía de una factura anulada');
 
+  // Si la factura llevó descuento global (sobre el total de sus líneas), lo devuelto se acredita
+  // con ese mismo descuento: nunca se acredita más de lo que se cobró.
+  const sumaLineasFactura = db.prepare('SELECT COALESCE(SUM(total_linea), 0) AS s FROM documentos_venta_detalle WHERE documento_id = ?').get(facturaOrigenId).s;
+  const factorGlobal = factura.descuento_total > 0 && sumaLineasFactura > 0 ? factura.total / sumaLineasFactura : 1;
+
   const lineasCalculadas = lineas.map((l) => {
     const detalleOriginal = db.prepare('SELECT * FROM documentos_venta_detalle WHERE id = ? AND documento_id = ?').get(l.detalleId, facturaOrigenId);
     if (!detalleOriginal) throw new Error('Línea de la factura original no encontrada');
@@ -1023,7 +1062,7 @@ function crearNotaCredito(db, { facturaOrigenId, lineas, motivo, cajaId, usuario
     if (l.cantidad > pendiente + 0.001) {
       throw new Error(`La cantidad a devolver (${l.cantidad}) excede lo pendiente de devolver en esta línea (${pendiente})`);
     }
-    const proporcion = l.cantidad / detalleOriginal.cantidad;
+    const proporcion = (l.cantidad / detalleOriginal.cantidad) * factorGlobal;
     return {
       detalleOriginal, cantidad: l.cantidad,
       baseImponible: redondear(detalleOriginal.base_imponible * proporcion),
@@ -1032,6 +1071,21 @@ function crearNotaCredito(db, { facturaOrigenId, lineas, motivo, cajaId, usuario
       costoUnitario: detalleOriginal.costo_unitario,
     };
   });
+
+  // Las devoluciones parciales redondean por separado: si al sumarlas pasaran del total de la
+  // factura por centavos, la diferencia se quita del ITBIS (o la base) de la línea mayor.
+  const yaAcreditado = db
+    .prepare("SELECT COALESCE(SUM(total), 0) AS t FROM documentos_venta WHERE documento_referencia_id = ? AND tipo = 'nota_credito' AND estado != 'anulado' AND deleted_at IS NULL")
+    .get(facturaOrigenId).t;
+  const exceso = redondear(yaAcreditado + lineasCalculadas.reduce((acc, l) => acc + l.baseImponible + l.itbisMonto, 0) - factura.total);
+  if (exceso > 0 && exceso <= 0.05) {
+    const mayor = lineasCalculadas.reduce((a, l) => (l.totalLinea > a.totalLinea ? l : a));
+    if (mayor.itbisMonto >= exceso) mayor.itbisMonto = redondear(mayor.itbisMonto - exceso);
+    else mayor.baseImponible = redondear(mayor.baseImponible - exceso);
+    mayor.totalLinea = redondear(mayor.baseImponible + mayor.itbisMonto);
+  } else if (exceso > 0.05) {
+    throw new Error(`La devolución excede lo pendiente de acreditar de la factura (${redondear(factura.total - yaAcreditado)})`);
+  }
 
   const subtotal = redondear(lineasCalculadas.reduce((acc, l) => acc + l.baseImponible, 0));
   const itbisTotal = redondear(lineasCalculadas.reduce((acc, l) => acc + l.itbisMonto, 0));
@@ -1047,14 +1101,17 @@ function crearNotaCredito(db, { facturaOrigenId, lineas, motivo, cajaId, usuario
   const documentoId = crypto.randomUUID();
   const numero = siguienteNumero(db, 'nota_credito');
   const fechaIso = new Date().toISOString();
+  // Nota de crédito electrónica (E34) en modo e-CF; B04 si el negocio la registró en modo tradicional.
+  const comprobante = tomarComprobante(db, 'B04', fechaIso, { opcional: true });
+  if (comprobante.ecf && !factura.ncf) throw new Error('La factura original no tiene comprobante fiscal: no se puede emitir la nota de crédito electrónica');
 
   db.prepare(
     `INSERT INTO documentos_venta
-       (id, tipo, numero, sucursal_id, almacen_id, cliente_id, vendedor_id, modo_venta, condicion_pago,
+       (id, tipo, numero, ncf, tipo_ncf_id, sucursal_id, almacen_id, cliente_id, vendedor_id, modo_venta, condicion_pago,
         moneda_id, tasa_cambio, documento_referencia_id, fecha, subtotal, itbis_total, total, estado, concepto, usuario_id)
-     VALUES (?, 'nota_credito', ?, ?, ?, ?, ?, ?, 'contado', ?, ?, ?, ?, ?, ?, ?, 'facturado', ?, ?)`
+     VALUES (?, 'nota_credito', ?, ?, ?, ?, ?, ?, ?, ?, 'contado', ?, ?, ?, ?, ?, ?, ?, 'facturado', ?, ?)`
   ).run(
-    documentoId, numero, factura.sucursal_id, factura.almacen_id, factura.cliente_id, factura.vendedor_id,
+    documentoId, numero, comprobante.ncf, comprobante.tipoNcfId, factura.sucursal_id, factura.almacen_id, factura.cliente_id, factura.vendedor_id,
     factura.modo_venta, factura.moneda_id, factura.tasa_cambio, facturaOrigenId, fechaIso,
     subtotal, itbisTotal, total, motivo.trim(), usuarioId
   );
@@ -1130,6 +1187,17 @@ function crearNotaCredito(db, { facturaOrigenId, lineas, motivo, cajaId, usuario
     detalle: { numero, facturaOrigen: factura.numero, motivo: motivo.trim(), total },
   });
 
+  if (comprobante.ecf) {
+    // Código de modificación (Formato e-CF, Información de Referencia): 1 si esta nota devuelve
+    // toda la factura de una vez; 3 (corrige montos) si es parcial o completa devoluciones previas.
+    const pendiente = db.prepare('SELECT COALESCE(SUM(cantidad - cantidad_devuelta), 0) AS q FROM documentos_venta_detalle WHERE documento_id = ?').get(facturaOrigenId).q;
+    const codigoModificacion = pendiente <= 0.0001 && yaAcreditado === 0 ? 1 : 3;
+    ecf.emitirParaVenta(db, documentoId, {
+      ...comprobante.ecf,
+      referencia: { ncf: factura.ncf, fecha: factura.fecha, codigoModificacion, razon: motivo.trim() },
+    });
+  }
+
   return documentoId;
 }
 
@@ -1139,6 +1207,7 @@ function anularNotaCredito(db, { documentoId, motivo, usuarioId }) {
   if (!nota) throw new Error('Nota de crédito no encontrada');
   if (nota.estado === 'anulado') throw new Error('La nota de crédito ya está anulada');
   if (!motivo || !motivo.trim()) throw new Error('La anulación requiere un motivo');
+  anularComprobanteDe(db, documentoId, { motivo, usuarioId, notaSugerida: 'una nota de débito que la compense' });
 
   db.prepare(
     `UPDATE documentos_venta SET estado = 'anulado', motivo_anulacion = ?, usuario_anulo_id = ?,
@@ -1202,7 +1271,8 @@ function anularNotaCredito(db, { documentoId, motivo, usuarioId }) {
 // Nota de débito de venta — cargo adicional post-factura (flete, ajuste de precio, interés
 // por mora...). No mueve inventario. Puede referenciar una factura origen, o quedar suelta
 // contra la cuenta general del cliente cuando el cargo no corresponde a una factura puntual.
-// Igual que la nota de crédito, no se le asigna NCF propio (ver nota arriba).
+// Comprobante: en modo e-CF, Nota de Débito Electrónica (E33), que siempre debe referenciar la
+// factura que modifica. En modo tradicional, B03 solo si el negocio registró esa secuencia.
 // =========================================================================
 
 function crearNotaDebito(db, { clienteId, facturaOrigenId, sucursalId, almacenId, monedaId, concepto, monto, tasaItbisId, usuarioId }) {
@@ -1234,14 +1304,18 @@ function crearNotaDebito(db, { clienteId, facturaOrigenId, sucursalId, almacenId
   const documentoId = crypto.randomUUID();
   const numero = siguienteNumero(db, 'nota_debito');
   const fechaIso = new Date().toISOString();
+  const comprobante = tomarComprobante(db, 'B03', fechaIso, { opcional: true });
+  if (comprobante.ecf && !(facturaOrigen && facturaOrigen.ncf)) {
+    throw new Error('En facturación electrónica la nota de débito debe indicar la factura (con comprobante fiscal) que modifica');
+  }
 
   db.prepare(
     `INSERT INTO documentos_venta
-       (id, tipo, numero, sucursal_id, almacen_id, cliente_id, condicion_pago, moneda_id, tasa_cambio,
+       (id, tipo, numero, ncf, tipo_ncf_id, sucursal_id, almacen_id, cliente_id, condicion_pago, moneda_id, tasa_cambio,
         documento_referencia_id, fecha, subtotal, itbis_total, total, estado, concepto, usuario_id)
-     VALUES (?, 'nota_debito', ?, ?, ?, ?, 'credito', ?, 1, ?, ?, ?, ?, ?, 'facturado', ?, ?)`
+     VALUES (?, 'nota_debito', ?, ?, ?, ?, ?, ?, 'credito', ?, 1, ?, ?, ?, ?, ?, 'facturado', ?, ?)`
   ).run(
-    documentoId, numero, sucursalFinal, almacenFinal, clienteId, monedaId, facturaOrigenId || null,
+    documentoId, numero, comprobante.ncf, comprobante.tipoNcfId, sucursalFinal, almacenFinal, clienteId, monedaId, facturaOrigenId || null,
     fechaIso, baseImponible, itbisMonto, total, concepto.trim(), usuarioId
   );
 
@@ -1260,6 +1334,14 @@ function crearNotaDebito(db, { clienteId, facturaOrigenId, sucursalId, almacenId
     detalle: { numero, cliente: cliente.nombre, concepto: concepto.trim(), total },
   });
 
+  if (comprobante.ecf) {
+    ecf.emitirParaVenta(db, documentoId, {
+      ...comprobante.ecf,
+      lineas: [{ nombre: concepto.trim(), esServicio: true, cantidad: 1, precioUnitario: total, totalLinea: total, baseImponible, tasaItbis: tasa.porcentaje }],
+      referencia: { ncf: facturaOrigen.ncf, fecha: facturaOrigen.fecha, codigoModificacion: 3, razon: concepto.trim() },
+    });
+  }
+
   return documentoId;
 }
 
@@ -1269,6 +1351,7 @@ function anularNotaDebito(db, { documentoId, motivo, usuarioId }) {
   if (!nota) throw new Error('Nota de débito no encontrada');
   if (nota.estado === 'anulado') throw new Error('La nota de débito ya está anulada');
   if (!motivo || !motivo.trim()) throw new Error('La anulación requiere un motivo');
+  anularComprobanteDe(db, documentoId, { motivo, usuarioId, notaSugerida: 'una nota de crédito que la compense' });
 
   db.prepare(
     `UPDATE documentos_venta SET estado = 'anulado', motivo_anulacion = ?, usuario_anulo_id = ?,
@@ -1515,6 +1598,14 @@ function obtenerFactura(db, documentoId) {
     )
     .all(documentoId);
   documento.pagos = db.prepare('SELECT * FROM pagos_venta WHERE documento_id = ?').all(documentoId);
+  // Resumen del e-CF (sin el XML) para la pantalla y la representación impresa.
+  documento.ecf = db
+    .prepare(
+      `SELECT id, tipo_ecf, encf, ambiente, rnc_emisor, rnc_comprador, fecha_emision, fecha_firma, monto_total, total_itbis,
+              codigo_seguridad, via, estado, contingencia, ultimo_error, track_id
+       FROM ecf_documentos WHERE origen_tipo = 'documentos_venta' AND origen_id = ? AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 1`
+    )
+    .get(documentoId) || null;
   return documento;
 }
 
@@ -1556,6 +1647,7 @@ function register(ipcMain, getDb) {
     const db = getDb();
     const transaccion = db.transaction(() => crearFactura(db, payload));
     const documentoId = transaccion();
+    colaEcf.programar();
     return obtenerFactura(db, documentoId);
   });
 
@@ -1563,6 +1655,7 @@ function register(ipcMain, getDb) {
     const db = getDb();
     const transaccion = db.transaction(() => anularFactura(db, payload));
     transaccion();
+    colaEcf.programar();
     return obtenerFactura(db, payload.documentoId);
   });
 
@@ -1579,22 +1672,26 @@ function register(ipcMain, getDb) {
   ipcMain.handle('ventas:crearNotaCredito', (event, payload) => {
     const db = getDb();
     const documentoId = db.transaction(() => crearNotaCredito(db, payload))();
+    colaEcf.programar();
     return obtenerFactura(db, documentoId);
   });
   ipcMain.handle('ventas:anularNotaCredito', (event, payload) => {
     const db = getDb();
     db.transaction(() => anularNotaCredito(db, payload))();
+    colaEcf.programar();
     return obtenerFactura(db, payload.documentoId);
   });
 
   ipcMain.handle('ventas:crearNotaDebito', (event, payload) => {
     const db = getDb();
     const documentoId = db.transaction(() => crearNotaDebito(db, payload))();
+    colaEcf.programar();
     return obtenerFactura(db, documentoId);
   });
   ipcMain.handle('ventas:anularNotaDebito', (event, payload) => {
     const db = getDb();
     db.transaction(() => anularNotaDebito(db, payload))();
+    colaEcf.programar();
     return obtenerFactura(db, payload.documentoId);
   });
 

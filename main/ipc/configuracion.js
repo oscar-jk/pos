@@ -38,7 +38,7 @@ function obtenerDatosNegocio(db) {
   return datos;
 }
 
-function actualizarDatosNegocio(db, { nombre, iniciales, colorAcento, rnc, direccion, telefono }, usuarioId) {
+function actualizarDatosNegocio(db, { nombre, iniciales, colorAcento, rnc, razonSocial, direccion, telefono }, usuarioId) {
   session.requerirPermiso('configuracion.gestionar');
   const upsert = db.prepare(
     `INSERT INTO parametros_negocio (clave, valor, updated_at) VALUES (?, ?, strftime('%Y-%m-%dT%H:%M:%fZ','now'))
@@ -50,7 +50,9 @@ function actualizarDatosNegocio(db, { nombre, iniciales, colorAcento, rnc, direc
   upsert.run('negocio_rnc', rnc || '');
   upsert.run('negocio_direccion', direccion || '');
   upsert.run('negocio_telefono', telefono || '');
-  registrarAuditoria(db, { usuarioId, modulo: 'configuracion', entidad: 'parametros_negocio', entidadId: 'negocio', accion: 'editar', detalle: { nombre, iniciales, colorAcento, rnc, direccion, telefono } });
+  // Razón social (emisor de los e-CF): solo si la pantalla la envía, para no borrarla.
+  if (razonSocial !== undefined) upsert.run('negocio_razon_social', (razonSocial || '').trim());
+  registrarAuditoria(db, { usuarioId, modulo: 'configuracion', entidad: 'parametros_negocio', entidadId: 'negocio', accion: 'editar', detalle: { nombre, iniciales, colorAcento, rnc, razonSocial, direccion, telefono } });
 }
 
 // =========================================================================
@@ -58,7 +60,7 @@ function actualizarDatosNegocio(db, { nombre, iniciales, colorAcento, rnc, direc
 // =========================================================================
 
 function listarParametrosNegocio(db) {
-  return db.prepare("SELECT * FROM parametros_negocio WHERE clave NOT LIKE 'negocio_%' AND clave NOT LIKE 'modulo_%' ORDER BY clave").all();
+  return db.prepare("SELECT * FROM parametros_negocio WHERE clave NOT LIKE 'negocio_%' AND clave NOT LIKE 'modulo_%' AND clave NOT LIKE 'ecf_%' ORDER BY clave").all();
 }
 
 // =========================================================================
@@ -108,6 +110,8 @@ const VALORES_PERMITIDOS = { metodo_valoracion: ['promedio_ponderado', 'peps'] }
 
 function actualizarParametroNegocio(db, clave, valor, usuarioId) {
   session.requerirPermiso('configuracion.gestionar');
+  // Los de facturación electrónica tienen su propia pantalla, que valida certificado y secuencias.
+  if (String(clave).startsWith('ecf_')) throw new Error('Este parámetro se cambia en Configuración > Facturación electrónica');
   if (VALORES_PERMITIDOS[clave] && !VALORES_PERMITIDOS[clave].includes(String(valor))) {
     throw new Error(`Valor inválido para ${clave}: use ${VALORES_PERMITIDOS[clave].join(' o ')}`);
   }

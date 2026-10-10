@@ -11,3 +11,6 @@ dist/
 # Basura de sistema operativo
 .DS_Store
 Thumbs.db
+
+# Documentación DGII en PDF (se descarga del portal; ver docs/dgii/README.md)
+docs/dgii/pdf/

@@ -14,6 +14,8 @@ const comprasIpc = require('./ipc/compras');
 const cxpIpc = require('./ipc/cxp');
 const configuracionIpc = require('./ipc/configuracion');
 const impresion = require('./printing');
+const ecfIpc = require('./ipc/ecf');
+const colaEcf = require('./ecf/cola');
 
 let mainWindow = null;
 
@@ -68,6 +70,7 @@ function registerCoreIpc() {
   cxpIpc.register(ipcSeguro, getDb);
   configuracionIpc.register(ipcSeguro, getDb);
   impresion.register(ipcSeguro, getDb);
+  ecfIpc.register(ipcSeguro, getDb);
 }
 
 function createMainWindow() {
@@ -95,6 +98,8 @@ function createMainWindow() {
 app.whenReady().then(() => {
   getDb(); // asegura que el esquema y los datos semilla existan antes de abrir ventana
   registerCoreIpc();
+  // e-CF firmados pendientes: se envían a la DGII en segundo plano cuando hay conexión.
+  colaEcf.iniciar(getDb);
   createMainWindow();
 
   app.on('activate', () => {
@@ -107,6 +112,7 @@ app.whenReady().then(() => {
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     session.cerrarSesion();
+    colaEcf.detener();
     app.quit();
   }
 });
