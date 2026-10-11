@@ -136,8 +136,15 @@
               <div><label>Transferencia</label><input id="pago-transferencia" type="number" min="0" step="0.01" value="0" /></div>
               <div><label>Crédito (resto)</label><input id="pago-credito" type="number" value="0" readonly /></div>
             </div>
+            <div class="cobro-efectivo" id="cobro-efectivo">
+              <label class="campo-label">Efectivo recibido</label>
+              <input id="pago-recibido" type="number" min="0" step="0.01" value="" placeholder="Lo que entrega el cliente" class="input-normal" />
+              <div class="cobro-efectivo__billetes" id="cobro-billetes"></div>
+              <div class="cobro-efectivo__cambio" id="cobro-cambio" style="display:none;"></div>
+            </div>
           </div>
 
+          <div class="atajos-leyenda" id="atajos-leyenda">F1 nueva · F2 precio · F3 cliente · F4 cantidad · F8 descuento · F10 cobrar · Supr quitar · Esc cerrar</div>
           <button id="btn-cobrar" class="btn-cobrar" data-permiso="ventas.factura.crear" disabled>Cobrar RD$ 0.00</button>
         </div>
       </div>
@@ -188,6 +195,7 @@
   <script src="../shared/topbar.js"></script>
   <script src="../shared/shell.js"></script>
   <script src="../shared/modal.js"></script>
+  <script src="./cobro.js"></script>
   <script src="./ventas.js"></script>
 </body>
 </html>

@@ -598,6 +598,7 @@ h1, h2, h3, h4 {
 
 .tabs {
   display: flex;
+  flex-wrap: wrap; /* con muchas pestañas pasan a la línea siguiente en vez de desbordar */
   gap: 4px;
   border-bottom: 1px solid var(--color-border);
   margin-bottom: 16px;
@@ -789,3 +790,13 @@ select.input-normal, input.input-normal {
 /* Confirmación de anulación (PuntoXModal.confirmarAnulacion). */
 .confirmar-anulacion__total { font-size: 15px; }
 .confirmar-anulacion__lista { margin: 0; padding-left: 18px; font-size: 13px; line-height: 1.6; color: var(--color-text); }
+
+/* --- Pantallas pequeñas (hasta 1300 px de ancho, p. ej. 1100×700) --- */
+@media (max-width: 1300px) {
+  :root { --sidebar-width: 210px; }
+  .sidebar { padding: 20px 12px; }
+  .main-area { padding: 16px 16px; gap: 14px; }
+  .page-header { flex-wrap: wrap; gap: 10px 16px; align-items: flex-start; }
+  .page-header > div:first-child { min-width: 220px; }
+  .kpi-grid { gap: 10px; }
+}
