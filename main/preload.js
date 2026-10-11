@@ -106,6 +106,7 @@ contextBridge.exposeInMainWorld('puntoXCaja', {
   agregarPartidasConciliacion: invoke('caja:agregarPartidasConciliacion'),
   eliminarPartidaConciliacion: invoke('caja:eliminarPartidaConciliacion'),
   conciliarPareja: invoke('caja:conciliarPareja'),
+  asignarCuentaMovimiento: invoke('caja:asignarCuentaMovimiento'),
   conciliarAutomaticamente: invoke('caja:conciliarAutomaticamente'),
   registrarPartidaEnContabilidad: invoke('caja:registrarPartidaEnContabilidad'),
   deshacerConciliacionPartida: invoke('caja:deshacerConciliacionPartida'),

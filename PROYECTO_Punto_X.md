@@ -190,6 +190,7 @@ Rama `fe/facturacion-electronica`. Detalle completo en `docs/FACTURACION_ELECTRO
 - **Mostrador:** atajos de teclado (F1, F2, F3, F4, F8, F10, Supr, Esc), Enter agrega con cantidad 1, efectivo recibido con billetes y cambio en vivo (la factura registra solo lo que se debe).
 - **Pantallas de 1100×700** sin desborde horizontal; estados de carga y error iguales en todas las pantallas.
 - **Listas de precio:** pantalla en Inventario y aplicación en Ventas (categoría del cliente > sucursal > nivel); el precio de lista no cuenta como descuento manual.
+- **Conciliación bancaria por cuenta:** cada línea del libro de Bancos lleva su cuenta bancaria; con varias cuentas, lo que no se sabe de cuál es se asigna al emparejarlo o a mano.
 - **Comisiones:** base configurable (`comision_base`: total o subtotal; por defecto total).
 - **Reportes de inventario:** valorización a fecha (comparable), reposición, sobre-stock, rotación y bitácora de movimientos.
 - **Proyección de cobros y pagos** y **flujo de caja** diario/semanal.
@@ -198,16 +199,14 @@ Rama `fe/facturacion-electronica`. Detalle completo en `docs/FACTURACION_ELECTRO
 
 ### Parcial (hay código pero falta cerrar)
 - **Conversión de producto:** backend y pestaña listos; la pestaña no tiene prueba de interfaz.
-- **Liquidación de importación:** solo existen las tablas.
 
 ### Pendiente (en el orden acordado)
-1. **Liquidación de importación** (necesita decisión contable: contra qué cuenta se registra el flete, seguro y aranceles).
-4. **Compras:** liquidación de importación, presupuesto de compra, recepción sin factura.
-5. **Proyecciones** de cobros y pagos, flujo de caja, historial de cobros por vendedor.
-6. **Multi-sucursal real** (hoy hay sucursales y almacenes, pero el flujo es de una).
-7. Formatos **607** y **608** de la DGII (acordado incluirlos).
-8. **Instalador:** `electron-builder` configurado, pero falta `assets/icon.ico` / ícono en `build/` y probar `npm run dist`.
-9. Fuera de alcance acordado: **delivery** (se decidió no incluirlo) y sincronización con Supabase/Vercel (fase futura).
+1. **Compras:** presupuesto de compra, recepción sin factura.
+2. Historial de cobros por vendedor.
+3. **Multi-sucursal real** (hoy hay sucursales y almacenes, pero el flujo es de una).
+4. Formatos **607** y **608** de la DGII (acordado incluirlos).
+5. **Instalador:** el ícono y el empaquetado ya están; falta correr `npm run dist` con el Modo desarrollador de Windows activado.
+6. Fuera de alcance acordado: **delivery**, **liquidación de importación** (se descartó; sus tablas quedan sin uso) y la sincronización con Supabase/Vercel (fase futura).
 
 ### Decisiones tomadas con el usuario
 - Cuentas abiertas: tipo bar/mesa, módulo opcional.

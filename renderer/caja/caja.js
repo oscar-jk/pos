@@ -557,6 +557,7 @@ async function renderDetalleConciliacion() {
       <div class="conc-columna">
         <div class="conc-columna__titulo">Movimientos del sistema (cuenta Bancos)</div>
         <div class="conc-columna__sub">Hasta el ${fechaCorta(c.periodo_hasta)}, incluidos los que quedaron en tránsito de periodos anteriores</div>
+        ${r.movimientosSinCuenta > 0 ? `<div class="conc-aviso" style="margin:6px 0;">${esc(r.movimientosSinCuenta)} movimiento(s) del libro (${fmt(r.sinCuentaAsignada)}) no tienen cuenta bancaria asignada y no cuentan en esta conciliación. Empareje el que aparezca en este extracto, o márquelo "Es de esta cuenta".</div>` : ''}
         ${movimientos.length === 0 ? '<div class="empty-state">No hay movimientos bancarios en el sistema hasta la fecha de corte.</div>' : `
         <table class="data-table">
           <thead><tr><th>Fecha</th><th>Concepto</th><th class="conc-monto">Monto</th><th>Estado</th><th></th></tr></thead>
@@ -566,10 +567,12 @@ async function renderDetalleConciliacion() {
               const pareja = partidaPorLinea[m.asiento_detalle_id];
               const estado = m.conciliado
                 ? `<span class="conc-estado" style="background:var(--color-success);" title="${pareja ? esc(pareja.descripcion) : ''}">Conciliado</span>`
-                : `<span class="conc-estado" style="background:var(--color-warning);">${m.disponible ? 'En tránsito' : 'Conciliado después'}</span>`;
+                : m.sin_cuenta
+                  ? '<span class="conc-estado" style="background:var(--color-info);" title="No se sabe de qué cuenta bancaria es; asígnela o empárejela con el extracto">Sin cuenta</span>'
+                  : `<span class="conc-estado" style="background:var(--color-warning);">${m.disponible ? 'En tránsito' : 'Conciliado después'}</span>`;
               return `<tr class="${candidata ? 'conc-fila--candidata' : ''} ${m.conciliado ? 'conc-fila--conciliada' : ''}">
                 <td>${fechaCorta(m.fecha)}</td><td>${esc(m.concepto)}</td>${montoCelda(m.monto)}<td>${estado}</td>
-                <td>${candidata ? `<span class="enlace-accion" data-emparejar="${esc(m.asiento_detalle_id)}">Emparejar</span>` : ''}</td></tr>`;
+                <td style="white-space:nowrap;">${candidata ? `<span class="enlace-accion" data-emparejar="${esc(m.asiento_detalle_id)}">Emparejar</span>` : ''}${editable && m.sin_cuenta ? `${candidata ? ' · ' : ''}<span class="enlace-accion" data-asignar-cuenta="${esc(m.asiento_detalle_id)}">Es de esta cuenta</span>` : ''}</td></tr>`;
             }).join('')}
           </tbody>
         </table>
@@ -605,6 +608,9 @@ async function renderDetalleConciliacion() {
     const partidaId = state.partidaSeleccionada;
     state.partidaSeleccionada = null;
     ejecutarConciliacion(() => window.puntoXCaja.conciliarPareja({ partidaId, asientoDetalleId: el.dataset.emparejar, usuarioId }));
+  }));
+  panel.querySelectorAll('[data-asignar-cuenta]').forEach((el) => el.addEventListener('click', () => {
+    ejecutarConciliacion(() => window.puntoXCaja.asignarCuentaMovimiento({ asientoDetalleId: el.dataset.asignarCuenta, cuentaBancariaId: c.cuenta_bancaria_id, usuarioId }));
   }));
   panel.querySelectorAll('[data-registrar]').forEach((el) => el.addEventListener('click', () => {
     const p = partidas.find((x) => x.id === el.dataset.registrar);

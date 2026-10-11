@@ -255,9 +255,19 @@ function listarCuentasBancarias(db) {
   return db.prepare('SELECT * FROM cuentas_bancarias WHERE deleted_at IS NULL AND activo = 1 ORDER BY nombre').all();
 }
 
+function asignarHistorialSinCuenta(db, cuentaBancariaId) {
+  db.prepare(
+    `UPDATE asientos_contables_detalle SET cuenta_bancaria_id = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
+     WHERE cuenta_bancaria_id IS NULL AND cuenta_id = (SELECT id FROM cuentas_contables WHERE codigo = '1200')`
+  ).run(cuentaBancariaId);
+}
+
 function crearCuentaBancaria(db, { nombre, banco, numeroCuenta, monedaId }) {
   session.requerirAlgunPermiso('caja.movimiento.crear', 'caja.conciliacion.gestionar');
   if (!nombre || !banco) throw new Error('Nombre y banco son obligatorios');
+  // Al abrir la segunda cuenta, todo lo registrado hasta ahora era de la única que había.
+  const previas = db.prepare('SELECT id FROM cuentas_bancarias WHERE deleted_at IS NULL AND activo = 1').all();
+  if (previas.length === 1) asignarHistorialSinCuenta(db, previas[0].id);
   const id = crypto.randomUUID();
   db.prepare('INSERT INTO cuentas_bancarias (id, nombre, banco, numero_cuenta, moneda_id, activo) VALUES (?, ?, ?, ?, ?, 1)')
     .run(id, nombre, banco, numeroCuenta || null, monedaId || db.prepare('SELECT id FROM monedas WHERE es_local = 1').get().id);
@@ -294,8 +304,8 @@ function crearTransferenciaCajaBanco(db, { cajaId, turnoCajaId, cuentaBancariaId
     fecha: new Date().toISOString(), concepto: `${tipo === 'deposito' ? 'Depósito' : 'Retiro'} caja-banco`, origenModulo: 'caja',
     origenDocumentoTipo: 'transferencias_caja_banco', origenDocumentoId: id, usuarioId,
     lineas: tipo === 'deposito'
-      ? [{ cuentaCodigo: '1200', debe: monto, descripcion: 'Depósito a banco' }, { cuentaCodigo: '1100', haber: monto, descripcion: 'Salida de caja' }]
-      : [{ cuentaCodigo: '1100', debe: monto, descripcion: 'Retiro de banco' }, { cuentaCodigo: '1200', haber: monto, descripcion: 'Salida de banco' }],
+      ? [{ cuentaCodigo: '1200', debe: monto, descripcion: 'Depósito a banco', cuentaBancariaId }, { cuentaCodigo: '1100', haber: monto, descripcion: 'Salida de caja' }]
+      : [{ cuentaCodigo: '1100', debe: monto, descripcion: 'Retiro de banco' }, { cuentaCodigo: '1200', haber: monto, descripcion: 'Salida de banco', cuentaBancariaId }],
   });
 
   configuracion.registrarAuditoria(db, {
@@ -357,13 +367,37 @@ function exigirEnProceso(conciliacion) {
   if (conciliacion.estado !== 'en_proceso') throw new Error('La conciliación ya está cerrada. Reábrala para modificarla.');
 }
 
-function saldoLibroBancos(db, hasta) {
+// Cuentas bancarias activas. Con una sola, todo el libro de Bancos es suyo; con varias, cada línea
+// pertenece a la cuenta que tiene asignada y lo no asignado espera a que se le asigne una.
+function cuentasActivas(db) {
+  return db.prepare('SELECT id FROM cuentas_bancarias WHERE deleted_at IS NULL AND activo = 1').all().map((c) => c.id);
+}
+
+// Saldo del libro de Bancos a una fecha: de una cuenta bancaria (cuentaBancariaId) o, sin
+// indicarla, el de toda la cuenta contable 1200.
+function saldoLibroBancos(db, hasta, cuentaBancariaId) {
+  const activas = cuentasActivas(db);
+  const filtro = !cuentaBancariaId ? ''
+    : activas.length === 1 && activas[0] === cuentaBancariaId ? 'AND (d.cuenta_bancaria_id = ? OR d.cuenta_bancaria_id IS NULL)' : 'AND d.cuenta_bancaria_id = ?';
   const row = db
     .prepare(
       `SELECT COALESCE(SUM(d.debe - d.haber), 0) AS saldo
        FROM asientos_contables_detalle d JOIN asientos_contables a ON a.id = d.asiento_id
        JOIN cuentas_contables c ON c.id = d.cuenta_id
-       WHERE c.codigo = ? AND a.fecha <= ?`
+       WHERE c.codigo = ? AND a.fecha <= ? ${filtro}`
+    )
+    .get(...[CUENTA_BANCOS, finDelDia(hasta), cuentaBancariaId].filter((v) => v !== undefined));
+  return redondear(row.saldo);
+}
+
+// Lo del libro de Bancos que aún no se sabe de qué cuenta es (solo existe con varias cuentas).
+function saldoSinCuentaAsignada(db, hasta) {
+  if (cuentasActivas(db).length <= 1) return 0;
+  const row = db
+    .prepare(
+      `SELECT COALESCE(SUM(d.debe - d.haber), 0) AS saldo
+       FROM asientos_contables_detalle d JOIN asientos_contables a ON a.id = d.asiento_id JOIN cuentas_contables c ON c.id = d.cuenta_id
+       WHERE c.codigo = ? AND a.fecha <= ? AND d.cuenta_bancaria_id IS NULL`
     )
     .get(CUENTA_BANCOS, finDelDia(hasta));
   return redondear(row.saldo);
@@ -378,7 +412,7 @@ function movimientosSistema(db, conciliacion) {
   const lineas = db
     .prepare(
       `SELECT d.id AS asiento_detalle_id, a.id AS asiento_id, a.numero, a.fecha, a.concepto, a.origen_modulo,
-              a.origen_documento_tipo, a.origen_documento_id, d.descripcion, d.debe - d.haber AS monto,
+              a.origen_documento_tipo, a.origen_documento_id, d.descripcion, d.debe - d.haber AS monto, d.cuenta_bancaria_id,
               cbd.id AS partida_id, cbd.conciliacion_id AS conciliado_en, cb.periodo_hasta AS conciliado_hasta
        FROM asientos_contables_detalle d
        JOIN asientos_contables a ON a.id = d.asiento_id
@@ -405,8 +439,13 @@ function movimientosSistema(db, conciliacion) {
     ocultas.add(reversion.asiento_detalle_id);
   }
 
+  // Varias cuentas: lo de otra cuenta no es de esta conciliación; lo sin cuenta se muestra aparte
+  // para asignarlo (no entra en el saldo ni en los movimientos en tránsito hasta entonces).
+  const activas = cuentasActivas(db);
+  const pertenece = (l) => !l.cuenta_bancaria_id || l.cuenta_bancaria_id === conciliacion.cuenta_bancaria_id;
   return lineas
     .filter((l) => !ocultas.has(l.asiento_detalle_id))
+    .filter(pertenece)
     .filter((l) => !l.conciliado_en || l.conciliado_en === conciliacion.id || l.conciliado_hasta > conciliacion.periodo_hasta)
     .map((l) => {
       const aqui = l.conciliado_en === conciliacion.id;
@@ -414,6 +453,7 @@ function movimientosSistema(db, conciliacion) {
         asiento_detalle_id: l.asiento_detalle_id, asiento_id: l.asiento_id, numero: l.numero, fecha: l.fecha,
         concepto: l.concepto, descripcion: l.descripcion, origen_modulo: l.origen_modulo, monto: redondear(l.monto),
         partida_id: aqui ? l.partida_id : null, conciliado: aqui, disponible: !l.conciliado_en,
+        sin_cuenta: !l.cuenta_bancaria_id && activas.length > 1,
       };
     });
 }
@@ -431,8 +471,8 @@ function partidasEstadoCuenta(db, conciliacionId) {
 // saldo del banco + depósitos en tránsito − cheques en tránsito
 //   debe igualar a
 // saldo en libros + partidas del banco aún no conciliadas ni registradas
-function resumenConciliacion(conciliacion, partidas, movimientos, saldoLibros) {
-  const pendientesSistema = movimientos.filter((m) => !m.conciliado);
+function resumenConciliacion(conciliacion, partidas, movimientos, saldoLibros, sinCuentaAsignada = 0) {
+  const pendientesSistema = movimientos.filter((m) => !m.conciliado && !m.sin_cuenta);
   const depositosEnTransito = redondear(pendientesSistema.filter((m) => m.monto > 0).reduce((a, m) => a + m.monto, 0));
   const chequesEnTransito = redondear(pendientesSistema.filter((m) => m.monto < 0).reduce((a, m) => a - m.monto, 0));
   const pendientesBanco = partidas.filter((p) => !p.conciliado);
@@ -443,7 +483,8 @@ function resumenConciliacion(conciliacion, partidas, movimientos, saldoLibros) {
   const diferencia = redondear(saldoBancoAjustado - saldoLibrosAjustado);
   return {
     saldoLibros, saldoEstadoCuenta, depositosEnTransito, chequesEnTransito, partidasBancoPendientes,
-    saldoBancoAjustado, saldoLibrosAjustado, diferencia,
+    saldoBancoAjustado, saldoLibrosAjustado, diferencia, sinCuentaAsignada,
+    movimientosSinCuenta: movimientos.filter((m) => m.sin_cuenta).length,
     partidasConciliadas: partidas.length - pendientesBanco.length, partidasPendientes: pendientesBanco.length,
     movimientosPendientes: pendientesSistema.length,
     cuadra: Math.abs(diferencia) < 0.01 && pendientesBanco.length === 0,
@@ -458,8 +499,9 @@ function obtenerConciliacion(db, conciliacionId) {
   // Una conciliación cerrada muestra el saldo en libros que tenía al cerrarse, aunque después
   // se registren operaciones con fecha anterior al corte.
   const saldoLibros = conciliacion.estado === 'conciliada' && conciliacion.saldo_sistema !== null
-    ? conciliacion.saldo_sistema : saldoLibroBancos(db, conciliacion.periodo_hasta);
-  return { conciliacion, partidas, movimientos, resumen: resumenConciliacion(conciliacion, partidas, movimientos, saldoLibros) };
+    ? conciliacion.saldo_sistema : saldoLibroBancos(db, conciliacion.periodo_hasta, conciliacion.cuenta_bancaria_id);
+  const sinCuenta = conciliacion.estado === 'conciliada' ? 0 : saldoSinCuentaAsignada(db, conciliacion.periodo_hasta);
+  return { conciliacion, partidas, movimientos, resumen: resumenConciliacion(conciliacion, partidas, movimientos, saldoLibros, sinCuenta) };
 }
 
 function listarConciliaciones(db, { cuentaBancariaId, desde, hasta } = {}) {
@@ -566,6 +608,8 @@ function conciliarPareja(db, { partidaId, asientoDetalleId, usuarioId }) {
     `UPDATE conciliaciones_bancarias_detalle SET asiento_detalle_id = ?, conciliado = 1, tipo_diferencia = NULL,
        updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?`
   ).run(asientoDetalleId, partidaId);
+  // Emparejar una línea sin cuenta con el extracto de esta cuenta demuestra que es de ella.
+  if (linea.sin_cuenta) asignarCuentaALinea(db, asientoDetalleId, conciliacion.cuenta_bancaria_id);
   configuracion.registrarAuditoria(db, { usuarioId, modulo: 'caja', entidad: 'conciliaciones_bancarias_detalle', entidadId: partidaId, accion: 'conciliar', detalle: { asientoDetalleId, monto: partida.monto } });
 }
 
@@ -575,7 +619,7 @@ function conciliarAutomaticamente(db, { conciliacionId, usuarioId }) {
   session.requerirPermiso('caja.conciliacion.gestionar');
   const conciliacion = obtenerConciliacionFila(db, conciliacionId);
   exigirEnProceso(conciliacion);
-  const disponibles = movimientosSistema(db, conciliacion).filter((m) => m.disponible);
+  const disponibles = movimientosSistema(db, conciliacion).filter((m) => m.disponible && !m.sin_cuenta);
   const usados = new Set();
   const actualizar = db.prepare(
     `UPDATE conciliaciones_bancarias_detalle SET asiento_detalle_id = ?, conciliado = 1, tipo_diferencia = NULL,
@@ -601,6 +645,45 @@ function conciliarAutomaticamente(db, { conciliacionId, usuarioId }) {
   return emparejadas;
 }
 
+function asignarCuentaALinea(db, asientoDetalleId, cuentaBancariaId) {
+  db.prepare("UPDATE asientos_contables_detalle SET cuenta_bancaria_id = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?")
+    .run(cuentaBancariaId, asientoDetalleId);
+}
+
+// Si el movimiento tiene una reversión (documento anulado), la reversión es de la misma cuenta.
+function asignarReversionPareja(db, asientoDetalleId, cuentaBancariaId) {
+  const base = db.prepare('SELECT d.debe - d.haber AS monto, a.id AS asiento_id, a.origen_documento_id FROM asientos_contables_detalle d JOIN asientos_contables a ON a.id = d.asiento_id WHERE d.id = ?').get(asientoDetalleId);
+  if (!base.origen_documento_id) return;
+  const pareja = db
+    .prepare(
+      `SELECT d.id, d.debe - d.haber AS monto FROM asientos_contables_detalle d JOIN asientos_contables a ON a.id = d.asiento_id
+       JOIN cuentas_contables c ON c.id = d.cuenta_id
+       WHERE c.codigo = ? AND d.cuenta_bancaria_id IS NULL AND a.origen_documento_id = ? AND a.id != ?`
+    )
+    .all(CUENTA_BANCOS, base.origen_documento_id, base.asiento_id)
+    .find((l) => Math.abs(l.monto + base.monto) < 0.005);
+  if (pareja) asignarCuentaALinea(db, pareja.id, cuentaBancariaId);
+}
+
+// Asigna a una cuenta bancaria una línea del libro de Bancos que no tenía (cheque o depósito en
+// tránsito, por ejemplo). Solo lo sin asignar y aún sin conciliar; queda en la bitácora.
+function asignarCuentaMovimiento(db, { asientoDetalleId, cuentaBancariaId, usuarioId }) {
+  session.requerirPermiso('caja.conciliacion.gestionar');
+  const cuenta = db.prepare('SELECT id, nombre FROM cuentas_bancarias WHERE id = ? AND deleted_at IS NULL AND activo = 1').get(cuentaBancariaId);
+  if (!cuenta) throw new Error('Cuenta bancaria no encontrada');
+  const linea = db
+    .prepare(
+      `SELECT d.id, d.cuenta_bancaria_id, c.codigo, d.debe - d.haber AS monto FROM asientos_contables_detalle d
+       JOIN cuentas_contables c ON c.id = d.cuenta_id WHERE d.id = ?`
+    )
+    .get(asientoDetalleId);
+  if (!linea || linea.codigo !== CUENTA_BANCOS) throw new Error('El movimiento no pertenece al libro de Bancos');
+  if (linea.cuenta_bancaria_id) throw new Error('El movimiento ya tiene una cuenta bancaria asignada');
+  asignarCuentaALinea(db, asientoDetalleId, cuentaBancariaId);
+  asignarReversionPareja(db, asientoDetalleId, cuentaBancariaId);
+  configuracion.registrarAuditoria(db, { usuarioId, modulo: 'caja', entidad: 'asientos_contables_detalle', entidadId: asientoDetalleId, accion: 'asignar_cuenta_bancaria', detalle: { cuenta: cuenta.nombre, monto: redondear(linea.monto) } });
+}
+
 function idLineaBancos(db, asientoId) {
   return db
     .prepare(
@@ -618,13 +701,14 @@ function registrarPartidaEnContabilidad(db, { partidaId, usuarioId }) {
   if (partida.conciliado) throw new Error('La partida ya está conciliada');
   const monto = Math.abs(partida.monto);
   const esCargo = partida.monto < 0;
+  const cuentaBancariaId = obtenerConciliacionFila(db, partida.conciliacion_id).cuenta_bancaria_id;
   const asientoId = contabilidad.generarAsiento(db, {
     fecha: `${partida.fecha}T12:00:00.000Z`,
     concepto: `${esCargo ? 'Cargo' : 'Crédito'} bancario: ${partida.descripcion}`,
     origenModulo: 'caja', origenDocumentoTipo: 'conciliaciones_bancarias_detalle', origenDocumentoId: partidaId, usuarioId,
     lineas: esCargo
-      ? [{ cuentaCodigo: CUENTA_GASTOS_BANCARIOS, debe: monto, descripcion: partida.descripcion }, { cuentaCodigo: CUENTA_BANCOS, haber: monto, descripcion: partida.descripcion }]
-      : [{ cuentaCodigo: CUENTA_BANCOS, debe: monto, descripcion: partida.descripcion }, { cuentaCodigo: CUENTA_GASTOS_BANCARIOS, haber: monto, descripcion: partida.descripcion }],
+      ? [{ cuentaCodigo: CUENTA_GASTOS_BANCARIOS, debe: monto, descripcion: partida.descripcion }, { cuentaCodigo: CUENTA_BANCOS, haber: monto, descripcion: partida.descripcion, cuentaBancariaId }]
+      : [{ cuentaCodigo: CUENTA_BANCOS, debe: monto, descripcion: partida.descripcion, cuentaBancariaId }, { cuentaCodigo: CUENTA_GASTOS_BANCARIOS, haber: monto, descripcion: partida.descripcion }],
   });
   db.prepare(
     `UPDATE conciliaciones_bancarias_detalle SET asiento_id = ?, asiento_detalle_id = ?, conciliado = 1,
@@ -646,7 +730,7 @@ function deshacerConciliacionPartida(db, { partidaId, usuarioId }) {
     contabilidad.generarAsiento(db, {
       fecha: asiento.fecha, concepto: `Reversión: ${asiento.concepto}`, origenModulo: 'caja',
       origenDocumentoTipo: 'conciliaciones_bancarias_detalle_anulacion', origenDocumentoId: partidaId, usuarioId,
-      lineas: detalle.map((d) => ({ cuentaCodigo: d.codigo, debe: d.haber, haber: d.debe, descripcion: `Reversión: ${d.descripcion || ''}` })),
+      lineas: detalle.map((d) => ({ cuentaCodigo: d.codigo, debe: d.haber, haber: d.debe, descripcion: `Reversión: ${d.descripcion || ''}`, cuentaBancariaId: d.cuenta_bancaria_id || undefined })),
     });
   }
   db.prepare(
@@ -754,6 +838,7 @@ function register(ipcMain, getDb) {
   escritura('caja:agregarPartidasConciliacion', agregarPartidas);
   escritura('caja:eliminarPartidaConciliacion', eliminarPartida);
   escritura('caja:conciliarPareja', conciliarPareja);
+  escritura('caja:asignarCuentaMovimiento', asignarCuentaMovimiento);
   escritura('caja:conciliarAutomaticamente', conciliarAutomaticamente);
   escritura('caja:registrarPartidaEnContabilidad', registrarPartidaEnContabilidad);
   escritura('caja:deshacerConciliacionPartida', deshacerConciliacionPartida);
@@ -768,5 +853,5 @@ module.exports = {
   crearTransferenciaCajaBanco, listarTransferenciasCajaBanco, listarCajas, crearCaja,
   listarConciliaciones, obtenerConciliacion, crearConciliacion, actualizarSaldoEstadoCuenta, agregarPartidas,
   eliminarPartida, conciliarPareja, conciliarAutomaticamente, registrarPartidaEnContabilidad,
-  deshacerConciliacionPartida, cerrarConciliacion, reabrirConciliacion, saldoLibroBancos,
+  deshacerConciliacionPartida, cerrarConciliacion, reabrirConciliacion, saldoLibroBancos, saldoSinCuentaAsignada, asignarCuentaMovimiento,
 };

@@ -41,13 +41,15 @@ Cada PR se abre contra la rama del bloque anterior. Cuando el PR #1 se fusione, 
 | **F** | F1 Ícono e instalador | `assets/icon.ico` (256×256) y prueba de `npm run dist`. | Instalador generado y abierto. |
 | | F2 Binario nativo | `test` corre con el Node de Electron (mismo binario que `npm start`): nada que recompilar. Además `rebuild:node` y `rebuild:electron` para quien quiera usar Node directo. | `npm test` sin pasos previos. |
 | | F3 CI | GitHub Actions: `npm test` en cada PR, Windows y Linux. | El propio workflow. |
-| **G** | Roadmap | Etiquetas de código de barras, reportes de inventario (valorización a fecha, reposición, sobre-stock, rotación), liquidación de importación, 607 y 608, flujo de caja, multi-sucursal real. | Por función. 607/608: se pregunta cualquier regla que no esté en la especificación. |
+| **G** | Roadmap | Etiquetas de código de barras, reportes de inventario (valorización a fecha, reposición, sobre-stock, rotación), 607 y 608, flujo de caja, multi-sucursal real. | Por función. 607/608: se pregunta cualquier regla que no esté en la especificación. |
 
 | **FE** | Facturación electrónica (Ley 32-23) | Rama `fe/facturacion-electronica`, encima de D. Ver `docs/FACTURACION_ELECTRONICA.md`. FE1 núcleo (XSD, firma, e-CF de ventas, RFCE, ANECF, cola, contingencia); FE2 representación impresa, pantallas y regularización de contingencia; FE3 entrega al comprador, recepción (ARECF) y aprobación comercial (ACECF). Migraciones 012 y 013. | 35 pruebas: XSD oficiales con libxml2, firma con xml-crypto, DGII simulada, servicio receptor de punta a punta. |
 
 ## Estado (11 de octubre de 2026)
 
-Hechos: A, B, C, D1 a D5, E1 (base configurable), E2, F1 (ícono y empaquetado; el instalador pide Modo desarrollador de Windows), F3, FE y de G: reportes de inventario, proyecciones de cobros y pagos, flujo de caja y etiquetas. Pendientes: E3 y liquidación de importación (decisión contable), 607/608 (reglas fiscales), multi-sucursal real y publicar los servicios del receptor e-CF.
+Hechos: A, B, C, D1 a D5, E1 (base configurable), E2, E3 (conciliación por cuenta bancaria), F1 (ícono y empaquetado; el instalador pide Modo desarrollador de Windows), F3, FE y de G: reportes de inventario, proyecciones de cobros y pagos, flujo de caja y etiquetas. Pendientes: 607/608 (reglas fiscales), multi-sucursal real y publicar los servicios del receptor e-CF.
+
+La liquidación de importación se descartó a pedido del usuario.
 
 ## Ajuste de orden
 

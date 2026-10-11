@@ -78,14 +78,14 @@ function generarAsiento(db, { fecha, concepto, origenModulo, origenDocumentoTipo
   ).run(asientoId, numero, fecha, concepto, periodo.id, origenModulo, origenDocumentoTipo || null, origenDocumentoId || null, esManual ? 1 : 0, usuarioId);
 
   const insertDetalle = db.prepare(
-    `INSERT INTO asientos_contables_detalle (id, asiento_id, cuenta_id, debe, haber, descripcion)
-     VALUES (?, ?, ?, ?, ?, ?)`
+    `INSERT INTO asientos_contables_detalle (id, asiento_id, cuenta_id, debe, haber, descripcion, cuenta_bancaria_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`
   );
   for (const linea of lineas) {
     if (!linea.debe && !linea.haber) continue;
     insertDetalle.run(
       crypto.randomUUID(), asientoId, cuentaPorCodigo(db, linea.cuentaCodigo),
-      linea.debe || 0, linea.haber || 0, linea.descripcion || null
+      linea.debe || 0, linea.haber || 0, linea.descripcion || null, linea.cuentaBancariaId || null
     );
   }
 

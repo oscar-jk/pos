@@ -53,7 +53,7 @@ test('receptor: autenticación por semilla firmada y token de una hora', () => {
   assert.ok(auth.tokenValido(`Bearer ${r.token}`, ahora));
   assert.equal(auth.tokenValido(`Bearer ${r.token}`, new Date('2026-10-10T13:00:01Z')), false);
   assert.throws(() => auth.validarCertificado(firmarXml(semilla, certProveedor).xml, ahora), /no es válida o ya venció/, 'una semilla se usa una sola vez');
-  const alterada = firmarXml(auth.semilla(ahora), certProveedor).xml.replace(/<valor>./, '<valor>X');
+  const alterada = firmarXml(auth.semilla(ahora), certProveedor).xml.replace(/<valor>./, '<valor>!');
   assert.throws(() => auth.validarCertificado(alterada, ahora), /alterado/);
 });
 
