@@ -594,6 +594,27 @@ const CATALOGO = [
         ],
       },
       {
+        clave: 'cxc-cobros-vendedor', etiqueta: 'Historial de Cobros por Vendedor',
+        disponible: () => Boolean(window.puntoXCxc.historialCobros),
+        filtros: [{ tipo: 'fecha', clave: 'desde', label: 'Desde' }, { tipo: 'fecha', clave: 'hasta', label: 'Hasta' }],
+        personalizado: true,
+        cargar: (v) => window.puntoXCxc.historialCobros({ desde: v.desde, hasta: v.hasta }),
+        render: (r) => `
+          ${renderTarjetas([{ label: 'Total cobrado', valor: r.total, formato: 'moneda' }, { label: 'Vendedores', valor: r.porVendedor.length }, { label: 'Cobros aplicados', valor: r.filas.length }])}
+          <div class="reportes-panel__header"><h3 style="font-size:14px; margin:0;">Por vendedor de la factura</h3></div>
+          ${renderTabla([
+            { label: 'Vendedor', key: 'nombre' }, { label: 'Cobrado', key: 'cobrado', formato: 'moneda', alinear: 'right' },
+            { label: 'Recibos', key: 'recibos', alinear: 'right' }, { label: 'Facturas cobradas', key: 'facturas', alinear: 'right' },
+            { label: 'Días promedio de cobro', key: 'diasPromedio', alinear: 'right' },
+          ], r.porVendedor)}
+          <div class="reportes-panel__header" style="margin-top:16px;"><h3 style="font-size:14px; margin:0;">Detalle</h3></div>
+          ${renderTabla([
+            { label: 'Recibo', key: 'recibo_numero' }, { label: 'Fecha', key: 'fecha', formato: 'fecha' }, { label: 'Cliente', key: 'cliente_nombre' },
+            { label: 'Factura', key: 'factura_numero' }, { label: 'Vendedor', key: 'vendedor_nombre' }, { label: 'Forma de pago', key: 'forma_pago' },
+            { label: 'Aplicado', key: 'monto_aplicado', formato: 'moneda', alinear: 'right' }, { label: 'Días', key: 'dias_cobro', alinear: 'right' },
+          ], r.filas)}`,
+      },
+      {
         clave: 'cxc-pagos', etiqueta: 'Historial de Pagos',
         filtros: [],
         cargar: () => window.puntoXCxc.listarRecibos({ limite: 200 }),

@@ -64,6 +64,7 @@ contextBridge.exposeInMainWorld('puntoXCxc', {
   crearRecibo: invoke('cxc:crearRecibo'),
   anularRecibo: invoke('cxc:anularRecibo'),
   listarRecibos: invoke('cxc:listarRecibos'),
+  historialCobros: invoke('cxc:historialCobros'),
 
   antiguedadSaldos: invoke('cxc:antiguedadSaldos'),
   facturasVencidas: invoke('cxc:facturasVencidas'),
