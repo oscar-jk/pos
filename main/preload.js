@@ -304,3 +304,11 @@ contextBridge.exposeInMainWorld('puntoXProyecciones', {
   pagos: invoke('proyecciones:pagos'),
   flujoCaja: invoke('proyecciones:flujoCaja'),
 });
+
+// Formatos 607 (ventas) y 608 (comprobantes anulados) de la DGII.
+contextBridge.exposeInMainWorld('puntoXFormatosVentas', {
+  reporte607: invoke('formatos:reporte607'),
+  reporte608: invoke('formatos:reporte608'),
+  exportar607: invoke('formatos:exportar607'),
+  exportar608: invoke('formatos:exportar608'),
+});

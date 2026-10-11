@@ -130,6 +130,7 @@ Seis roles de fábrica, con permisos por acción (`modulo.entidad.accion`): **Ad
 - Proveedores, órdenes de compra, facturas/recepciones (con lote y vencimiento), comparación de costos.
 - Notas de crédito (devolución a proveedor) y de débito (ajuste de precio), con efecto en costo promedio o en capas PEPS.
 - Formato **606** de la DGII (pantalla, TXT y Excel).
+- Formatos **607** (ventas serie B; facturas de consumo menores de RD$250,000 en un resumen aparte; retenciones en cero con aviso) y **608** (comprobantes anulados, tipo de anulación 4 por defecto) en Reportes → Ventas, con TXT `DGII_F_607_RNC_AAAAMM.TXT`. Los e-CF no se incluyen. Verificar con el pre-validador de la DGII y el contador antes del primer envío.
 
 ### Cuentas por cobrar
 - Clientes, límite y días de crédito, bloqueo por mora, estado de cuenta, antigüedad de saldos, facturas vencidas, gestión de cobros, CxC de empleados.
