@@ -45,6 +45,10 @@ Cada PR se abre contra la rama del bloque anterior. Cuando el PR #1 se fusione, 
 
 | **FE** | Facturación electrónica (Ley 32-23) | Rama `fe/facturacion-electronica`, encima de D. Ver `docs/FACTURACION_ELECTRONICA.md`. FE1 núcleo (XSD, firma, e-CF de ventas, RFCE, ANECF, cola, contingencia); FE2 representación impresa, pantallas y regularización de contingencia; FE3 entrega al comprador, recepción (ARECF) y aprobación comercial (ACECF). Migraciones 012 y 013. | 35 pruebas: XSD oficiales con libxml2, firma con xml-crypto, DGII simulada, servicio receptor de punta a punta. |
 
+## Estado (11 de octubre de 2026)
+
+Hechos: A, B, C, D1 a D5, E1 (base configurable), E2, F1 (ícono y empaquetado; el instalador pide Modo desarrollador de Windows), F3, FE y de G: reportes de inventario, proyecciones de cobros y pagos, flujo de caja y etiquetas. Pendientes: E3 y liquidación de importación (decisión contable), 607/608 (reglas fiscales), multi-sucursal real y publicar los servicios del receptor e-CF.
+
 ## Ajuste de orden
 
 **F2 se adelanta al bloque A.** Sin él, `npm test` no corre con `node` y cada bloque dependería del truco del Node de Electron. Es un cambio de `package.json` y un script; va como primer commit de la rama A.

@@ -186,15 +186,22 @@ Rama `fe/facturacion-electronica`. Detalle completo en `docs/FACTURACION_ELECTRO
 - Publicar en internet los servicios del receptor, que la DGII exige para certificar.
 - Cuatro decisiones fiscales, listadas en el documento: E44 exento, nota de crédito después de 30 días, retenciones en el E31, E41/E43.
 
+### Mejoras cerradas después (ramas mejoras/d-atajos-cobro, f-icono-ci, d-estados, e-comisiones-flujo)
+- **Mostrador:** atajos de teclado (F1, F2, F3, F4, F8, F10, Supr, Esc), Enter agrega con cantidad 1, efectivo recibido con billetes y cambio en vivo (la factura registra solo lo que se debe).
+- **Pantallas de 1100×700** sin desborde horizontal; estados de carga y error iguales en todas las pantallas.
+- **Listas de precio:** pantalla en Inventario y aplicación en Ventas (categoría del cliente > sucursal > nivel); el precio de lista no cuenta como descuento manual.
+- **Comisiones:** base configurable (`comision_base`: total o subtotal; por defecto total).
+- **Reportes de inventario:** valorización a fecha (comparable), reposición, sobre-stock, rotación y bitácora de movimientos.
+- **Proyección de cobros y pagos** y **flujo de caja** diario/semanal.
+- **Etiquetas** de código de barras (Code 128) y precio, de anaquel y de caja.
+- **Ícono** de la aplicación, empaquetado de Windows verificado y **CI** en GitHub Actions. El instalador necesita el Modo desarrollador de Windows (o terminal de administrador) para crear enlaces simbólicos.
+
 ### Parcial (hay código pero falta cerrar)
-- **Listas de precio:** el backend existe (`inventario.js`: crear/editar/desactivar, `listasParaVenta`, `precioSegunListas`; regla acordada: **lista de la categoría del cliente > lista de la sucursal > nivel de precio normal**) y está probado. **Falta:** la pantalla para administrarlas y conectarlas al carrito de Ventas (aplicar el precio y mostrarlo).
 - **Conversión de producto:** backend y pestaña listos; la pestaña no tiene prueba de interfaz.
 - **Liquidación de importación:** solo existen las tablas.
 
 ### Pendiente (en el orden acordado)
-1. Listas de precio: pantalla + integración con Ventas.
-2. **Etiquetas** de código de barra y precio (individual y en lote) — permiso `inventario.etiqueta.imprimir` ya creado.
-3. **Reportes de inventario:** valorización a fecha (comparable entre dos fechas), reposición sugerida, sobre-stock, bitácora de movimientos, rotación.
+1. **Liquidación de importación** (necesita decisión contable: contra qué cuenta se registra el flete, seguro y aranceles).
 4. **Compras:** liquidación de importación, presupuesto de compra, recepción sin factura.
 5. **Proyecciones** de cobros y pagos, flujo de caja, historial de cobros por vendedor.
 6. **Multi-sucursal real** (hoy hay sucursales y almacenes, pero el flujo es de una).
