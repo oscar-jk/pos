@@ -1,0 +1,32 @@
+name: Pruebas
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  pruebas:
+    name: npm test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      # Instala dependencias (Electron descarga su binario) y deja better-sqlite3 compilado para
+      # Electron: las pruebas corren con el Node de Electron, el mismo binario que usa la app.
+      - run: npm ci
+      - run: npm run rebuild:electron
+
+      # Los esquemas compilados deben corresponder a los XSD de la DGII.
+      - run: node scripts/compilar-esquemas-ecf.js --revisar
+
+      - run: npm test
