@@ -5,7 +5,8 @@ const session = require('../auth/session');
 const ventas = require('../ipc/ventas');
 const caja = require('../ipc/caja');
 const configuracion = require('../ipc/configuracion');
-const { plantillaFactura, plantillaTique, plantillaArqueoTurno, plantillaPrecuenta } = require('./plantillas');
+const { plantillaFactura, plantillaTique, plantillaArqueoTurno, plantillaPrecuenta, plantillaEtiquetas } = require('./plantillas');
+const { codigoBarrasSvg } = require('./barcode');
 const colaEcf = require('../ecf/cola');
 const { urlConsultaTimbre, qrSvg } = require('../ecf/timbre');
 const { TIPOS_ECF, SIN_VENCIMIENTO, CODIGO_MODIFICACION } = require('../ecf/construir');
@@ -152,6 +153,22 @@ function htmlArqueo(db, turnoId) {
   return plantillaArqueoTurno(turno, movimientos, datosNegocio(db));
 }
 
+// Etiquetas: precio de detalle (ITBIS incluido) y código de barras del producto (el primero
+// registrado; si no tiene, el código interno).
+function htmlEtiquetas(db, { items, formato }) {
+  if (!Array.isArray(items) || items.length === 0) throw new Error('Elija al menos un producto');
+  const total = items.reduce((a, i) => a + Math.max(1, Math.min(500, parseInt(i.copias, 10) || 1)), 0);
+  if (total > 2000) throw new Error('Son demasiadas etiquetas de una vez (máximo 2000)');
+  const filas = items.map((i) => {
+    const p = db.prepare('SELECT id, codigo_interno, descripcion, precio_detalle FROM productos WHERE id = ? AND deleted_at IS NULL').get(i.productoId);
+    if (!p) throw new Error('Producto no encontrado');
+    const barra = db.prepare('SELECT codigo_barra FROM productos_codigos_barra WHERE producto_id = ? AND deleted_at IS NULL ORDER BY created_at LIMIT 1').get(p.id);
+    const codigo = barra ? barra.codigo_barra : p.codigo_interno;
+    return { descripcion: p.descripcion, codigo, precio: p.precio_detalle, svg: codigoBarrasSvg(codigo), copias: Math.max(1, Math.min(500, parseInt(i.copias, 10) || 1)) };
+  });
+  return plantillaEtiquetas(filas, formato === 'caja' ? 'caja' : 'anaquel');
+}
+
 function htmlPrecuenta(db, cuentaId) {
   configuracion.exigirModulo(db, 'cuentas_abiertas');
   const cuenta = ventas.obtenerCuentaAbierta(db, cuentaId);
@@ -196,6 +213,12 @@ function register(ipcMain, getDb) {
     return imprimirHtml(htmlPrecuenta(db, cuentaId), impresoraPorTipo(db, 'tique'));
   });
 
+  ipcMain.handle('impresion:imprimirEtiquetas', async (event, payload) => {
+    session.requerirPermiso('inventario.etiqueta.imprimir');
+    const db = getDb();
+    return imprimirHtml(htmlEtiquetas(db, payload), impresoraPorTipo(db, 'etiqueta'));
+  });
+
   ipcMain.handle('impresion:imprimirArqueo', async (event, { turnoId }) => {
     session.requerirPermiso('caja.tique.imprimir');
     const db = getDb();
@@ -203,4 +226,4 @@ function register(ipcMain, getDb) {
   });
 }
 
-module.exports = { register, listarImpresoras, guardarImpresora, eliminarImpresora, htmlFactura, htmlArqueo, htmlPrecuenta, representacionFiscal };
+module.exports = { register, listarImpresoras, guardarImpresora, eliminarImpresora, htmlFactura, htmlArqueo, htmlPrecuenta, htmlEtiquetas, representacionFiscal };

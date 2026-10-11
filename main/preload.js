@@ -218,6 +218,7 @@ contextBridge.exposeInMainWorld('puntoXImpresion', {
   listarDispositivos: invoke('impresion:listarDispositivos'),
   imprimirFactura: invoke('impresion:imprimirFactura'),
   imprimirArqueo: invoke('impresion:imprimirArqueo'),
+  imprimirEtiquetas: invoke('impresion:imprimirEtiquetas'),
   imprimirPrecuenta: invoke('impresion:imprimirPrecuenta'),
 });
 

@@ -351,3 +351,31 @@ function plantillaArqueoTurno(turno, movimientos, negocio) {
 }
 
 module.exports = { plantillaFactura, plantillaTique, plantillaArqueoTurno, plantillaPrecuenta };
+
+// Etiquetas de código de barras y precio. formato 'anaquel': hoja carta con 3 columnas; 'caja':
+// una etiqueta de 50 × 30 mm por página (rollo). items: [{ descripcion, codigo, precio, svg, copias }].
+function plantillaEtiquetas(items, formato = 'anaquel') {
+  const unidades = items.flatMap((i) => Array.from({ length: Math.max(1, i.copias || 1) }, () => i));
+  const celda = (i) => `
+    <div class="etiqueta">
+      <div class="etiqueta__nombre">${escapar(i.descripcion)}</div>
+      <div class="etiqueta__precio">RD$ ${fmtMoneda(i.precio)}</div>
+      <div class="etiqueta__barras">${i.svg}</div>
+      <div class="etiqueta__codigo">${escapar(i.codigo)}</div>
+    </div>`;
+  const esCaja = formato === 'caja';
+  return `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8" /><title>Etiquetas</title>
+    <style>
+      ${ESTILO_BASE}
+      ${esCaja ? '@page { size: 50mm 30mm; margin: 0; }' : '@page { size: letter; margin: 10mm; }'}
+      body { font-family: Arial, Helvetica, sans-serif; }
+      .hoja { ${esCaja ? '' : 'display: grid; grid-template-columns: repeat(3, 1fr); gap: 3mm;'} }
+      .etiqueta { ${esCaja ? 'width: 50mm; height: 30mm; padding: 1.5mm 2mm; page-break-after: always;' : 'height: 38mm; padding: 2mm 3mm; border: 0.3mm dashed #bbb; break-inside: avoid;'} overflow: hidden; text-align: center; }
+      .etiqueta__nombre { font-size: ${esCaja ? '8pt' : '9pt'}; font-weight: 700; line-height: 1.15; max-height: 2.4em; overflow: hidden; }
+      .etiqueta__precio { font-size: ${esCaja ? '13pt' : '16pt'}; font-weight: 800; margin: 0.5mm 0; }
+      .etiqueta__barras svg { width: 100%; height: ${esCaja ? '8mm' : '11mm'}; }
+      .etiqueta__codigo { font-size: 7pt; letter-spacing: 0.08em; }
+    </style></head><body><div class="hoja">${unidades.map(celda).join('')}</div></body></html>`;
+}
+
+module.exports.plantillaEtiquetas = plantillaEtiquetas;
