@@ -22,13 +22,14 @@ function fechaCorta(iso) {
 
 function redondear(n) { return Math.round((n + Number.EPSILON) * 100) / 100; }
 
-const COLOR_ESTADO_ORDEN = { abierto: 'var(--color-info)', recibido_parcial: 'var(--color-warning)', recibido_total: 'var(--color-success)', anulado: 'var(--color-danger)' };
-const ETIQUETA_ESTADO_ORDEN = { abierto: 'Abierta', recibido_parcial: 'Recibida parcial', recibido_total: 'Recibida total', anulado: 'Anulada' };
+const COLOR_ESTADO_ORDEN = { convertido: 'var(--color-success)', abierto: 'var(--color-info)', recibido_parcial: 'var(--color-warning)', recibido_total: 'var(--color-success)', anulado: 'var(--color-danger)' };
+const ETIQUETA_ESTADO_ORDEN = { convertido: 'Convertido en orden', abierto: 'Abierta', recibido_parcial: 'Recibida parcial', recibido_total: 'Recibida total', anulado: 'Anulada' };
 
 // --- Pestañas ---
 
 const ACCIONES_TAB = {
   proveedores: '<button class="btn btn-primario" id="btn-nuevo-proveedor">+ Nuevo proveedor</button>',
+  presupuestos: '<button class="btn btn-primario" id="btn-nuevo-presupuesto" data-permiso="compras.orden.crear">+ Nuevo presupuesto</button>',
   ordenes: '<button class="btn btn-primario" id="btn-nueva-orden" data-permiso="compras.orden.crear">+ Nueva orden de compra</button>',
   facturas: '<button class="btn btn-primario" id="btn-nueva-factura" data-permiso="compras.factura.crear">+ Nueva factura de compra</button>',
   ecfRecibidos: '<button class="btn btn-primario" id="btn-importar-recibido" data-permiso="compras.ecf.recibir">Importar XML recibido</button>',
@@ -42,6 +43,7 @@ function cambiarTab(tab) {
   mostrarError(null);
 
   if (tab === 'proveedores') { cargarProveedores(); enlazarBtn('btn-nuevo-proveedor', () => abrirFormularioProveedor()); }
+  if (tab === 'presupuestos') { cargarPresupuestos(); enlazarBtn('btn-nuevo-presupuesto', () => abrirFormularioOrdenCompra('presupuesto')); }
   if (tab === 'ordenes') { cargarOrdenes(); enlazarBtn('btn-nueva-orden', () => abrirFormularioOrdenCompra()); }
   if (tab === 'facturas') { cargarFacturas(); enlazarBtn('btn-nueva-factura', () => abrirFormularioFacturaCompra(null)); }
   if (tab === 'notas') cargarNotas();
@@ -168,7 +170,7 @@ async function cargarOrdenes() {
 
 async function verOrdenCompra(ordenId) {
   const orden = await window.puntoXCompras.obtenerOrden({ documentoId: ordenId });
-  window.PuntoXModal.abrirModal(`Orden de compra ${orden.numero}`, `
+  window.PuntoXModal.abrirModal(`${orden.tipo === 'presupuesto' ? 'Presupuesto' : 'Orden de compra'} ${orden.numero}`, `
     <div style="margin-bottom:10px;"><strong>${esc(orden.proveedor_nombre)}</strong> — ${fechaCorta(orden.fecha)} —
       <span class="pill-estado" style="background:${esc(COLOR_ESTADO_ORDEN[orden.estado])};">${esc(ETIQUETA_ESTADO_ORDEN[orden.estado])}</span>
     </div>
@@ -188,10 +190,11 @@ async function verOrdenCompra(ordenId) {
   document.getElementById('orden-cerrar').addEventListener('click', window.PuntoXModal.cerrarModal);
 }
 
-async function abrirFormularioOrdenCompra() {
+async function abrirFormularioOrdenCompra(tipo = 'orden_compra') {
+  const esPresupuesto = tipo === 'presupuesto';
   let proveedorSel = null;
   const lineas = [];
-  const contenido = window.PuntoXModal.abrirModal('Nueva orden de compra', `
+  const contenido = window.PuntoXModal.abrirModal(esPresupuesto ? 'Nuevo presupuesto de compra' : 'Nueva orden de compra', `
     <div class="form-field">
       <label>Proveedor *</label>
       <div class="buscador-producto" style="position:relative;">
@@ -202,7 +205,7 @@ async function abrirFormularioOrdenCompra() {
     </div>
 
     <div class="form-seccion">
-      <div class="form-seccion__titulo" style="font-weight:700; margin-bottom:10px;">Productos a pedir</div>
+      <div class="form-seccion__titulo" style="font-weight:700; margin-bottom:10px;">${esPresupuesto ? 'Productos cotizados' : 'Productos a pedir'}</div>
       <div class="buscador-producto" style="position:relative; margin-bottom:10px;">
         <input id="oc-buscar-producto" class="input-normal" type="text" placeholder="Buscar producto..." autocomplete="off" />
         <div id="oc-resultados-producto" class="buscador-resultados" style="display:none;"></div>
@@ -213,7 +216,7 @@ async function abrirFormularioOrdenCompra() {
 
     <div class="form-seccion" style="display:flex; justify-content:flex-end; gap:8px;">
       <button type="button" class="btn btn-secundario" id="oc-cancelar">Cancelar</button>
-      <button type="button" class="btn btn-primario" id="oc-guardar">Crear orden</button>
+      <button type="button" class="btn btn-primario" id="oc-guardar">${esPresupuesto ? 'Guardar presupuesto' : 'Crear orden'}</button>
     </div>
   `);
 
@@ -272,15 +275,53 @@ async function abrirFormularioOrdenCompra() {
     if (!proveedorSel) { mostrarError('Selecciona un proveedor'); return; }
     if (lineas.length === 0) { mostrarError('Agrega al menos un producto'); return; }
     try {
-      await window.puntoXCompras.crearOrden({
+      await (esPresupuesto ? window.puntoXCompras.crearPresupuesto : window.puntoXCompras.crearOrden)({
         proveedorId: proveedorSel.id,
         lineas: lineas.map((l) => ({ productoId: l.productoId, cantidad: l.cantidad, costoUnitario: l.costoUnitario })),
         usuarioId: state.info.usuario.id,
       });
       window.PuntoXModal.cerrarModal();
-      cargarOrdenes();
+      if (esPresupuesto) cargarPresupuestos(); else cargarOrdenes();
     } catch (err) { mostrarError(err.message); }
   });
+}
+
+// --- Presupuestos de compra ---
+
+async function cargarPresupuestos() {
+  const [presupuestos, comparacion] = await Promise.all([window.puntoXCompras.listarPresupuestos({}), window.puntoXCompras.compararPresupuestos()]);
+  document.getElementById('presupuestos-vacio').style.display = presupuestos.length === 0 ? 'block' : 'none';
+  document.getElementById('presupuestos-comparacion').innerHTML = comparacion.length === 0 ? '' : `
+    <div class="form-seccion__titulo" style="font-weight:700; margin-bottom:6px;">Comparación de precios cotizados</div>
+    <table class="data-table" style="margin-bottom:16px;">
+      <thead><tr><th>Producto</th><th>Proveedor</th><th>Presupuesto</th><th>Costo unitario</th><th>Diferencia</th></tr></thead>
+      <tbody>${comparacion.map((g) => g.ofertas.map((o, i) => `<tr><td>${i === 0 ? esc(g.producto) : ''}</td><td>${esc(o.proveedor)}</td><td>${esc(o.numero)}</td><td>${fmt(o.costo_unitario)}${o.esMejor ? ' <span class="pill-estado" style="background:var(--color-success);">Mejor</span>' : ''}</td><td>${o.esMejor ? '—' : '+' + fmt(o.diferencia)}</td></tr>`).join('')).join('')}</tbody>
+    </table>`;
+  document.getElementById('presupuestos-tbody').innerHTML = presupuestos.map((o) => `
+    <tr>
+      <td>${esc(o.numero)}</td><td>${esc(o.proveedor_nombre)}</td><td>${fechaCorta(o.fecha)}</td><td>${fmt(o.total)}</td>
+      <td><span class="pill-estado" style="background:${esc(COLOR_ESTADO_ORDEN[o.estado])};">${esc(ETIQUETA_ESTADO_ORDEN[o.estado])}</span></td>
+      <td>
+        <span class="enlace-accion" data-ver-pres="${esc(o.id)}">Ver</span>
+        ${o.estado === 'abierto' ? ` · <span class="enlace-accion" data-permiso="compras.orden.crear" data-convertir="${esc(o.id)}">Convertir en orden</span> · <span class="enlace-accion" data-permiso="compras.orden.crear" data-anular-pres="${esc(o.id)}">Anular</span>` : ''}
+      </td>
+    </tr>`).join('');
+  document.querySelectorAll('[data-ver-pres]').forEach((el) => el.addEventListener('click', () => verOrdenCompra(el.dataset.verPres)));
+  document.querySelectorAll('[data-convertir]').forEach((el) => el.addEventListener('click', async () => {
+    try {
+      await window.puntoXCompras.convertirPresupuesto({ documentoId: el.dataset.convertir, usuarioId: state.info.usuario.id });
+      cambiarTab('ordenes');
+    } catch (err) { mostrarError(err.message); }
+  }));
+  document.querySelectorAll('[data-anular-pres]').forEach((el) => el.addEventListener('click', async () => {
+    const doc = presupuestos.find((x) => x.id === el.dataset.anularPres) || {};
+    const motivo = await window.PuntoXModal.confirmarAnulacion({ documento: 'Presupuesto de compra', numero: doc.numero, total: doc.total, revierte: ['El presupuesto deja de contar en la comparación; no mueve inventario ni contabilidad'] });
+    if (!motivo) return;
+    try {
+      await window.puntoXCompras.anularOrden({ documentoId: el.dataset.anularPres, motivo, usuarioId: state.info.usuario.id });
+      cargarPresupuestos();
+    } catch (err) { mostrarError(err.message); }
+  }));
 }
 
 // --- Facturas de compra (recepción). Si ordenId viene dado, se precargan las líneas

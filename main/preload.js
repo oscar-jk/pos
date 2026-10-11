@@ -149,6 +149,10 @@ contextBridge.exposeInMainWorld('puntoXCompras', {
   listarOrdenes: invoke('compras:listarOrdenes'),
   obtenerOrden: invoke('compras:obtenerOrden'),
   anularOrden: invoke('compras:anularOrden'),
+  crearPresupuesto: invoke('compras:crearPresupuesto'),
+  listarPresupuestos: invoke('compras:listarPresupuestos'),
+  convertirPresupuesto: invoke('compras:convertirPresupuesto'),
+  compararPresupuestos: invoke('compras:compararPresupuestos'),
 
   comparacionMejorCosto: invoke('compras:comparacionMejorCosto'),
   comprasPorProducto: invoke('compras:comprasPorProducto'),

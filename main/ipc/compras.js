@@ -13,8 +13,9 @@ const session = require('../auth/session');
 // ocurre en la mayoría de compras de un negocio pequeño cuando el proveedor entrega la
 // factura junto con la mercancía. Puede crearse suelta o contra una orden de compra
 // (con recepción parcial). También notas de crédito (devolución a proveedor o rebaja de
-// precio) y de débito (aumento de precio) sobre una factura de compra. Quedan fuera:
-// presupuesto/cotización de compra como documento separado y liquidación de mercancía importada.
+// precio) y de débito (aumento de precio) sobre una factura de compra. El presupuesto/cotización
+// de compra es un documento de intención como la orden: no mueve inventario ni costo y se puede
+// convertir en orden de compra.
 
 function redondear(n) {
   return Math.round((n + Number.EPSILON) * 100) / 100;
@@ -117,9 +118,11 @@ function guardarProveedor(db, payload, proveedorIdExistente) {
 // Orden de compra (documento de intención — nunca mueve inventario ni costo)
 // =========================================================================
 
-function crearOrdenCompra(db, { proveedorId, lineas, usuarioId }) {
+function crearOrdenCompra(db, { proveedorId, lineas, usuarioId, tipo = 'orden_compra', documentoReferenciaId = null }) {
   session.requerirPermiso('compras.orden.crear');
-  if (!lineas || lineas.length === 0) throw new Error('La orden de compra debe tener al menos una línea');
+  if (tipo !== 'orden_compra' && tipo !== 'presupuesto') throw new Error('Tipo de documento no válido');
+  const nombreDoc = tipo === 'presupuesto' ? 'El presupuesto' : 'La orden de compra';
+  if (!lineas || lineas.length === 0) throw new Error(`${nombreDoc} debe tener al menos una línea`);
   const proveedor = db.prepare('SELECT * FROM proveedores WHERE id = ? AND deleted_at IS NULL').get(proveedorId);
   if (!proveedor) throw new Error('Proveedor no encontrado');
 
@@ -135,11 +138,11 @@ function crearOrdenCompra(db, { proveedorId, lineas, usuarioId }) {
   const total = redondear(subtotal + itbisTotal);
 
   const documentoId = crypto.randomUUID();
-  const numero = siguienteNumero(db, 'orden_compra');
+  const numero = siguienteNumero(db, tipo);
   db.prepare(
-    `INSERT INTO documentos_compra (id, tipo, numero, proveedor_id, fecha, condicion_pago, subtotal, itbis_total, total, estado, usuario_id)
-     VALUES (?, 'orden_compra', ?, ?, strftime('%Y-%m-%dT%H:%M:%fZ','now'), 'credito', ?, ?, ?, 'abierto', ?)`
-  ).run(documentoId, numero, proveedorId, subtotal, itbisTotal, total, usuarioId);
+    `INSERT INTO documentos_compra (id, tipo, numero, proveedor_id, documento_referencia_id, fecha, condicion_pago, subtotal, itbis_total, total, estado, usuario_id)
+     VALUES (?, ?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%fZ','now'), 'credito', ?, ?, ?, 'abierto', ?)`
+  ).run(documentoId, tipo, numero, proveedorId, documentoReferenciaId, subtotal, itbisTotal, total, usuarioId);
 
   const insertDetalle = db.prepare(
     `INSERT INTO documentos_compra_detalle (id, documento_id, producto_id, cantidad, cantidad_recibida, costo_unitario, tasa_itbis, itbis_monto, total_linea)
@@ -149,15 +152,15 @@ function crearOrdenCompra(db, { proveedorId, lineas, usuarioId }) {
     insertDetalle.run(crypto.randomUUID(), documentoId, l.producto.id, l.cantidad, l.costoUnitario, l.tasaItbis, l.itbisMonto, l.totalLinea);
   }
 
-  configuracion.registrarAuditoria(db, { usuarioId, modulo: 'compras', entidad: 'documentos_compra', entidadId: documentoId, accion: 'crear', detalle: { numero, tipo: 'orden_compra' } });
+  configuracion.registrarAuditoria(db, { usuarioId, modulo: 'compras', entidad: 'documentos_compra', entidadId: documentoId, accion: 'crear', detalle: { numero, tipo } });
   return documentoId;
 }
 
-function listarOrdenesCompra(db, { estado, proveedorId, limite = 50 } = {}) {
-  const condiciones = ["tipo = 'orden_compra'"];
-  const params = [];
-  if (estado) { condiciones.push('estado = ?'); params.push(estado); }
-  if (proveedorId) { condiciones.push('proveedor_id = ?'); params.push(proveedorId); }
+function listarOrdenesCompra(db, { estado, proveedorId, limite = 50, tipo = 'orden_compra' } = {}) {
+  const condiciones = ['dc.tipo = ?', 'dc.deleted_at IS NULL'];
+  const params = [tipo === 'presupuesto' ? 'presupuesto' : 'orden_compra'];
+  if (estado) { condiciones.push('dc.estado = ?'); params.push(estado); }
+  if (proveedorId) { condiciones.push('dc.proveedor_id = ?'); params.push(proveedorId); }
   params.push(limite);
   const ordenes = db
     .prepare(`SELECT dc.*, p.nombre AS proveedor_nombre FROM documentos_compra dc JOIN proveedores p ON p.id = dc.proveedor_id WHERE ${condiciones.join(' AND ')} ORDER BY dc.fecha DESC LIMIT ?`)
@@ -184,7 +187,7 @@ function obtenerOrdenCompra(db, documentoId) {
 
 function anularOrdenCompra(db, { documentoId, motivo, usuarioId }) {
   session.requerirPermiso('compras.orden.crear');
-  const documento = db.prepare('SELECT * FROM documentos_compra WHERE id = ?').get(documentoId);
+  const documento = db.prepare("SELECT * FROM documentos_compra WHERE id = ? AND tipo IN ('orden_compra', 'presupuesto')").get(documentoId);
   if (!documento) throw new Error('Orden de compra no encontrada');
   if (documento.estado === 'anulado') throw new Error('La orden ya está anulada');
   if (documento.estado !== 'abierto') throw new Error('Solo se puede anular una orden que todavía no tiene mercancía recibida');
@@ -195,6 +198,42 @@ function anularOrdenCompra(db, { documentoId, motivo, usuarioId }) {
        updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?`
   ).run(motivo, usuarioId, documentoId);
   configuracion.registrarAuditoria(db, { usuarioId, modulo: 'compras', entidad: 'documentos_compra', entidadId: documentoId, accion: 'anular', detalle: { numero: documento.numero, motivo } });
+}
+
+// Presupuesto -> orden: copia las líneas (con el costo cotizado) a una orden nueva y marca el
+// presupuesto como convertido. Es el único camino del presupuesto hacia el inventario.
+function convertirPresupuestoEnOrden(db, { documentoId, usuarioId }) {
+  session.requerirPermiso('compras.orden.crear');
+  const pres = db.prepare("SELECT * FROM documentos_compra WHERE id = ? AND tipo = 'presupuesto' AND deleted_at IS NULL").get(documentoId);
+  if (!pres) throw new Error('Presupuesto no encontrado');
+  if (pres.estado !== 'abierto') throw new Error(pres.estado === 'convertido' ? 'El presupuesto ya se convirtió en orden' : 'Solo se puede convertir un presupuesto abierto');
+  const lineas = db.prepare('SELECT producto_id, cantidad, costo_unitario FROM documentos_compra_detalle WHERE documento_id = ?').all(documentoId)
+    .map((l) => ({ productoId: l.producto_id, cantidad: l.cantidad, costoUnitario: l.costo_unitario }));
+  const ordenId = crearOrdenCompra(db, { proveedorId: pres.proveedor_id, lineas, usuarioId, documentoReferenciaId: documentoId });
+  db.prepare("UPDATE documentos_compra SET estado = 'convertido', updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?").run(documentoId);
+  configuracion.registrarAuditoria(db, { usuarioId, modulo: 'compras', entidad: 'documentos_compra', entidadId: documentoId, accion: 'convertir', detalle: { numero: pres.numero, ordenId } });
+  return ordenId;
+}
+
+// Compara lo cotizado en los presupuestos abiertos: por producto con más de una oferta, cada
+// proveedor con su costo, el mejor primero y la diferencia contra el mejor.
+function compararPresupuestos(db) {
+  const filas = db.prepare(
+    `SELECT dcd.producto_id, pr.descripcion AS producto, dc.id AS documento_id, dc.numero, dc.fecha, dc.proveedor_id, p.nombre AS proveedor,
+            dcd.cantidad, dcd.costo_unitario
+     FROM documentos_compra_detalle dcd JOIN documentos_compra dc ON dc.id = dcd.documento_id
+     JOIN productos pr ON pr.id = dcd.producto_id JOIN proveedores p ON p.id = dc.proveedor_id
+     WHERE dc.tipo = 'presupuesto' AND dc.estado = 'abierto' AND dc.deleted_at IS NULL ORDER BY pr.descripcion, dcd.costo_unitario`
+  ).all();
+  const porProducto = new Map();
+  for (const f of filas) {
+    if (!porProducto.has(f.producto_id)) porProducto.set(f.producto_id, { productoId: f.producto_id, producto: f.producto, ofertas: [] });
+    porProducto.get(f.producto_id).ofertas.push(f);
+  }
+  return [...porProducto.values()].filter((g) => g.ofertas.length > 1).map((g) => {
+    const mejor = g.ofertas[0].costo_unitario;
+    return { ...g, mejorCosto: mejor, ofertas: g.ofertas.map((o, i) => ({ ...o, esMejor: i === 0, diferencia: redondear(o.costo_unitario - mejor) })) };
+  });
 }
 
 function actualizarEstadoOrdenCompra(db, ordenId) {
@@ -1076,6 +1115,19 @@ function register(ipcMain, getDb) {
     return obtenerOrdenCompra(db, payload.documentoId);
   });
 
+  ipcMain.handle('compras:crearPresupuesto', (event, payload) => {
+    const db = getDb();
+    const id = db.transaction(() => crearOrdenCompra(db, { ...payload, tipo: 'presupuesto' }))();
+    return obtenerOrdenCompra(db, id);
+  });
+  ipcMain.handle('compras:listarPresupuestos', (event, filtros) => listarOrdenesCompra(getDb(), { ...(filtros || {}), tipo: 'presupuesto' }));
+  ipcMain.handle('compras:convertirPresupuesto', (event, payload) => {
+    const db = getDb();
+    const id = db.transaction(() => convertirPresupuestoEnOrden(db, payload))();
+    return obtenerOrdenCompra(db, id);
+  });
+  ipcMain.handle('compras:compararPresupuestos', () => compararPresupuestos(getDb()));
+
   ipcMain.handle('compras:comparacionMejorCosto', (event, { productoId }) => comparacionMejorCosto(getDb(), { productoId }));
   ipcMain.handle('compras:comprasPorProducto', (event, filtros) => comprasPorProducto(getDb(), filtros || {}));
 
@@ -1098,7 +1150,7 @@ module.exports = {
   register, obtenerProveedor, listarProveedores, guardarProveedor, saldoPendienteProveedor, saldoAFavorProveedor,
   saldoDocumentoCompra, documentosPorPagarProveedor,
   crearFacturaCompra, anularFacturaCompra, listarFacturasCompra, obtenerFacturaCompra,
-  crearOrdenCompra, listarOrdenesCompra, obtenerOrdenCompra, anularOrdenCompra,
+  crearOrdenCompra, listarOrdenesCompra, obtenerOrdenCompra, anularOrdenCompra, convertirPresupuestoEnOrden, compararPresupuestos,
   lineasParaNota, crearNotaCompra, anularNotaCompra, listarNotasCompra, obtenerNotaCompra,
   comparacionMejorCosto, comprasPorProducto, reporte606, txt606, csv606,
 };
