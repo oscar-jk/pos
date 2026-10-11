@@ -36,9 +36,32 @@ function precioPorNivel(producto, nivel) {
   return producto.precio_detalle;
 }
 
-// Una línea que viene de una cotización o un conduce conserva el precio de ese documento.
+// Listas de precio que aplican a esta venta (categoría del cliente > sucursal > nivel de precio).
+// Réplica de inventario.precioSegunListas; el servidor aplica la misma regla.
+function precioDeLista(producto) {
+  for (const lista of [state.listas && state.listas.categoria, state.listas && state.listas.sucursal]) {
+    if (!lista) continue;
+    if (lista.precios[producto.id] !== undefined) return { precio: lista.precios[producto.id], lista: lista.nombre };
+    if (lista.porcentaje_sobre_detalle !== null && lista.porcentaje_sobre_detalle !== undefined) {
+      return { precio: redondear(producto.precio_detalle * (1 + lista.porcentaje_sobre_detalle / 100)), lista: lista.nombre };
+    }
+  }
+  return null;
+}
+
+async function cargarListas() {
+  if (!window.puntoXInventario.listasParaVenta) { state.listas = null; renderCarrito(); return; }
+  state.listas = await window.puntoXInventario.listasParaVenta({
+    sucursalId: state.info.sucursalId, categoriaClienteId: state.cliente ? state.cliente.categoria_id || null : null,
+  });
+  renderCarrito();
+}
+
+// Precio con que se vende: el del documento de origen, si no el de la lista, si no el del nivel.
 function precioLinea(linea) {
-  return linea.precioFijo ?? precioPorNivel(linea.producto, state.nivelPrecio);
+  if (linea.precioFijo !== undefined && linea.precioFijo !== null) return linea.precioFijo;
+  const lista = precioDeLista(linea.producto);
+  return lista ? lista.precio : precioPorNivel(linea.producto, state.nivelPrecio);
 }
 
 // Réplica de main/ipc/ventas.js (descuentoLinea + calcularLinea) para previsualizar en vivo:
@@ -129,7 +152,7 @@ function renderResultadosProducto(resultados) {
           <div class="buscador-resultados__nombre">${esc(p.descripcion)}</div>
           <div class="buscador-resultados__meta">${esc(p.codigo_interno)} · Disp: ${esc(p.cantidad_disponible)}${p.promocion ? ` · <span style="color:var(--color-success); font-weight:700;">Promoción ${textoPromocion(p.promocion)}</span>` : ""}</div>
         </div>
-        <div class="buscador-resultados__precio">${fmtV(precioPorNivel(p, state.nivelPrecio))}</div>
+        <div class="buscador-resultados__precio">${fmtV((precioDeLista(p) || { precio: precioPorNivel(p, state.nivelPrecio) }).precio)}</div>
       </div>
     `).join('');
     contenedor.querySelectorAll('.buscador-resultados__item').forEach((el) => {
@@ -162,6 +185,12 @@ function agregarAlCarrito(producto) {
   renderCarrito();
 }
 
+function listaDeLinea(linea) {
+  if (linea.precioFijo !== undefined && linea.precioFijo !== null) return null;
+  const l = precioDeLista(linea.producto);
+  return l ? l.lista : null;
+}
+
 function renderCarrito() {
   const tbody = document.getElementById('carrito-tbody');
   const vacio = document.getElementById('carrito-vacio');
@@ -177,7 +206,7 @@ function renderCarrito() {
     const montoManual = linea.modoDescuento === 'monto' ? linea.descuentoMonto : calc.manual;
     return `
       <tr data-index="${i}">
-        <td>${esc(linea.producto.descripcion)}${calc.promocion ? `<div class="linea-promo" title="${esc(calc.promocion.nombre || '')}">Promoción −${textoPromocion(calc.promocion)}</div>` : ''}</td>
+        <td>${esc(linea.producto.descripcion)}${listaDeLinea(linea) ? `<div class="linea-promo">Lista: ${esc(listaDeLinea(linea))}</div>` : ''}${calc.promocion ? `<div class="linea-promo" title="${esc(calc.promocion.nombre || '')}">Promoción −${textoPromocion(calc.promocion)}</div>` : ''}</td>
         <td style="text-align:center;"><input type="number" min="0.01" step="0.01" value="${esc(linea.cantidad)}" class="cant-input" ${bloqueado ? 'disabled' : ''} /></td>
         <td style="text-align:center; white-space:nowrap;">
           <input type="number" min="0" max="100" step="0.01" value="${pctManual}" class="desc-input" title="Descuento en %" ${descuentoBloqueado ? 'disabled' : ''} />
@@ -342,6 +371,7 @@ function setModoVenta(modo) {
   if (modo === 'rapida') {
     state.cliente = null;
     document.getElementById('cliente-nombre').textContent = 'Consumidor final';
+    cargarListas();
   }
   actualizarSubtitulo();
 }
@@ -412,7 +442,7 @@ function seleccionarCliente(cliente) {
   if (cliente.tipo_comprobante_default) {
     document.getElementById('select-ncf').value = cliente.tipo_comprobante_default;
   }
-  renderCarrito();
+  cargarListas();
 }
 
 // --- Cobrar ---
@@ -1026,6 +1056,7 @@ async function init() {
   if (!state.info) return; // sin sesión o con la contraseña pendiente: el shell ya redirigió al login
   state.categorias = await window.puntoXCxc.listarCategorias();
   configurarComprobantes();
+  await cargarListas();
   actualizarSubtitulo();
   configurarSelectorDocumento();
   await configurarMonedas();

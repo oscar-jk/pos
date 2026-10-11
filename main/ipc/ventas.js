@@ -123,12 +123,16 @@ function obtenerLimiteDescuentoRol(db, usuarioId) {
 // descuentosAutorizados (productoId → RD$) y descuentoGlobalAutorizadoPct: lo que ya se autorizó
 // en la cotización o los conduces que se facturan; hasta ahí no se vuelve a aplicar el tope del rol.
 function prepararLineasVenta(db, {
-  lineas, almacenId, nivelPrecio, usuarioId, descuentoGlobalPct, validarExistencia,
+  lineas, almacenId, nivelPrecio, usuarioId, descuentoGlobalPct, validarExistencia, sucursalId, clienteId,
   descuentosAutorizados = new Map(), descuentoGlobalAutorizadoPct = 0,
 }) {
   // El tope sale del usuario con sesión abierta: el usuarioId del payload lo manda la pantalla.
   const limiteRol = obtenerLimiteDescuentoRol(db, session.usuarioActualId());
   const puedeExceder = Boolean(limiteRol.puede_exceder);
+  // Precio de lista: la lista de la categoría del cliente o la de la sucursal sustituye al nivel
+  // de precio, y no cuenta como descuento manual (es el precio de lista de esa venta).
+  const clienteLista = clienteId ? db.prepare('SELECT categoria_id FROM clientes WHERE id = ?').get(clienteId) : null;
+  const listas = inventario.listasParaVenta(db, { sucursalId, categoriaClienteId: clienteLista ? clienteLista.categoria_id : null });
 
   const lineasCalculadas = lineas.map((l) => {
     const producto = inventario.obtenerProducto(db, l.productoId, almacenId);
@@ -142,7 +146,8 @@ function prepararLineasVenta(db, {
       }
     }
 
-    const precioLista = precioProducto(producto, nivelPrecio);
+    const deLista = inventario.precioSegunListas(listas, producto);
+    const precioLista = deLista ? deLista.precio : precioProducto(producto, nivelPrecio);
     const precioUnitario = l.precioUnitario ?? precioLista;
     if (!(precioUnitario >= 0)) throw new Error(`El precio de "${producto.descripcion}" no es válido`);
     const bruto = redondear(precioUnitario * l.cantidad);
@@ -245,7 +250,7 @@ function crearFactura(db, payload) {
   if (pedido) reservarLineasPedido(db, pedido, -1);
 
   const { lineasCalculadas, descuentoGlobalMonto, subtotal, itbisTotal, total } = prepararLineasVenta(db, {
-    lineas, almacenId, nivelPrecio, usuarioId, descuentoGlobalPct, validarExistencia: !conduces,
+    lineas, almacenId, nivelPrecio, usuarioId, descuentoGlobalPct, validarExistencia: !conduces, sucursalId, clienteId,
     ...descuentosDeOrigen(db, [cotizacion, pedido, ...(conduces || [])].filter(Boolean)),
   });
 
@@ -532,7 +537,7 @@ function crearCotizacion(db, { sucursalId, almacenId, clienteId, vendedorId, usu
   const dias = Math.round(Number(diasValidez ?? 15));
   if (!(dias >= 1 && dias <= 365)) throw new Error('La validez de la cotización debe estar entre 1 y 365 días');
   if (clienteId && !cxc.obtenerCliente(db, clienteId)) throw new Error('Cliente no encontrado');
-  const calculo = prepararLineasVenta(db, { lineas, almacenId, nivelPrecio, usuarioId, descuentoGlobalPct, validarExistencia: false });
+  const calculo = prepararLineasVenta(db, { lineas, almacenId, nivelPrecio, usuarioId, descuentoGlobalPct, validarExistencia: false, sucursalId, clienteId });
   const vence = new Date();
   vence.setDate(vence.getDate() + dias);
   const validaHasta = `${vence.getFullYear()}-${String(vence.getMonth() + 1).padStart(2, '0')}-${String(vence.getDate()).padStart(2, '0')}`;
@@ -550,7 +555,7 @@ function crearConduce(db, { sucursalId, almacenId, clienteId, vendedorId, usuari
   const cliente = cxc.obtenerCliente(db, clienteId);
   if (!cliente) throw new Error('Cliente no encontrado');
   if (cliente.bloqueado) throw new Error(`El cliente está bloqueado: ${cliente.motivo_bloqueo || 'sin motivo registrado'}`);
-  const calculo = prepararLineasVenta(db, { lineas, almacenId, nivelPrecio, usuarioId, descuentoGlobalPct, validarExistencia: true });
+  const calculo = prepararLineasVenta(db, { lineas, almacenId, nivelPrecio, usuarioId, descuentoGlobalPct, validarExistencia: true, sucursalId, clienteId });
   const { documentoId, numero, fechaIso, lineas: insertadas } = insertarDocumentoSinFiscal(db, {
     tipo: 'conduce', estado: 'entregado', sucursalId, almacenId, clienteId, vendedorId, calculo, concepto, usuarioId,
   });
@@ -595,7 +600,7 @@ function crearPedido(db, { sucursalId, almacenId, clienteId, vendedorId, usuario
   const cliente = cxc.obtenerCliente(db, clienteId);
   if (!cliente) throw new Error('Cliente no encontrado');
   if (cliente.bloqueado) throw new Error(`El cliente está bloqueado: ${cliente.motivo_bloqueo || 'sin motivo registrado'}`);
-  const calculo = prepararLineasVenta(db, { lineas, almacenId, nivelPrecio, usuarioId, descuentoGlobalPct, validarExistencia: true });
+  const calculo = prepararLineasVenta(db, { lineas, almacenId, nivelPrecio, usuarioId, descuentoGlobalPct, validarExistencia: true, sucursalId, clienteId });
   const { documentoId, numero } = insertarDocumentoSinFiscal(db, {
     tipo: 'pedido', estado: 'abierto', sucursalId, almacenId, clienteId, vendedorId, calculo, concepto, usuarioId,
   });

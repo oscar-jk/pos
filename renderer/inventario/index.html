@@ -31,6 +31,7 @@
         <button class="tab-btn" data-tab="transferencias">Transferencias</button>
         <button class="tab-btn" data-tab="conversiones">Conversiones</button>
         <button class="tab-btn" data-tab="vencimientos">Lotes y vencimientos</button>
+        <button class="tab-btn" data-tab="listas" data-permiso="inventario.lista_precio.gestionar">Listas de precio</button>
       </div>
 
       <div id="tab-productos" class="tab-panel">
@@ -93,6 +94,18 @@
         <div id="conversiones-vacio" class="empty-state" style="display:none;">Aún no hay conversiones. Ej.: abrir un saco de 50 kg para vender por kilo.</div>
       </div>
 
+      <div id="tab-listas" class="tab-panel" style="display:none;">
+        <p style="font-size:13px; color:var(--color-text-muted); margin:0 0 14px; max-width:760px;">
+          Una lista de precios se asigna a una categoría de cliente o a una sucursal. Al vender, el precio de la lista sustituye al nivel de precio
+          (categoría del cliente primero, luego sucursal). Los precios llevan ITBIS incluido y no cuentan como descuento manual del cajero.
+        </p>
+        <table class="data-table">
+          <thead><tr><th>Lista</th><th>Categoría de cliente</th><th>Sucursal</th><th>% sobre detalle</th><th>Productos</th><th>Estado</th><th></th></tr></thead>
+          <tbody id="listas-tbody"></tbody>
+        </table>
+        <div id="listas-vacio" class="empty-state" style="display:none;">Aún no hay listas de precio.</div>
+      </div>
+
       <div id="tab-vencimientos" class="tab-panel" style="display:none;">
         <div style="display:flex; gap:8px; margin-bottom:12px;">
           <select id="lotes-vista" class="input-normal" style="max-width:260px;">
@@ -131,5 +144,6 @@
   <script src="../shared/shell.js"></script>
   <script src="../shared/modal.js"></script>
   <script src="./inventario.js"></script>
+  <script src="./listas-precio.js"></script>
 </body>
 </html>

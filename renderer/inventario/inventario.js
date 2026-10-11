@@ -46,6 +46,7 @@ const ACCIONES_TAB = {
   ajustes: '<button class="btn btn-primario" id="btn-nuevo-ajuste" data-permiso="inventario.ajuste.crear">+ Nuevo ajuste</button>',
   mermas: '<button class="btn btn-primario" id="btn-nueva-merma" data-permiso="inventario.merma.crear">+ Nueva merma</button>',
   transferencias: '<button class="btn btn-primario" id="btn-nueva-transferencia" data-permiso="inventario.transferencia.crear">+ Nueva transferencia</button>',
+  listas: '<button class="btn btn-primario" id="btn-nueva-lista" data-permiso="inventario.lista_precio.gestionar">+ Nueva lista</button>',
   conversiones: '<button class="btn btn-primario" id="btn-nueva-conversion" data-permiso="inventario.conversion.crear">+ Nueva conversión</button>',
 };
 
@@ -63,6 +64,7 @@ function cambiarTab(tab) {
   if (tab === 'transferencias') { cargarTransferencias(); enlazarBtn('btn-nueva-transferencia', () => abrirFormularioTransferencia()); }
   if (tab === 'conversiones') { cargarConversiones(); enlazarBtn('btn-nueva-conversion', () => abrirFormularioConversion()); }
   if (tab === 'vencimientos') cargarVencimientos();
+  if (tab === 'listas' && window.PuntoXListasPrecio) window.PuntoXListasPrecio.cargar();
 }
 
 function enlazarBtn(id, fn) {
