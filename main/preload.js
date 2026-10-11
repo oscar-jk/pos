@@ -295,3 +295,10 @@ contextBridge.exposeInMainWorld('puntoXReportesInv', {
   rotacion: invoke('reportesInv:rotacion'),
   bitacora: invoke('reportesInv:bitacora'),
 });
+
+// Proyección de cobros y pagos, y flujo de caja.
+contextBridge.exposeInMainWorld('puntoXProyecciones', {
+  cobros: invoke('proyecciones:cobros'),
+  pagos: invoke('proyecciones:pagos'),
+  flujoCaja: invoke('proyecciones:flujoCaja'),
+});

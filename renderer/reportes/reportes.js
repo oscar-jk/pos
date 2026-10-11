@@ -427,6 +427,18 @@ const CATALOGO = [
     grupo: 'Cuentas por Cobrar', modulo: 'cxc',
     reportes: [
       {
+        clave: 'cxc-proyeccion', etiqueta: 'Proyección de Cobros',
+        disponible: () => Boolean(window.puntoXProyecciones),
+        filtros: [{ tipo: 'select', clave: 'agrupar', label: 'Agrupar por', valorDefault: 'semana', opciones: [{ value: 'semana', label: 'Semana (7 días)' }, { value: 'mes', label: 'Mes (30 días)' }] }, { tipo: 'select', clave: 'periodos', label: 'Periodos', valorDefault: '8', opciones: [{ value: '4', label: '4' }, { value: '8', label: '8' }, { value: '12', label: '12' }] }],
+        personalizado: true,
+        cargar: (v) => window.puntoXProyecciones.cobros({ agrupar: v.agrupar, periodos: Number(v.periodos) }),
+        render: (r) => renderTarjetas([{ label: 'Por cobrar', valor: r.total, formato: 'moneda' }, { label: 'Ya vencido', valor: r.vencido, formato: 'moneda', color: r.vencido > 0 ? 'var(--color-danger)' : undefined }])
+          + renderTabla([
+            { label: 'Periodo', key: 'etiqueta' }, { label: 'Desde', key: 'desde', formato: 'fecha' }, { label: 'Hasta', key: 'hasta', formato: 'fecha' },
+            { label: 'Documentos', key: 'documentos', alinear: 'right' }, { label: 'Monto', key: 'monto', formato: 'moneda', alinear: 'right' },
+          ], r.periodos),
+      },
+      {
         clave: 'cxc-listado', etiqueta: 'Listado de CxC',
         filtros: [],
         cargar: () => window.puntoXCxc.listarClientes({ limite: 200 }),
@@ -502,6 +514,18 @@ const CATALOGO = [
     grupo: 'Cuentas por Pagar', modulo: 'cxp',
     reportes: [
       {
+        clave: 'cxp-proyeccion', etiqueta: 'Proyección de Pagos',
+        disponible: () => Boolean(window.puntoXProyecciones),
+        filtros: [{ tipo: 'select', clave: 'agrupar', label: 'Agrupar por', valorDefault: 'semana', opciones: [{ value: 'semana', label: 'Semana (7 días)' }, { value: 'mes', label: 'Mes (30 días)' }] }, { tipo: 'select', clave: 'periodos', label: 'Periodos', valorDefault: '8', opciones: [{ value: '4', label: '4' }, { value: '8', label: '8' }, { value: '12', label: '12' }] }],
+        personalizado: true,
+        cargar: (v) => window.puntoXProyecciones.pagos({ agrupar: v.agrupar, periodos: Number(v.periodos) }),
+        render: (r) => renderTarjetas([{ label: 'Por pagar', valor: r.total, formato: 'moneda' }, { label: 'Ya vencido', valor: r.vencido, formato: 'moneda', color: r.vencido > 0 ? 'var(--color-danger)' : undefined }])
+          + renderTabla([
+            { label: 'Periodo', key: 'etiqueta' }, { label: 'Desde', key: 'desde', formato: 'fecha' }, { label: 'Hasta', key: 'hasta', formato: 'fecha' },
+            { label: 'Documentos', key: 'documentos', alinear: 'right' }, { label: 'Monto', key: 'monto', formato: 'moneda', alinear: 'right' },
+          ], r.periodos),
+      },
+      {
         clave: 'cxp-listado', etiqueta: 'Listado de CxP',
         filtros: [],
         cargar: () => window.puntoXCompras.listarProveedores({ limite: 200 }),
@@ -546,6 +570,23 @@ const CATALOGO = [
   {
     grupo: 'Caja y Tesorería', modulo: 'caja',
     reportes: [
+      {
+        clave: 'caja-flujo', etiqueta: 'Flujo de Caja Diario/Semanal',
+        disponible: () => Boolean(window.puntoXProyecciones),
+        filtros: [
+          { tipo: 'select', clave: 'agrupar', label: 'Agrupar por', valorDefault: 'dia', opciones: [{ value: 'dia', label: 'Día' }, { value: 'semana', label: 'Semana' }] },
+          { tipo: 'fecha', clave: 'desde', label: 'Desde' }, { tipo: 'fecha', clave: 'hasta', label: 'Hasta' },
+        ],
+        personalizado: true,
+        cargar: (v) => window.puntoXProyecciones.flujoCaja({ agrupar: v.agrupar, desde: v.desde || undefined, hasta: v.hasta || undefined }),
+        render: (r) => renderTarjetas([
+          { label: 'Entradas', valor: r.entradas, formato: 'moneda', color: 'var(--color-success)' }, { label: 'Salidas', valor: r.salidas, formato: 'moneda', color: 'var(--color-danger)' }, { label: 'Neto', valor: r.neto, formato: 'moneda' },
+        ]) + renderTabla([
+          { label: r.agrupar === 'semana' ? 'Semana desde' : 'Día', key: 'periodo', formato: 'fecha' }, { label: 'Entradas', key: 'entradas', formato: 'moneda', alinear: 'right' },
+          { label: 'Salidas', key: 'salidas', formato: 'moneda', alinear: 'right' }, { label: 'Neto', key: 'neto', formato: 'moneda', alinear: 'right' },
+          { label: 'Acumulado', key: 'acumulado', formato: 'moneda', alinear: 'right' }, { label: 'Ventas en efectivo', key: 'ventas_efectivo', formato: 'moneda', alinear: 'right' },
+        ], r.filas),
+      },
       {
         clave: 'caja-arqueo', etiqueta: 'Arqueo de Caja por Turno',
         filtros: [],
