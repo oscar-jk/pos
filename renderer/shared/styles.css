@@ -800,3 +800,8 @@ select.input-normal, input.input-normal {
   .page-header > div:first-child { min-width: 220px; }
   .kpi-grid { gap: 10px; }
 }
+
+/* --- Estados de tablas: cargando y error --- */
+.estado-fila td { text-align: center; padding: 22px 12px; font-size: 13px; color: var(--color-text-muted); }
+.estado-fila--error td { color: var(--color-danger); font-weight: 700; }
+.estado-fila--error a { color: var(--color-accent); margin-left: 6px; }

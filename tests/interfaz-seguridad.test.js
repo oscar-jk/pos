@@ -94,3 +94,12 @@ test('A2: ningún dato se inserta en HTML sin esc()', () => {
   }
   assert.deepEqual(sinEscape, []);
 });
+
+test('D4: todas las pantallas cargan estados.js (cargando y error de tablas) justo después de escape.js', () => {
+  for (const p of paginas) {
+    const html = fs.readFileSync(p, 'utf8');
+    const scripts = [...html.matchAll(/<script src="([^"]*)"/g)].map((m) => m[1].split('/').pop());
+    assert.equal(scripts[0], 'escape.js', path.relative(RENDERER, p));
+    assert.equal(scripts[1], 'estados.js', path.relative(RENDERER, p));
+  }
+});
