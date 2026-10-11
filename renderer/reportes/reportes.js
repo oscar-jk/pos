@@ -272,6 +272,83 @@ const CATALOGO = [
         ],
       },
       {
+        clave: 'inv-valorizacion', etiqueta: 'Valorización de Inventario a Fecha',
+        disponible: () => Boolean(window.puntoXReportesInv),
+        filtros: [{ tipo: 'fecha', clave: 'fecha', label: 'A la fecha', valorDefault: hoyISO() }, { tipo: 'fecha', clave: 'compararCon', label: 'Comparar con (opcional)' }],
+        personalizado: true,
+        cargar: (v) => window.puntoXReportesInv.valorizacion({ fecha: v.fecha || undefined, compararCon: v.compararCon || undefined }),
+        render: (r) => {
+          const tarjetas = [{ label: `Valor al ${fechaCorta(r.fecha)}`, valor: r.total, formato: 'moneda' }];
+          const columnas = [
+            { label: 'Código', key: 'codigo_interno' }, { label: 'Producto', key: 'descripcion' }, { label: 'Categoría', key: 'categoria_nombre' },
+            { label: 'Cantidad', key: 'cantidad', alinear: 'right' }, { label: 'Valor', key: 'valor', formato: 'moneda', alinear: 'right' },
+          ];
+          if (r.compararCon) {
+            tarjetas.push({ label: `Valor al ${fechaCorta(r.compararCon)}`, valor: r.totalPrevio, formato: 'moneda' }, { label: 'Diferencia', valor: r.diferencia, formato: 'moneda', color: r.diferencia < 0 ? 'var(--color-danger)' : 'var(--color-success)' });
+            columnas.push({ label: 'Cantidad previa', key: 'cantidad_previa', alinear: 'right' }, { label: 'Valor previo', key: 'valor_previo', formato: 'moneda', alinear: 'right' }, { label: 'Diferencia', key: 'diferencia', formato: 'moneda', alinear: 'right' });
+          }
+          return renderTarjetas(tarjetas) + renderTabla(columnas, r.filas);
+        },
+      },
+      {
+        clave: 'inv-reposicion', etiqueta: 'Reposición Sugerida',
+        disponible: () => Boolean(window.puntoXReportesInv),
+        filtros: [],
+        cargar: () => window.puntoXReportesInv.reposicion(),
+        columnas: [
+          { label: 'Código', key: 'codigo_interno' }, { label: 'Producto', key: 'descripcion' },
+          { label: 'Existencia', key: 'existencia', alinear: 'right' }, { label: 'Mínimo', key: 'stock_minimo', alinear: 'right' },
+          { label: 'Consumo diario (90 d)', key: 'consumo_diario', alinear: 'right' }, { label: 'Días de cobertura', key: 'dias_cobertura', alinear: 'right' },
+          { label: 'Cantidad sugerida', key: 'cantidad_sugerida', alinear: 'right' },
+        ],
+      },
+      {
+        clave: 'inv-sobrestock', etiqueta: 'Sobre-stock',
+        disponible: () => Boolean(window.puntoXReportesInv),
+        filtros: [],
+        cargar: () => window.puntoXReportesInv.sobreStock(),
+        columnas: [
+          { label: 'Código', key: 'codigo_interno' }, { label: 'Producto', key: 'descripcion' }, { label: 'Existencia', key: 'existencia', alinear: 'right' },
+          { label: 'Máximo', key: 'stock_maximo', alinear: 'right' }, { label: 'Días de cobertura', key: 'dias_cobertura', alinear: 'right' },
+          { label: 'Exceso', key: 'cantidad_exceso', alinear: 'right' }, { label: 'Valor del exceso', key: 'valor_exceso', formato: 'moneda', alinear: 'right' },
+          { label: 'Motivo', key: 'motivo' },
+        ],
+      },
+      {
+        clave: 'inv-rotacion', etiqueta: 'Rotación de Inventario',
+        disponible: () => Boolean(window.puntoXReportesInv),
+        filtros: [
+          { tipo: 'select', clave: 'agrupar', label: 'Por', valorDefault: 'producto', opciones: [{ value: 'producto', label: 'Producto' }, { value: 'categoria', label: 'Categoría' }] },
+          { tipo: 'fecha', clave: 'desde', label: 'Desde' }, { tipo: 'fecha', clave: 'hasta', label: 'Hasta' },
+        ],
+        cargar: (v) => window.puntoXReportesInv.rotacion({ agrupar: v.agrupar, desde: v.desde || undefined, hasta: v.hasta || undefined }),
+        columnas: [
+          { label: 'Código', key: 'codigo_interno' }, { label: 'Producto / categoría', key: 'descripcion' },
+          { label: 'Costo de ventas', key: 'costo_ventas', formato: 'moneda', alinear: 'right' }, { label: 'Inventario promedio', key: 'inventario_promedio', formato: 'moneda', alinear: 'right' },
+          { label: 'Rotación', key: 'rotacion', alinear: 'right' }, { label: 'Días de inventario', key: 'dias_inventario', alinear: 'right' },
+        ],
+      },
+      {
+        clave: 'inv-bitacora', etiqueta: 'Bitácora de Movimientos',
+        disponible: () => Boolean(window.puntoXReportesInv),
+        filtros: [
+          { tipo: 'select', clave: 'tipo', label: 'Tipo', valorDefault: '', opciones: [
+            { value: '', label: 'Todos' }, { value: 'entrada_compra', label: 'Entradas de compra' }, { value: 'salida_venta', label: 'Salidas por venta' },
+            { value: 'ajuste_entrada', label: 'Ajustes de entrada' }, { value: 'ajuste_salida', label: 'Ajustes de salida' },
+            { value: 'transferencia_entrada', label: 'Transferencias (entrada)' }, { value: 'transferencia_salida', label: 'Transferencias (salida)' },
+            { value: 'merma', label: 'Mermas' }, { value: 'conversion', label: 'Conversiones' },
+          ] },
+          { tipo: 'fecha', clave: 'desde', label: 'Desde' }, { tipo: 'fecha', clave: 'hasta', label: 'Hasta' },
+        ],
+        cargar: (v) => window.puntoXReportesInv.bitacora({ tipo: v.tipo || undefined, desde: v.desde || undefined, hasta: v.hasta || undefined }),
+        columnas: [
+          { label: 'Fecha', key: 'fecha', formato: 'fechahora' }, { label: 'Producto', key: 'descripcion' }, { label: 'Almacén', key: 'almacen_nombre' },
+          { label: 'Tipo', key: 'tipo_movimiento' }, { label: 'Cantidad', key: 'cantidad', alinear: 'right' },
+          { label: 'Costo unitario', key: 'costo_unitario', formato: 'moneda', alinear: 'right' }, { label: 'Saldo', key: 'saldo_cantidad', alinear: 'right' },
+          { label: 'Usuario', key: 'usuario_nombre' },
+        ],
+      },
+      {
         clave: 'mermas', etiqueta: 'Mermas y Averías',
         filtros: [],
         cargar: () => window.puntoXInventario.listarMermas({ limite: 200 }),

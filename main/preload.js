@@ -286,3 +286,12 @@ contextBridge.exposeInMainWorld('puntoXEcf', {
   aprobarRecibido: invoke('ecf:aprobarRecibido'),
   obtenerXmlRecibido: invoke('ecf:obtenerXmlRecibido'),
 });
+
+// Reportes de inventario: valorización a fecha, reposición, sobre-stock, rotación y bitácora.
+contextBridge.exposeInMainWorld('puntoXReportesInv', {
+  valorizacion: invoke('reportesInv:valorizacion'),
+  reposicion: invoke('reportesInv:reposicion'),
+  sobreStock: invoke('reportesInv:sobreStock'),
+  rotacion: invoke('reportesInv:rotacion'),
+  bitacora: invoke('reportesInv:bitacora'),
+});
