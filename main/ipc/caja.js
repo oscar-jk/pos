@@ -343,7 +343,7 @@ const DIAS_TOLERANCIA_AUTOMATICA = 7;
 // Las fechas de corte son días locales; los asientos se guardan en UTC. Sin la conversión, lo
 // registrado después de las 8 p. m. (UTC-4) quedaría fuera del día.
 function finDelDia(fecha) {
-  return new Date(`${fecha.slice(0, 10)}T23:59:59.999`).toISOString();
+  return new Date(`${fecha.slice(0, 10)}T23:59:59.999-04:00`).toISOString();
 }
 
 function exigirLecturaConciliacion() {
