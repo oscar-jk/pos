@@ -1,0 +1,20 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    # Electron y better-sqlite3 se actualizan a mano: un salto de versión exige reconstruir el módulo nativo.
+    ignore:
+      - dependency-name: electron
+        update-types: ['version-update:semver-major']
+      - dependency-name: better-sqlite3
+        update-types: ['version-update:semver-major']
+    groups:
+      desarrollo:
+        dependency-type: development
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
