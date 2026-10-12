@@ -5,6 +5,10 @@ on:
   push:
     branches: [main]
 
+env:
+  # La app corre en equipos de República Dominicana (UTC-4); las pruebas de fechas locales lo asumen.
+  TZ: America/Santo_Domingo
+
 jobs:
   pruebas:
     name: npm test (${{ matrix.os }})
