@@ -259,7 +259,7 @@ async function abrirFormularioProducto(productoId) {
   const nuevaCategoria = document.getElementById('f-nueva-categoria');
   if (nuevaCategoria) {
     nuevaCategoria.addEventListener('click', async () => {
-      const nombre = prompt('Nombre de la nueva categoría:');
+      const nombre = await window.PuntoXModal.pedirTexto('Nombre de la nueva categoría:');
       if (!nombre || !nombre.trim()) return;
       try {
         const categoria = await window.puntoXInventario.crearCategoria({ nombre });
@@ -672,7 +672,7 @@ async function cargarConversiones() {
       <td>${c.estado !== 'anulada' ? `<span class="enlace-accion" data-permiso="inventario.conversion.anular" data-anular-conversion="${c.id}" style="color:var(--color-danger); cursor:pointer; font-weight:700; font-size:12px;">Anular</span>` : ''}</td>
     </tr>`).join('');
   document.querySelectorAll('[data-anular-conversion]').forEach((el) => el.addEventListener('click', async () => {
-    const motivo = prompt('Motivo de la anulación (el producto convertido vuelve a su origen):');
+    const motivo = await window.PuntoXModal.pedirTexto('Motivo de la anulación (el producto convertido vuelve a su origen):');
     if (!motivo) return;
     try {
       await window.puntoXInventario.anularConversion({ conversionId: el.dataset.anularConversion, motivo, usuarioId: state.info.usuario.id });

@@ -1,5 +1,6 @@
 const path = require('node:path');
 const { app, BrowserWindow, ipcMain } = require('electron');
+const { protegerIpc } = require('./ipc/seguro');
 
 const { getDb } = require('./db');
 const session = require('./auth/session');
@@ -17,6 +18,7 @@ const impresion = require('./printing');
 let mainWindow = null;
 
 function registerCoreIpc() {
+  const ipcSeguro = protegerIpc(ipcMain);
   ipcMain.handle('app:info', () => {
     const db = getDb();
 
@@ -53,16 +55,16 @@ function registerCoreIpc() {
     };
   });
 
-  authIpc.register(ipcMain, getDb);
-  inventarioIpc.register(ipcMain, getDb);
-  cxcIpc.register(ipcMain, getDb);
-  cajaIpc.register(ipcMain, getDb);
-  contabilidadIpc.register(ipcMain, getDb);
-  ventasIpc.register(ipcMain, getDb);
-  comprasIpc.register(ipcMain, getDb);
-  cxpIpc.register(ipcMain, getDb);
-  configuracionIpc.register(ipcMain, getDb);
-  impresion.register(ipcMain, getDb);
+  authIpc.register(ipcSeguro, getDb);
+  inventarioIpc.register(ipcSeguro, getDb);
+  cxcIpc.register(ipcSeguro, getDb);
+  cajaIpc.register(ipcSeguro, getDb);
+  contabilidadIpc.register(ipcSeguro, getDb);
+  ventasIpc.register(ipcSeguro, getDb);
+  comprasIpc.register(ipcSeguro, getDb);
+  cxpIpc.register(ipcSeguro, getDb);
+  configuracionIpc.register(ipcSeguro, getDb);
+  impresion.register(ipcSeguro, getDb);
 }
 
 function createMainWindow() {

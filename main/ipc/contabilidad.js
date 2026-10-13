@@ -11,11 +11,35 @@ function redondear(n) {
   return Math.round((n + Number.EPSILON) * 100) / 100;
 }
 
+// Los periodos son meses del calendario local (RD, UTC-4); los asientos se guardan en UTC.
+// Una venta del 31 a las 9:00 p.m. es 1 de mes en UTC: hay que convertir antes de buscar.
+function fechaLocal(fechaIso) {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(fechaIso)) return fechaIso;
+  const d = new Date(fechaIso);
+  if (Number.isNaN(d.getTime())) return String(fechaIso).slice(0, 10);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 function periodoAbiertoParaFecha(db, fechaIso) {
-  const fecha = fechaIso.slice(0, 10);
+  const fecha = fechaLocal(fechaIso);
   return db
     .prepare("SELECT * FROM periodos_contables WHERE estado = 'abierto' AND fecha_inicio <= ? AND fecha_fin >= ? LIMIT 1")
     .get(fecha, fecha);
+}
+
+// Si el mes de la operación no tiene periodo (ni abierto ni cerrado), se crea abierto: el
+// negocio no puede dejar de vender el día 1 porque nadie cerró el mes anterior. Un mes que
+// sí existe y está cerrado sigue bloqueando, que es la regla del cierre.
+function crearPeriodoDelMesSiFalta(db, fechaIso) {
+  const fecha = fechaLocal(fechaIso);
+  const existe = db.prepare('SELECT 1 FROM periodos_contables WHERE fecha_inicio <= ? AND fecha_fin >= ? AND deleted_at IS NULL').get(fecha, fecha);
+  if (existe) return null;
+  const [y, mo] = fecha.split('-').map(Number);
+  const fin = new Date(y, mo, 0).getDate();
+  const mes = String(mo).padStart(2, '0');
+  db.prepare("INSERT INTO periodos_contables (id, nombre, fecha_inicio, fecha_fin, estado) VALUES (?, ?, ?, ?, 'abierto')")
+    .run(crypto.randomUUID(), `${y}-${mes}`, `${y}-${mes}-01`, `${y}-${mes}-${String(fin).padStart(2, '0')}`);
+  return periodoAbiertoParaFecha(db, fecha);
 }
 
 function cuentaPorCodigo(db, codigo) {
@@ -40,7 +64,7 @@ function generarAsiento(db, { fecha, concepto, origenModulo, origenDocumentoTipo
   }
   if (totalDebe === 0) throw new Error('El asiento no puede estar vacío');
 
-  const periodo = periodoAbiertoParaFecha(db, fecha);
+  const periodo = periodoAbiertoParaFecha(db, fecha) || crearPeriodoDelMesSiFalta(db, fecha);
   if (!periodo) throw new Error('No hay un periodo contable abierto para la fecha de esta operación. Verifique el cierre de periodos en Contabilidad.');
 
   const asientoId = crypto.randomUUID();

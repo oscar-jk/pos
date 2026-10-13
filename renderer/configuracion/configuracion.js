@@ -259,7 +259,7 @@ async function cargarFiscal() {
     </tr>
   `).join('');
   document.querySelectorAll('[data-ampliar]').forEach((el) => el.addEventListener('click', async () => {
-    const nuevo = parseInt(prompt('Nueva secuencia máxima:'), 10);
+    const nuevo = parseInt(await window.PuntoXModal.pedirTexto('Nueva secuencia máxima:'), 10);
     if (!nuevo) return;
     try {
       await window.puntoXConfig.ampliarRangoNcf({ tipoNcfId: el.dataset.ampliar, nuevaSecuenciaHasta: nuevo, usuarioId: state.info.usuario.id });

@@ -154,7 +154,7 @@ async function cargarOrdenes() {
   document.querySelectorAll('[data-ver]').forEach((el) => el.addEventListener('click', () => verOrdenCompra(el.dataset.ver)));
   document.querySelectorAll('[data-recibir]').forEach((el) => el.addEventListener('click', () => abrirFormularioFacturaCompra(el.dataset.recibir)));
   document.querySelectorAll('#ordenes-tbody [data-anular]').forEach((el) => el.addEventListener('click', async () => {
-    const motivo = prompt('Motivo de la anulación:');
+    const motivo = await window.PuntoXModal.pedirTexto('Motivo de la anulación:');
     if (!motivo) return;
     try {
       await window.puntoXCompras.anularOrden({ documentoId: el.dataset.anular, motivo, usuarioId: state.info.usuario.id });
@@ -298,7 +298,7 @@ async function cargarFacturas() {
     </tr>
   `).join('');
   document.querySelectorAll('#facturas-tbody [data-anular]').forEach((el) => el.addEventListener('click', async () => {
-    const motivo = prompt('Motivo de la anulación:');
+    const motivo = await window.PuntoXModal.pedirTexto('Motivo de la anulación:');
     if (!motivo) return;
     try {
       await window.puntoXCompras.anularFacturaCompra({ documentoId: el.dataset.anular, motivo, usuarioId: state.info.usuario.id });
@@ -444,7 +444,7 @@ async function cargarNotas() {
   `).join('');
   document.querySelectorAll('[data-ver-nota]').forEach((el) => el.addEventListener('click', () => verNota(el.dataset.verNota)));
   document.querySelectorAll('[data-anular-nota]').forEach((el) => el.addEventListener('click', async () => {
-    const motivo = prompt('Motivo de la anulación:');
+    const motivo = await window.PuntoXModal.pedirTexto('Motivo de la anulación:');
     if (!motivo) return;
     try {
       await window.puntoXCompras.anularNota({ documentoId: el.dataset.anularNota, motivo, usuarioId: state.info.usuario.id });

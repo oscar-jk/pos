@@ -20,8 +20,18 @@ function sesionPublica(sesion) {
   };
 }
 
+// Bloqueo temporal por intentos fallidos (en memoria: la app es un solo proceso por equipo).
+const MAX_INTENTOS = 5;
+const BLOQUEO_MS = 5 * 60 * 1000;
+const intentos = new Map(); // usuario -> { fallos, hasta }
+
 function login(db, { usuario, password }) {
   if (!usuario || !password) throw new Error('Usuario y contraseña son obligatorios');
+  const registro = intentos.get(usuario);
+  if (registro && registro.hasta > Date.now()) {
+    const minutos = Math.ceil((registro.hasta - Date.now()) / 60000);
+    throw new Error(`Demasiados intentos fallidos. Intente de nuevo en ${minutos} min.`);
+  }
   const fila = db
     .prepare(
       `SELECT u.*, r.nombre AS rol_nombre FROM usuarios u JOIN roles r ON r.id = u.rol_id
@@ -30,8 +40,16 @@ function login(db, { usuario, password }) {
     .get(usuario);
 
   if (!fila || !verifyPassword(password, fila.password_hash)) {
+    const r = intentos.get(usuario) || { fallos: 0, hasta: 0 };
+    r.fallos += 1;
+    if (r.fallos >= MAX_INTENTOS) { r.hasta = Date.now() + BLOQUEO_MS; r.fallos = 0; }
+    intentos.set(usuario, r);
+    if (fila) {
+      configuracion.registrarAuditoria(db, { usuarioId: fila.id, modulo: 'configuracion', entidad: 'usuarios', entidadId: fila.id, accion: 'login_fallido' });
+    }
     throw new Error('Usuario o contraseña incorrectos');
   }
+  intentos.delete(usuario);
   if (!fila.activo) throw new Error('Este usuario está desactivado. Contacte al administrador.');
 
   const codigosPermisos = permisosDeRol(db, fila.rol_id);
@@ -65,4 +83,4 @@ function register(ipcMain, getDb) {
   ipcMain.handle('auth:sesionActual', () => sesionPublica(session.obtenerSesion()));
 }
 
-module.exports = { register };
+module.exports = { register, login };

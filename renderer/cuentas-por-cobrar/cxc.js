@@ -290,7 +290,7 @@ async function cargarRecibos() {
     </tr>
   `).join('');
   document.querySelectorAll('[data-anular]').forEach((el) => el.addEventListener('click', async () => {
-    const motivo = prompt('Motivo de la anulación:');
+    const motivo = await window.PuntoXModal.pedirTexto('Motivo de la anulación:');
     if (!motivo) return;
     try {
       await window.puntoXCxc.anularRecibo({ reciboId: el.dataset.anular, motivo, usuarioId: state.info.usuario.id });
@@ -422,7 +422,7 @@ async function cargarEmpleados() {
   `).join('');
 
   document.querySelectorAll('[data-pagar]').forEach((el) => el.addEventListener('click', async () => {
-    const monto = parseFloat(prompt(`Monto a abonar (saldo pendiente: ${el.dataset.max}):`, el.dataset.max));
+    const monto = parseFloat(await window.PuntoXModal.pedirTexto(`Monto a abonar (saldo pendiente: ${el.dataset.max}):`, el.dataset.max));
     if (!monto || monto <= 0) return;
     try {
       await window.puntoXCxc.registrarPagoCxcEmpleado({ cxcEmpleadoId: el.dataset.pagar, monto, usuarioId: state.info.usuario.id });

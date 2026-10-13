@@ -118,7 +118,7 @@ function renderDetalle() {
 
   enlazarBuscador(c);
   contenedor.querySelectorAll('[data-quitar]').forEach((el) => el.addEventListener('click', async () => {
-    const motivo = prompt('¿Por qué se quita este producto de la cuenta?');
+    const motivo = await window.PuntoXModal.pedirTexto('¿Por qué se quita este producto de la cuenta?');
     if (!motivo) return;
     const r = await ejecutar(() => window.puntoXCuentas.quitarLinea({ lineaId: el.dataset.quitar, motivo, usuarioId: state.info.usuario.id }));
     if (r) cargarCuentas();
@@ -129,7 +129,7 @@ function renderDetalle() {
   const precuenta = document.getElementById('cuenta-precuenta');
   if (precuenta) precuenta.addEventListener('click', () => ejecutar(() => window.puntoXImpresion.imprimirPrecuenta({ cuentaId: c.id })));
   document.getElementById('cuenta-anular').addEventListener('click', async () => {
-    const motivo = prompt(`¿Por qué se anula la cuenta "${c.nombre}"? (lo consumido no se cobrará)`);
+    const motivo = await window.PuntoXModal.pedirTexto(`¿Por qué se anula la cuenta "${c.nombre}"? (lo consumido no se cobrará)`);
     if (!motivo) return;
     const r = await ejecutar(() => window.puntoXCuentas.anular({ cuentaId: c.id, motivo, usuarioId: state.info.usuario.id }));
     if (r) { state.seleccionadaId = null; cargarCuentas(); }

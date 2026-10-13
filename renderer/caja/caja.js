@@ -598,8 +598,8 @@ async function renderDetalleConciliacion() {
   });
   on('conc-reabrir', () => ejecutarConciliacion(() => window.puntoXCaja.reabrirConciliacion({ conciliacionId: c.id, usuarioId })));
   on('conc-cancelar-seleccion', () => { state.partidaSeleccionada = null; renderDetalleConciliacion(); });
-  on('conc-editar-saldo', () => {
-    const valor = prompt('Saldo final según el estado de cuenta:', r.saldoEstadoCuenta);
+  on('conc-editar-saldo', async () => {
+    const valor = await window.PuntoXModal.pedirTexto('Saldo final según el estado de cuenta:', r.saldoEstadoCuenta);
     if (valor === null || valor.trim() === '') return;
     ejecutarConciliacion(() => window.puntoXCaja.actualizarSaldoEstadoCuenta({ conciliacionId: c.id, saldoEstadoCuenta: parseFloat(valor), usuarioId }));
   });
