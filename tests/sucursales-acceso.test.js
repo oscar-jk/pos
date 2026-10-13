@@ -103,3 +103,26 @@ test('ventas por sucursal: consolidado con participación y filtros por sucursal
   assert.deepEqual([cobros.totalFacturado, cobros.porForma.tarjeta, cobros.porForma.efectivo], [100, 100, 0]);
   assert.equal(ventas.resumenCobrosDelDia(db, {}).totalFacturado, 400, 'sin sucursal: consolidado');
 });
+
+// --- Cuadrícula táctil del mostrador -------------------------------------------------------
+
+test('productos rápidos: primero los más vendidos en 30 días, filtrables por categoría, con existencia del almacén', () => {
+  const db = h.nuevaBase();
+  const ctx = h.contexto(db);
+  const inv = h.m('inventario');
+  const bebidas = h.tx(db, () => inv.crearCategoria(db, { nombre: 'Bebidas' })).id;
+  const agua = h.producto(db, ctx, { descripcion: 'Agua', precioDetalle: 25 });
+  const refresco = h.producto(db, ctx, { descripcion: 'Refresco', precioDetalle: 50 });
+  const pan = h.producto(db, ctx, { descripcion: 'Pan', precioDetalle: 10 });
+  db.prepare('UPDATE productos SET categoria_id = ? WHERE id IN (?, ?)').run(bebidas, agua, refresco);
+  for (const p of [agua, refresco, pan]) h.entrada(db, ctx, p, 50, 5);
+  h.abrirTurno(db, ctx, 0);
+  h.facturar(db, ctx, [{ productoId: refresco, cantidad: 5 }], [{ formaPago: 'efectivo', monto: 250 }]);
+  h.facturar(db, ctx, [{ productoId: pan, cantidad: 2 }], [{ formaPago: 'efectivo', monto: 20 }]);
+  const todos = inv.productosRapidos(db, { almacenId: ctx.almacenId });
+  assert.deepEqual(todos.slice(0, 3).map((p) => p.descripcion), ['Refresco', 'Pan', 'Agua']);
+  assert.equal(todos[0].vendido_30d, 5);
+  assert.equal(todos[0].cantidad_disponible, 45);
+  assert.deepEqual(inv.productosRapidos(db, { almacenId: ctx.almacenId, categoriaId: bebidas }).map((p) => p.descripcion), ['Refresco', 'Agua']);
+  assert.equal(inv.productosRapidos(db, { almacenId: ctx.almacenId, limite: 1000 }).length <= 60, true, 'tope de 60');
+});

@@ -109,6 +109,34 @@ function buscarProductos(db, { texto, almacenId, limite = 20 }) {
     .map((p) => ocultarCostoSinPermiso(conPromocion(db, p)));
 }
 
+// Productos para la cuadrícula táctil del mostrador: los más vendidos de los últimos 30 días
+// primero (luego por nombre), opcionalmente de una categoría.
+function productosRapidos(db, { almacenId, categoriaId, limite = 24 } = {}) {
+  const desde = new Date(Date.now() - 30 * 86400000).toISOString();
+  const filtroCategoria = categoriaId ? 'AND p.categoria_id = ?' : '';
+  const params = [desde, almacenId || null, ...(categoriaId ? [categoriaId] : []), Math.min(Number(limite) || 24, 60)];
+  return db
+    .prepare(
+      `SELECT p.id, p.codigo_interno, p.descripcion, p.categoria_id, p.precio_detalle, p.precio_mayorista,
+              p.precio_distribuidor, p.costo_promedio, p.permite_venta_negativo, p.es_kit, p.es_servicio,
+              p.controla_lote, p.tasa_itbis_id, p.stock_minimo, t.porcentaje AS tasa_itbis_pct,
+              COALESCE(e.cantidad_disponible, 0) AS cantidad_disponible,
+              COALESCE(e.cantidad_comprometida, 0) AS cantidad_comprometida,
+              COALESCE(v.vendido, 0) AS vendido_30d
+       FROM productos p
+       JOIN tasas_itbis t ON t.id = p.tasa_itbis_id
+       LEFT JOIN (SELECT dvd.producto_id, SUM(dvd.cantidad) AS vendido FROM documentos_venta_detalle dvd
+                  JOIN documentos_venta dv ON dv.id = dvd.documento_id
+                  WHERE dv.tipo = 'factura' AND dv.estado != 'anulado' AND dv.fecha >= ? GROUP BY dvd.producto_id) v ON v.producto_id = p.id
+       LEFT JOIN existencias e ON e.producto_id = p.id AND e.almacen_id = ?
+       WHERE p.deleted_at IS NULL AND p.activo = 1 ${filtroCategoria}
+       ORDER BY vendido_30d DESC, p.descripcion
+       LIMIT ?`
+    )
+    .all(...params)
+    .map((p) => ocultarCostoSinPermiso(conPromocion(db, p)));
+}
+
 // Consulta rápida de precio y existencia (mostrador): los tres precios, la promoción vigente y
 // la existencia de cada almacén, disponible real = existencia − comprometida en pedidos.
 function consultarPrecio(db, { texto, limite = 8 }) {
@@ -1257,6 +1285,7 @@ function register(ipcMain, getDb) {
   });
 
   ipcMain.handle('inventario:categorias', () => listarCategorias(getDb()));
+  ipcMain.handle('inventario:productosRapidos', (event, filtros) => productosRapidos(getDb(), filtros || {}));
   ipcMain.handle('inventario:crearCategoria', (event, payload) => crearCategoria(getDb(), payload || {}));
   ipcMain.handle('inventario:unidadesMedida', () => listarUnidadesMedida(getDb()));
   ipcMain.handle('inventario:tasasItbis', () => listarTasasItbis(getDb()));
@@ -1301,7 +1330,7 @@ module.exports = {
   moverInventarioPorVenta, kardexPorProducto, existenciasConsolidadas, productosPorVencer,
   metodoValoracion, usaCapas, loteDeEntrada, reingresarSalidas, reingresarDocumento, reingresarVenta, retirarEntradas,
   lotesCreadosPor, actualizarCostoCapa, refrescarCostoPeps, listarLotes, promocionVigente, consultarPrecio, hoyLocal,
-  listarCategorias, crearCategoria, listarUnidadesMedida, listarTasasItbis, listarAlmacenes, crearAlmacen,
+  listarCategorias, crearCategoria, productosRapidos, listarUnidadesMedida, listarTasasItbis, listarAlmacenes, crearAlmacen,
   crearConversion, anularConversion, listarConversiones,
   listarListasPrecio, obtenerListaPrecio, guardarListaPrecio, desactivarListaPrecio, listasParaVenta, precioSegunListas,
   crearAjuste, listarAjustes, crearMerma, listarMermas, crearTransferencia, listarTransferencias,

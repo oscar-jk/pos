@@ -23,6 +23,7 @@ contextBridge.exposeInMainWorld('puntoXInventario', {
   listarAlmacenes: invoke('almacenes:listar'),
   crearAlmacen: invoke('almacenes:crear'),
   listarCategorias: invoke('inventario:categorias'),
+  productosRapidos: invoke('inventario:productosRapidos'),
   crearCategoria: invoke('inventario:crearCategoria'),
   listarUnidadesMedida: invoke('inventario:unidadesMedida'),
   listarTasasItbis: invoke('inventario:tasasItbis'),
