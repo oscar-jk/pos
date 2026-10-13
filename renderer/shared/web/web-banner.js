@@ -4,10 +4,10 @@
   if (window.__PUNTOX_ES_ELECTRON) return;
   document.addEventListener('DOMContentLoaded', () => {
     const banner = document.createElement('div');
-    banner.style.cssText = 'background:#146356; color:#fff; font-size:12px; padding:6px 16px; display:flex; align-items:center; justify-content:space-between; gap:12px; font-family:Manrope, system-ui, sans-serif;';
+    banner.style.cssText = 'background:var(--brand-deep,#0A3F3E); color:#fff; font-size:12px; padding:6px 16px; display:flex; align-items:center; justify-content:space-between; gap:12px; font-family:var(--font-body, system-ui, sans-serif);';
     banner.innerHTML = `
-      <span>🧪 Versión web de prueba de Punto X — los datos se guardan solo en este navegador, no en un servidor.</span>
-      <button id="__puntox-reset-demo" style="background:rgba(255,255,255,0.15); color:#fff; border:1px solid rgba(255,255,255,0.4); border-radius:6px; padding:3px 10px; font-size:11px; cursor:pointer;">Reiniciar datos de prueba</button>
+      <span>Demo de Nodo: los datos son de prueba y se guardan solo en este navegador.</span>
+      <button id="__puntox-reset-demo" style="background:rgba(255,255,255,0.15); color:#fff; border:1px solid rgba(255,255,255,0.4); border-radius:6px; padding:3px 10px; font-size:12px; cursor:pointer;">Reiniciar datos de prueba</button>
     `;
     document.body.prepend(banner);
     document.getElementById('__puntox-reset-demo').addEventListener('click', () => {
