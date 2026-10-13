@@ -20,8 +20,8 @@ function listar(dir, ext, excluir = []) {
 const paginas = listar(RENDERER, '.html');
 const scripts = listar(RENDERER, '.js', ['web']);
 
-test('A2: las 15 pantallas declaran la CSP exacta', () => {
-  assert.equal(paginas.length, 15);
+test('A2: las 16 pantallas declaran la CSP exacta', () => {
+  assert.equal(paginas.length, 16);
   for (const p of paginas) {
     const html = fs.readFileSync(p, 'utf8');
     const meta = html.match(/<meta http-equiv="Content-Security-Policy" content="([^"]*)"/);
