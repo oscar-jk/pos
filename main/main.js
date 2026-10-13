@@ -18,6 +18,7 @@ const ecfIpc = require('./ipc/ecf');
 const reportesInvIpc = require('./ipc/reportes-inventario');
 const proyeccionesIpc = require('./ipc/proyecciones');
 const formatosVentasIpc = require('./ipc/formatos-ventas');
+const onboardingIpc = require('./ipc/onboarding');
 const colaEcf = require('./ecf/cola');
 const ecfEmision = require('./ecf/emision');
 
@@ -62,6 +63,8 @@ function registerCoreIpc() {
       negocio,
       usuario,
       modulos: configuracionIpc.modulosActivos(db),
+      // Base nueva: el administrador pasa por el asistente de configuración inicial.
+      onboarding: { pendiente: onboardingIpc.estadoOnboarding(db).pendiente },
       // Comprobantes que emite la caja: e-CF (E31, E32...) o NCF serie B (tradicional o contingencia).
       fiscal: { modo: ecfEmision.modoEcf(db), contingencia: Boolean(ecfEmision.contingenciaDesde(db)), emiteEcf: ecfEmision.usaEcf(db) },
     };
@@ -81,6 +84,7 @@ function registerCoreIpc() {
   reportesInvIpc.register(ipcSeguro, getDb);
   proyeccionesIpc.register(ipcSeguro, getDb);
   formatosVentasIpc.register(ipcSeguro, getDb);
+  onboardingIpc.register(ipcSeguro, getDb);
 }
 
 function createMainWindow() {

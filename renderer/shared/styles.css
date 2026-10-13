@@ -954,3 +954,4 @@ select.input-normal, input.input-normal {
 @media (max-width: 480px) {
   .kpi-grid { grid-template-columns: 1fr; }
 }
+input[type="checkbox"], input[type="radio"] { accent-color: var(--color-accent); }

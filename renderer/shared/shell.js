@@ -10,6 +10,13 @@ async function initPuntoXShell(moduloActivo) {
     return null;
   }
 
+  // Base nueva: el administrador completa primero el asistente de configuración inicial.
+  const puedeConfigurar = (info.usuario.permisos || []).some((p) => p === '*' || p === 'configuracion.gestionar');
+  if (info.onboarding && info.onboarding.pendiente && puedeConfigurar) {
+    window.location.href = '../onboarding/index.html';
+    return null;
+  }
+
   info.modulos = info.modulos || {};
   document.getElementById('sidebar-container').innerHTML =
     window.PuntoXSidebar.renderSidebar(moduloActivo, info.negocio, info.modulos);

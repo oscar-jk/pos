@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'" />
+  <title>Nodo — Configuración inicial</title>
+  <link rel="stylesheet" href="../shared/styles.css" />
+  <link rel="stylesheet" href="./onboarding.css" />
+</head>
+<body>
+  <main class="onb">
+    <header class="onb__cabecera">
+      <img class="marca-nodo marca-nodo--claro" src="../../assets/marca/nodo-logo-horizontal.svg" alt="Nodo" height="28" />
+      <img class="marca-nodo marca-nodo--oscuro" src="../../assets/marca/nodo-logo-horizontal-blanco.svg" alt="Nodo" height="28" />
+      <button type="button" class="onb__omitir" id="btn-omitir">Omitir por ahora</button>
+    </header>
+
+    <ol class="onb__pasos" id="onb-pasos" aria-label="Pasos de la configuración"></ol>
+
+    <div id="mensaje-error" class="mensaje-error" style="display:none;" role="alert"></div>
+
+    <section class="onb__tarjeta" id="onb-contenido" aria-live="polite"></section>
+
+    <footer class="onb__pie">
+      <button type="button" class="btn btn-secundario" id="btn-atras">Atrás</button>
+      <button type="button" class="btn btn-primario" id="btn-siguiente">Siguiente</button>
+    </footer>
+  </main>
+
+  <script src="../shared/escape.js"></script>
+  <script src="../shared/estados.js"></script>
+  <script src="../shared/tema.js"></script>
+  <script src="../shared/logo.js"></script>
+  <script src="../shared/iconos.js"></script>
+  <script src="./onboarding.js"></script>
+</body>
+</html>
