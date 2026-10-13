@@ -95,6 +95,29 @@ document.getElementById('input-buscar-producto').addEventListener('input', (e) =
   }, 200);
 });
 
+// Enter en el buscador (lector de código de barras): agrega el producto con cantidad 1. Si hay
+// un código exacto, ese; si no, el primer resultado.
+document.getElementById('input-buscar-producto').addEventListener('keydown', async (e) => {
+  if (e.key !== 'Enter') return;
+  e.preventDefault();
+  const input = e.target;
+  const texto = input.value.trim();
+  if (!texto) return;
+  clearTimeout(timeoutBusqueda);
+  try {
+    const resultados = await window.puntoXInventario.buscarProductos({ texto, almacenId: state.info.almacenId, limite: 15 });
+    const exacto = resultados.find((p) => String(p.codigo_interno).toLowerCase() === texto.toLowerCase() || String(p.codigo_barra || '').toLowerCase() === texto.toLowerCase());
+    const elegido = exacto || resultados[0];
+    if (!elegido) { renderResultadosProducto([]); return; }
+    if (state.origen) return;
+    agregarAlCarrito(elegido);
+    input.value = '';
+    document.getElementById('resultados-producto').style.display = 'none';
+  } catch (err) {
+    mostrarError(err.message.replace(/^Error invoking remote method '.*?': Error: /, ''));
+  }
+});
+
 function renderResultadosProducto(resultados) {
   const contenedor = document.getElementById('resultados-producto');
   if (resultados.length === 0) {
@@ -226,6 +249,9 @@ function renderTotales() {
   document.getElementById('total-total').textContent = fmtV(total);
 
   actualizarPagoCredito(total);
+  // Si ya se digitó lo recibido en efectivo, se recalcula con el nuevo total.
+  const recibido = parseFloat(document.getElementById('pago-recibido').value) || 0;
+  if (recibido > 0) fijarEfectivoRecibido(recibido);
   const etiqueta = { factura: 'Cobrar', cotizacion: 'Guardar cotización', conduce: 'Registrar conduce', pedido: 'Guardar pedido' }[state.documento];
   document.getElementById('btn-cobrar').textContent = `${etiqueta} ${fmtV(total)}`;
 }
@@ -254,8 +280,51 @@ function actualizarPagoCredito(total) {
   document.getElementById(id).addEventListener('input', () => {
     const { total } = calcularTotalesCarrito();
     actualizarPagoCredito(total);
+    if (id === 'pago-efectivo') document.getElementById('pago-recibido').value = '';
+    mostrarCambio();
   });
 });
+
+// --- Efectivo recibido y cambio: se factura lo que se debe; el cambio solo se muestra ---
+
+function cobroEfectivoActual() {
+  const num = (id) => parseFloat(document.getElementById(id).value) || 0;
+  return window.PuntoXCobro.calcularCobroEfectivo({
+    total: redondear(aMoneda(calcularTotalesCarrito().total)),
+    tarjeta: num('pago-tarjeta'), transferencia: num('pago-transferencia'), recibido: num('pago-recibido'),
+  });
+}
+
+function mostrarCambio() {
+  const caja = document.getElementById('cobro-cambio');
+  const recibido = parseFloat(document.getElementById('pago-recibido').value) || 0;
+  if (!(recibido > 0)) { caja.style.display = 'none'; return; }
+  const { cambio, faltante } = cobroEfectivoActual();
+  caja.style.display = 'flex';
+  caja.innerHTML = cambio > 0
+    ? `<span>Cambio</span><span>${fmtV(cambio)}</span>`
+    : faltante > 0 ? `<span>Falta</span><span>${fmtV(faltante)}</span>` : '<span>Pago exacto</span><span>✓</span>';
+}
+
+// Fija el efectivo recibido: el efectivo facturado queda en lo que se debe (o en lo entregado si es menos).
+function fijarEfectivoRecibido(valor) {
+  document.getElementById('pago-recibido').value = valor > 0 ? valor : '';
+  const { efectivo } = cobroEfectivoActual();
+  document.getElementById('pago-efectivo').value = efectivo;
+  actualizarPagoCredito(calcularTotalesCarrito().total);
+  mostrarCambio();
+}
+
+document.getElementById('cobro-billetes').innerHTML = [...window.PuntoXCobro.BILLETES.map((b) => `<button type="button" data-billete="${b}">${b}</button>`), '<button type="button" data-billete="exacto">Exacto</button>'].join('');
+document.querySelectorAll('[data-billete]').forEach((b) => b.addEventListener('click', () => {
+  if (b.dataset.billete === 'exacto') {
+    const num = (id) => parseFloat(document.getElementById(id).value) || 0;
+    fijarEfectivoRecibido(redondear(Math.max(0, redondear(aMoneda(calcularTotalesCarrito().total)) - num('pago-tarjeta') - num('pago-transferencia'))));
+  } else {
+    fijarEfectivoRecibido(Number(b.dataset.billete));
+  }
+}));
+document.getElementById('pago-recibido').addEventListener('input', (e) => fijarEfectivoRecibido(parseFloat(e.target.value) || 0));
 
 document.getElementById('select-nivel-precio').addEventListener('change', (e) => {
   state.nivelPrecio = e.target.value;
@@ -407,6 +476,7 @@ document.getElementById('btn-cobrar').addEventListener('click', async () => {
     state.cliente = null;
     document.getElementById('cliente-nombre').textContent = 'Consumidor final';
     document.getElementById('pago-efectivo').value = 0;
+    document.getElementById('pago-recibido').value = '';
     document.getElementById('pago-tarjeta').value = 0;
     document.getElementById('pago-transferencia').value = 0;
     document.getElementById('input-descuento-global').value = 0;
@@ -690,6 +760,74 @@ function configurarComprobantes() {
     if (ETIQUETAS_ECF[opcion.value]) opcion.textContent = ETIQUETAS_ECF[opcion.value];
   }
 }
+
+// --- Atajos de teclado del mostrador ---
+
+let vaciarArmado = null;
+
+function nuevaVenta() {
+  if (state.origen) { mostrarError('Esta venta viene de otro documento. Cancélela desde el aviso de arriba.'); return; }
+  if (state.carrito.length > 0 && !vaciarArmado) {
+    mostrarError('Hay productos en el carrito. Presione F1 otra vez para empezar una venta nueva.');
+    vaciarArmado = setTimeout(() => { vaciarArmado = null; }, 3000);
+    return;
+  }
+  clearTimeout(vaciarArmado);
+  vaciarArmado = null;
+  mostrarError(null);
+  state.carrito = [];
+  setModoVenta('rapida');
+  document.getElementById('pago-efectivo').value = 0;
+  document.getElementById('pago-recibido').value = '';
+  document.getElementById('pago-tarjeta').value = 0;
+  document.getElementById('pago-transferencia').value = 0;
+  document.getElementById('input-descuento-global').value = 0;
+  renderCarrito();
+  document.getElementById('input-buscar-producto').focus();
+}
+
+const ACCIONES_TECLADO = {
+  nueva_venta: nuevaVenta,
+  cliente() {
+    if (state.modoVenta === 'rapida') setModoVenta('completa');
+    document.getElementById('cliente-cambiar').click();
+  },
+  cantidad() {
+    const campos = document.querySelectorAll('.cant-input:not([disabled])');
+    const campo = campos[campos.length - 1];
+    if (campo) { campo.focus(); campo.select(); }
+  },
+  descuento() {
+    const campo = document.getElementById('input-descuento-global');
+    campo.focus();
+    campo.select();
+  },
+  cobrar() {
+    const btn = document.getElementById('btn-cobrar');
+    if (!btn.disabled) btn.click();
+  },
+  quitar_linea() {
+    if (state.origen || state.carrito.length === 0) return;
+    state.carrito.pop();
+    renderCarrito();
+  },
+  cerrar() {
+    document.getElementById('resultados-producto').style.display = 'none';
+    document.getElementById('resultados-cliente').style.display = 'none';
+    if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+  },
+};
+
+document.addEventListener('keydown', (e) => {
+  const activo = document.activeElement;
+  const accion = window.PuntoXCobro.accionDeTecla(e.key, {
+    enCampoDeTexto: Boolean(activo && ['INPUT', 'TEXTAREA', 'SELECT'].includes(activo.tagName)),
+    modalAbierto: Boolean(document.querySelector('.modal-overlay')),
+  });
+  if (!accion || !ACCIONES_TECLADO[accion]) return; // F2 lo atiende la barra superior
+  e.preventDefault();
+  ACCIONES_TECLADO[accion]();
+});
 
 // --- Inicialización ---
 
