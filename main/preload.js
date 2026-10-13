@@ -275,6 +275,7 @@ contextBridge.exposeInMainWorld('puntoXVentas', {
   listarNotas: invoke('ventas:listarNotas'),
 
   ventasPorPeriodo: invoke('ventas:reportes:ventasPorPeriodo'),
+  ventasPorSucursal: invoke('ventas:reportes:ventasPorSucursal'),
   ventasPorVendedor: invoke('ventas:reportes:ventasPorVendedor'),
   ventasPorArticulo: invoke('ventas:reportes:ventasPorArticulo'),
   comisionesPorVendedor: invoke('ventas:reportes:comisionesPorVendedor'),

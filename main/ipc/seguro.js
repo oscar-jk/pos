@@ -3,6 +3,7 @@
 // script inyectado); si se confiara en él, un cajero firmaría como el dueño y heredaría su
 // tope de descuento, y la bitácora quedaría a nombre de otro.
 const session = require('../auth/session');
+const acceso = require('../auth/acceso');
 
 const CAMPOS_USUARIO = ['usuarioId', 'usuarioCreadorId'];
 
@@ -24,7 +25,8 @@ function protegerIpc(ipcMain) {
     return ipcMain.handle(canal, (event, payload, ...resto) => {
       // Con la contraseña pendiente de cambio, solo se atienden los canales auth:*.
       const sesion = session.obtenerSesion();
-      if (sesion && sesion.debeCambiarPassword) throw new Error('Debe cambiar su contraseña antes de continuar.');
+      if (sesion && sesion.debeCambiarPassword) throw new Error('Cambia tu contraseña antes de continuar.');
+      acceso.verificarCanal(canal, sesion);
       return fn(event, sanear(payload), ...resto);
     });
   };

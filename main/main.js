@@ -30,10 +30,12 @@ function registerCoreIpc() {
   ipcMain.handle('app:info', () => {
     const db = getDb();
 
-    const sucursal = db.prepare('SELECT id, nombre FROM sucursales WHERE es_principal = 1').get();
-    const almacen = db.prepare('SELECT id, nombre FROM almacenes WHERE deleted_at IS NULL LIMIT 1').get();
+    // Cada usuario trabaja en su sucursal (la de su ficha o la principal), con su almacén y su caja.
     const sesionActual = session.obtenerSesion();
-    const cajaPrincipal = cajaIpc.cajaDelUsuario(db, sesionActual ? sesionActual.usuarioId : null);
+    const usuarioId = sesionActual ? sesionActual.usuarioId : null;
+    const sucursal = cajaIpc.sucursalDelUsuario(db, usuarioId);
+    const almacen = sucursal ? cajaIpc.almacenDeSucursal(db, sucursal.id) : null;
+    const cajaPrincipal = cajaIpc.cajaDelUsuario(db, usuarioId);
     const monedaLocal = db.prepare('SELECT id, codigo FROM monedas WHERE es_local = 1').get();
 
     const parametros = db

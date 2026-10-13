@@ -94,6 +94,7 @@ function listarProveedores(db, { texto = '', limite = 100 } = {}) {
 }
 
 function guardarProveedor(db, payload, proveedorIdExistente) {
+  session.requerirAlgunPermiso('compras.orden.crear', 'compras.factura.crear');
   if (!payload.nombre || !payload.nombre.trim()) throw new Error('El nombre del proveedor es obligatorio');
   const proveedorId = proveedorIdExistente || crypto.randomUUID();
 
@@ -111,6 +112,7 @@ function guardarProveedor(db, payload, proveedorIdExistente) {
        VALUES (?, ?, ?, ?, ?, ?, ?, 1)`
     ).run(proveedorId, payload.nombre.trim(), payload.rnc || null, payload.diasCredito || 0, payload.direccion || null, payload.telefono || null, payload.email || null);
   }
+  configuracion.registrarAuditoria(db, { usuarioId: session.usuarioActualId(), modulo: 'compras', entidad: 'proveedores', entidadId: proveedorId, accion: proveedorIdExistente ? 'editar' : 'crear', detalle: { nombre: payload.nombre.trim() } });
   return proveedorId;
 }
 
@@ -295,7 +297,7 @@ function crearFacturaCompra(db, payload) {
   let turno = null;
   if (montoEfectivo > 0) {
     turno = caja.obtenerTurnoAbierto(db, cajaId);
-    if (!turno) throw new Error('Debe abrir un turno de caja antes de pagar una compra en efectivo');
+    if (!turno) throw new Error('Abre un turno de caja antes de pagar una compra en efectivo');
   }
 
   const documentoId = crypto.randomUUID();
@@ -650,8 +652,8 @@ function crearNotaCompra(db, { tipo, tipoAjuste, facturaId, ncfProveedor, concep
   if (!TIPOS_NOTA.includes(tipo)) throw new Error('Tipo de nota inválido');
   session.requerirPermiso(tipo === 'nota_credito' ? 'compras.devolucion.crear' : 'compras.nota_debito.crear');
   const ajuste = tipo === 'nota_debito' ? 'ajuste_costo' : tipoAjuste;
-  if (!['devolucion', 'ajuste_costo'].includes(ajuste)) throw new Error('Indique si la nota es por devolución o por ajuste de precio');
-  if (!concepto || !concepto.trim()) throw new Error('Indique el motivo de la nota');
+  if (!['devolucion', 'ajuste_costo'].includes(ajuste)) throw new Error('Indica si la nota es por devolución o por ajuste de precio');
+  if (!concepto || !concepto.trim()) throw new Error('Indica el motivo de la nota');
   if (!lineas || lineas.length === 0) throw new Error('La nota debe tener al menos una línea');
 
   const factura = obtenerFacturaVigente(db, facturaId);
@@ -670,7 +672,7 @@ function crearNotaCompra(db, { tipo, tipoAjuste, facturaId, ncfProveedor, concep
       const cantidad = redondear(Number(l.cantidad) || 0);
       if (cantidad <= 0) throw new Error(`La cantidad a devolver de "${lineaFactura.producto_descripcion}" debe ser mayor a cero`);
       if (cantidad > lineaFactura.disponible_devolver + 0.001) {
-        throw new Error(`No puede devolver ${cantidad} de "${lineaFactura.producto_descripcion}": de esa factura quedan ${lineaFactura.disponible_devolver} por devolver`);
+        throw new Error(`No puedes devolver ${cantidad} de "${lineaFactura.producto_descripcion}": de esa factura quedan ${lineaFactura.disponible_devolver} por devolver`);
       }
       const acumulado = redondear((devueltoPorProducto.get(lineaFactura.producto_id) || 0) + cantidad);
       devueltoPorProducto.set(lineaFactura.producto_id, acumulado);
@@ -940,7 +942,7 @@ function fechaAAAAMMDD(iso) {
 
 function rangoPeriodo(periodo) {
   const m = /^(\d{4})-(\d{2})$/.exec(periodo || '');
-  if (!m) throw new Error('Indique el mes a reportar (AAAA-MM)');
+  if (!m) throw new Error('Indica el mes a reportar (AAAA-MM)');
   const anio = Number(m[1]);
   const mes = Number(m[2]);
   return { desde: new Date(anio, mes - 1, 1).toISOString(), hasta: new Date(anio, mes, 1).toISOString(), aaaamm: `${m[1]}${m[2]}` };
@@ -1079,7 +1081,7 @@ function valor606(registro, campo) {
 
 function txt606(reporte) {
   if (!reporte.rncNegocio || !tipoIdentificacion(reporte.rncNegocio)) {
-    throw new Error('Configure el RNC del negocio en Configuración → Negocio antes de generar el archivo 606');
+    throw new Error('Configura el RNC del negocio en Configuración → Negocio antes de generar el archivo 606');
   }
   const lineas = [`606|${reporte.rncNegocio}|${reporte.periodo}|${reporte.registros.length}`];
   for (const r of reporte.registros) lineas.push(CAMPOS_606.map(([campo]) => valor606(r, campo)).join('|'));

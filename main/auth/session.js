@@ -22,8 +22,8 @@ function tienePermiso(codigo) {
 // Con la contraseña de fábrica (o una puesta por el administrador) el usuario solo puede
 // cambiarla: ninguna otra operación se permite hasta entonces.
 function exigirSesionUtil() {
-  if (!sesionActual) throw new Error('No hay una sesión activa. Inicie sesión de nuevo.');
-  if (sesionActual.debeCambiarPassword) throw new Error('Debe cambiar su contraseña antes de continuar.');
+  if (!sesionActual) throw new Error('No hay una sesión activa. Inicia sesión de nuevo.');
+  if (sesionActual.debeCambiarPassword) throw new Error('Cambia tu contraseña antes de continuar.');
 }
 
 // Cambio del rol o de los permisos del rol del usuario conectado (se aplica de inmediato).
@@ -42,7 +42,7 @@ function marcarPasswordCambiada() {
 function requerirPermiso(codigo) {
   exigirSesionUtil();
   if (!sesionActual.permisos.has(codigo)) {
-    throw new Error(`Su rol (${sesionActual.rolNombre}) no tiene permiso para esta acción.`);
+    throw new Error(`Tu rol (${sesionActual.rolNombre}) no tiene permiso para esta acción.`);
   }
 }
 
@@ -52,7 +52,7 @@ function requerirPermiso(codigo) {
 function requerirAlgunPermiso(...codigos) {
   exigirSesionUtil();
   if (!codigos.some((c) => sesionActual.permisos.has(c))) {
-    throw new Error(`Su rol (${sesionActual.rolNombre}) no tiene permiso para esta acción.`);
+    throw new Error(`Tu rol (${sesionActual.rolNombre}) no tiene permiso para esta acción.`);
   }
 }
 

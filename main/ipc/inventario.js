@@ -33,6 +33,7 @@ function crearCategoria(db, { nombre }) {
   if (existente) return existente;
   const id = crypto.randomUUID();
   db.prepare('INSERT INTO categorias_producto (id, nombre) VALUES (?, ?)').run(id, limpio);
+  auditoria().registrarAuditoria(db, { usuarioId: session.usuarioActualId(), modulo: 'inventario', entidad: 'categorias_producto', entidadId: id, accion: 'crear', detalle: { nombre: limpio } });
   return { id, nombre: limpio };
 }
 
@@ -53,6 +54,7 @@ function crearAlmacen(db, { sucursalId, nombre }) {
   if (!nombre || !nombre.trim()) throw new Error('El nombre del almacén es obligatorio');
   const id = crypto.randomUUID();
   db.prepare('INSERT INTO almacenes (id, sucursal_id, nombre, activo) VALUES (?, ?, ?, 1)').run(id, sucursalId, nombre.trim());
+  auditoria().registrarAuditoria(db, { usuarioId: session.usuarioActualId(), modulo: 'inventario', entidad: 'almacenes', entidadId: id, accion: 'crear', detalle: { nombre: nombre.trim() } });
   return { id, sucursal_id: sucursalId, nombre: nombre.trim() };
 }
 
@@ -110,7 +112,7 @@ function buscarProductos(db, { texto, almacenId, limite = 20 }) {
 // Consulta rápida de precio y existencia (mostrador): los tres precios, la promoción vigente y
 // la existencia de cada almacén, disponible real = existencia − comprometida en pedidos.
 function consultarPrecio(db, { texto, limite = 8 }) {
-  if (!session.obtenerSesion()) throw new Error('Inicie sesión para consultar precios');
+  if (!session.obtenerSesion()) throw new Error('Inicia sesión para consultar precios');
   if (!texto || !texto.trim()) return [];
   const existencias = db.prepare(
     `SELECT a.nombre AS almacen_nombre, COALESCE(e.cantidad_disponible, 0) AS existencia, COALESCE(e.cantidad_comprometida, 0) AS comprometida
@@ -303,6 +305,7 @@ function guardarProducto(db, payload, productoIdExistente) {
     }
   }
 
+  auditoria().registrarAuditoria(db, { usuarioId: session.usuarioActualId(), modulo: 'inventario', entidad: 'productos', entidadId: productoId, accion: productoIdExistente ? 'editar' : 'crear', detalle: { codigoInterno, descripcion } });
   return productoId;
 }
 
@@ -827,7 +830,7 @@ function siguienteNumeroDocumento(db, tabla) {
 function loteDeEntrada(producto, linea) {
   if (!producto.controla_lote) return null;
   const numeroLote = String(linea.numeroLote || '').trim();
-  if (!numeroLote) throw new Error(`Indique el número de lote de "${producto.descripcion}"`);
+  if (!numeroLote) throw new Error(`Indica el número de lote de "${producto.descripcion}"`);
   const fechaVencimiento = linea.fechaVencimiento ? String(linea.fechaVencimiento).slice(0, 10) : null;
   if (fechaVencimiento && !/^\d{4}-\d{2}-\d{2}$/.test(fechaVencimiento)) {
     throw new Error(`La fecha de vencimiento del lote de "${producto.descripcion}" no es válida`);
@@ -914,7 +917,7 @@ function crearMerma(db, { almacenId, productoId, loteId, cantidad, costoUnitario
   if (!motivo) throw new Error('El motivo de la merma es obligatorio');
   const producto = obtenerProducto(db, productoId, almacenId);
   if (!producto) throw new Error('Producto no encontrado');
-  if (producto.es_kit) throw new Error(`"${producto.descripcion}" es un kit: registre la merma de sus componentes`);
+  if (producto.es_kit) throw new Error(`"${producto.descripcion}" es un kit: registra la merma de sus componentes`);
   const disponible = existenciaDisponible(db, productoId, almacenId);
   if (disponible < cantidad) throw new Error(`Existencia insuficiente de "${producto.descripcion}" para registrar la merma`);
 
@@ -1208,7 +1211,7 @@ function anularConversion(db, { conversionId, motivo, usuarioId }) {
       .filter((l) => l.almacen_id === conv.almacen_id).reduce((a, l) => a + l.cantidad, 0)
     : existenciaLibre(db, destino.id, conv.almacen_id);
   if (disponible < conv.cantidad_destino - EPS) {
-    throw new Error(`Ya no están completas las ${conv.cantidad_destino} unidades de "${destino.descripcion}" de esta conversión (quedan ${redondearCantidad(disponible)}). Registre una conversión inversa.`);
+    throw new Error(`Ya no están completas las ${conv.cantidad_destino} unidades de "${destino.descripcion}" de esta conversión (quedan ${redondearCantidad(disponible)}). Registra una conversión inversa.`);
   }
   db.prepare("UPDATE conversiones_producto SET estado = 'anulada', motivo_anulacion = ?, usuario_anulo_id = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?")
     .run(motivo.trim(), usuarioId, conversionId);

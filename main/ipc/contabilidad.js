@@ -65,7 +65,7 @@ function generarAsiento(db, { fecha, concepto, origenModulo, origenDocumentoTipo
   if (totalDebe === 0) throw new Error('El asiento no puede estar vacío');
 
   const periodo = periodoAbiertoParaFecha(db, fecha) || crearPeriodoDelMesSiFalta(db, fecha);
-  if (!periodo) throw new Error('No hay un periodo contable abierto para la fecha de esta operación. Verifique el cierre de periodos en Contabilidad.');
+  if (!periodo) throw new Error('No hay un periodo contable abierto para la fecha de esta operación. Revisa el cierre de periodos en Contabilidad.');
 
   const asientoId = crypto.randomUUID();
   const { maximo } = db.prepare("SELECT MAX(CAST(SUBSTR(numero, 3) AS INTEGER)) AS maximo FROM asientos_contables").get();
@@ -128,6 +128,7 @@ function listarCuentas(db) {
 }
 
 function crearCuenta(db, { codigo, nombre, tipo, cuentaPadreId, esMovimiento }) {
+  session.requerirPermiso('contabilidad.catalogo.gestionar');
   if (!codigo || !nombre || !tipo) throw new Error('Código, nombre y tipo son obligatorios');
   const existe = db.prepare('SELECT 1 FROM cuentas_contables WHERE codigo = ? AND deleted_at IS NULL').get(codigo);
   if (existe) throw new Error(`Ya existe una cuenta con el código ${codigo}`);
@@ -135,14 +136,18 @@ function crearCuenta(db, { codigo, nombre, tipo, cuentaPadreId, esMovimiento }) 
   db.prepare(
     `INSERT INTO cuentas_contables (id, codigo, nombre, tipo, cuenta_padre_id, es_movimiento) VALUES (?, ?, ?, ?, ?, ?)`
   ).run(id, codigo, nombre, tipo, cuentaPadreId || null, esMovimiento === false ? 0 : 1);
+  auditoria().registrarAuditoria(db, { usuarioId: session.usuarioActualId(), modulo: 'contabilidad', entidad: 'cuentas_contables', entidadId: id, accion: 'crear', detalle: { codigo, nombre } });
   return id;
 }
 
 function actualizarCuenta(db, cuentaId, { nombre, cuentaPadreId, esMovimiento, activo }) {
+  session.requerirPermiso('contabilidad.catalogo.gestionar');
+  if (!nombre || !String(nombre).trim()) throw new Error('El nombre de la cuenta es obligatorio');
   db.prepare(
     `UPDATE cuentas_contables SET nombre = ?, cuenta_padre_id = ?, es_movimiento = ?, activo = ?,
        updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?`
   ).run(nombre, cuentaPadreId || null, esMovimiento === false ? 0 : 1, activo === false ? 0 : 1, cuentaId);
+  auditoria().registrarAuditoria(db, { usuarioId: session.usuarioActualId(), modulo: 'contabilidad', entidad: 'cuentas_contables', entidadId: cuentaId, accion: 'editar', detalle: { nombre, activo: activo !== false } });
 }
 
 // =========================================================================

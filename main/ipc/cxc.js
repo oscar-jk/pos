@@ -194,6 +194,7 @@ function guardarCliente(db, payload, clienteIdExistente) {
     );
   }
 
+  configuracion.registrarAuditoria(db, { usuarioId: session.usuarioActualId(), modulo: 'cxc', entidad: 'clientes', entidadId: clienteId, accion: clienteIdExistente ? 'editar' : 'crear', detalle: { nombre: payload.nombre.trim(), limiteCredito: payload.limiteCredito || 0, bloqueado: Boolean(payload.bloqueado) } });
   return clienteId;
 }
 
@@ -285,7 +286,7 @@ function crearRecibo(db, { clienteId, fecha, formaPago, referencia, aplicaciones
   let turno = null;
   if (formaPago === 'efectivo') {
     turno = caja.obtenerTurnoAbierto(db, cajaId);
-    if (!turno) throw new Error('Debe abrir un turno de caja antes de recibir cobros en efectivo');
+    if (!turno) throw new Error('Abre un turno de caja antes de recibir cobros en efectivo');
   }
 
   const reciboId = crypto.randomUUID();

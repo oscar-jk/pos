@@ -23,7 +23,7 @@ const soloDigitos = (s) => String(s || '').replace(/\D/g, '');
 // "AAAA-MM" → límites del mes en hora local (UTC-4) como instantes UTC, y "AAAAMM".
 function rangoPeriodo(periodo) {
   const m = /^(\d{4})-(\d{2})$/.exec(periodo || '');
-  if (!m || Number(m[2]) < 1 || Number(m[2]) > 12) throw new Error('Indique el mes a reportar (AAAA-MM)');
+  if (!m || Number(m[2]) < 1 || Number(m[2]) > 12) throw new Error('Indica el mes a reportar (AAAA-MM)');
   const anio = Number(m[1]);
   const mes = Number(m[2]);
   const inicio = Date.UTC(anio, mes - 1, 1) - DESFASE_MS;
@@ -101,7 +101,7 @@ function reporte607(db, { periodo }) {
     if (/^E\d{12}$/.test(d.ncf || '')) { electronicos += 1; continue; }
     if (!d.ncf) {
       if (d.tipo === 'factura') excluidos.push({ ...ref, motivo: 'sin comprobante fiscal' });
-      else excluidos.push({ ...ref, motivo: 'la nota no tiene NCF: registre la secuencia de notas (B03/B04) en Parámetros fiscales' });
+      else excluidos.push({ ...ref, motivo: 'la nota no tiene NCF: registra la secuencia de notas (B03/B04) en Parámetros fiscales' });
       continue;
     }
     if (!FORMATO_NCF.test(d.ncf)) { excluidos.push({ ...ref, motivo: `NCF con formato inválido (${d.ncf})` }); continue; }
@@ -165,7 +165,7 @@ function valor607(r, campo) {
 
 // Archivo DGII_F_607_RNC_AAAAMM.TXT: encabezado y una línea por registro, campos separados por "|".
 function txt607(reporte) {
-  if (!tipoIdentificacion(reporte.rncNegocio)) throw new Error('Configure el RNC del negocio en Configuración > Negocio antes de generar el archivo 607');
+  if (!tipoIdentificacion(reporte.rncNegocio)) throw new Error('Configura el RNC del negocio en Configuración → Negocio antes de generar el archivo 607');
   const lineas = [`607|${reporte.rncNegocio}|${reporte.periodo}|${reporte.registros.length}`];
   for (const r of reporte.registros) lineas.push(CAMPOS_607.map((c) => valor607(r, c)).join('|'));
   return `${lineas.join('\r\n')}\r\n`;
@@ -205,7 +205,7 @@ function reporte608(db, { periodo, tipos = {} }) {
 }
 
 function txt608(reporte) {
-  if (!tipoIdentificacion(reporte.rncNegocio)) throw new Error('Configure el RNC del negocio en Configuración > Negocio antes de generar el archivo 608');
+  if (!tipoIdentificacion(reporte.rncNegocio)) throw new Error('Configura el RNC del negocio en Configuración → Negocio antes de generar el archivo 608');
   const lineas = [`608|${reporte.rncNegocio}|${reporte.periodo}|${reporte.registros.length}`];
   for (const r of reporte.registros) lineas.push([r.ncf, r.fecha_comprobante, String(r.tipo_anulacion).padStart(2, '0')].join('|'));
   return `${lineas.join('\r\n')}\r\n`;

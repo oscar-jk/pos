@@ -36,7 +36,7 @@ function tomarNcf(db, codigoTipoNcf) {
   const tipo = db.prepare('SELECT * FROM tipos_ncf WHERE codigo = ? AND activo = 1').get(codigoTipoNcf);
   if (!tipo) throw new Error(`Tipo de NCF ${codigoTipoNcf} no está configurado`);
   if (tipo.secuencia_actual > tipo.secuencia_hasta) {
-    throw new Error(`Se agotó la numeración de NCF para ${tipo.nombre}. Configure un nuevo rango.`);
+    throw new Error(`Se agotó la numeración de NCF para ${tipo.nombre}. Configura un nuevo rango.`);
   }
   const ncf = `${tipo.codigo}${String(tipo.secuencia_actual).padStart(8, '0')}`;
   db.prepare('UPDATE tipos_ncf SET secuencia_actual = secuencia_actual + 1, updated_at = strftime(\'%Y-%m-%dT%H:%M:%fZ\',\'now\') WHERE id = ?')
@@ -172,7 +172,7 @@ function prepararLineasVenta(db, {
   });
 
   if (!puedeExceder && (descuentoGlobalPct || 0) > Math.max(limiteRol.limite_descuento_pct, descuentoGlobalAutorizadoPct + 0.01)) {
-    throw new Error(`El descuento global excede el límite permitido para su rol (${limiteRol.limite_descuento_pct}%)`);
+    throw new Error(`El descuento global excede el límite permitido para tu rol (${limiteRol.limite_descuento_pct}%)`);
   }
 
   const subtotalLineas = redondear(lineasCalculadas.reduce((acc, l) => acc + l.baseImponible, 0));
@@ -197,7 +197,7 @@ function monedaYTasa(db, monedaId, tasaEnviada) {
   const tasa = configuracion.tasaDelDia(db, monedaId);
   if (!tasa) throw new Error(`No hay tasa del ${moneda.codigo} registrada para hoy. Regístrela en Configuración > Monedas.`);
   if (tasaEnviada && Math.abs(Number(tasaEnviada) - tasa) > 0.00005) {
-    throw new Error(`La tasa del ${moneda.codigo} cambió a ${tasa}. Revise los montos y vuelva a cobrar.`);
+    throw new Error(`La tasa del ${moneda.codigo} cambió a ${tasa}. Revisa los montos y vuelve a cobrar.`);
   }
   return { monedaFactura: monedaId, tasaFactura: tasa };
 }
@@ -296,7 +296,7 @@ function crearFactura(db, payload) {
   let turnoCaja = null;
   if (montoEfectivo > 0) {
     turnoCaja = caja.obtenerTurnoAbierto(db, cajaId);
-    if (!turnoCaja) throw new Error('Debe abrir un turno de caja antes de facturar al contado en efectivo');
+    if (!turnoCaja) throw new Error('Abre un turno de caja antes de facturar al contado en efectivo');
   }
 
   // --- Moneda: montos siempre en RD$; si se factura en otra moneda, la tasa del día queda congelada ---
@@ -733,7 +733,7 @@ function guardarPromocion(db, { promocionId, nombre, productoId, categoriaId, ti
   if (tipoDescuento === 'monto' && producto && monto >= producto.precio_detalle) {
     throw new Error(`El descuento por unidad debe ser menor que el precio de "${producto.descripcion}" (${producto.precio_detalle})`);
   }
-  if (!FECHA_AAAAMMDD.test(fechaInicio || '') || !FECHA_AAAAMMDD.test(fechaFin || '')) throw new Error('Indique las fechas de inicio y fin');
+  if (!FECHA_AAAAMMDD.test(fechaInicio || '') || !FECHA_AAAAMMDD.test(fechaFin || '')) throw new Error('Indica las fechas de inicio y fin');
   if (fechaFin < fechaInicio) throw new Error('La fecha de fin no puede ser anterior a la de inicio');
 
   const id = promocionId || crypto.randomUUID();
@@ -998,7 +998,7 @@ function anularFactura(db, { documentoId, motivo, usuarioId }) {
     let turnoDestino = turnoOriginal;
     if (turnoOriginal.estado !== 'abierto') {
       turnoDestino = caja.obtenerTurnoAbierto(db, turnoOriginal.caja_id);
-      if (!turnoDestino) throw new Error('El turno de esta venta ya cerró. Abra un turno de caja para devolver el efectivo.');
+      if (!turnoDestino) throw new Error('El turno de esta venta ya cerró. Abre un turno de caja para devolver el efectivo.');
     }
     caja.registrarMovimiento(db, {
       turnoCajaId: turnoDestino.id, tipo: 'venta_efectivo', concepto: `Anulación factura ${documento.numero}`,
@@ -1103,7 +1103,7 @@ function crearNotaCredito(db, { facturaOrigenId, lineas, motivo, cajaId, usuario
   if (!factura.cliente_id) {
     if (!cajaId) throw new Error('Se requiere una caja para devolver en efectivo a un cliente no registrado');
     turno = caja.obtenerTurnoAbierto(db, cajaId);
-    if (!turno) throw new Error('Debe abrir un turno de caja antes de procesar esta devolución en efectivo');
+    if (!turno) throw new Error('Abre un turno de caja antes de procesar esta devolución en efectivo');
   }
 
   const documentoId = crypto.randomUUID();
@@ -1472,9 +1472,31 @@ function ventasPorPeriodo(db, { desde, hasta, sucursalId, vendedorId, clienteId,
     .all(...params);
 }
 
-function ventasPorVendedor(db, { desde, hasta } = {}) {
+// Filtro opcional por sucursal de los reportes de ventas (sin sucursal: consolidado del negocio).
+function filtrarSucursal(condiciones, params, sucursalId) {
+  if (sucursalId) { condiciones.push('dv.sucursal_id = ?'); params.push(sucursalId); }
+  return condiciones;
+}
+
+// Ventas consolidadas por sucursal: facturas, descuento, ITBIS y total de cada una.
+function ventasPorSucursal(db, { desde, hasta } = {}) {
   const params = [];
-  const condiciones = ["dv.tipo = 'factura'", "dv.estado != 'anulado'", 'dv.deleted_at IS NULL', 'dv.vendedor_id IS NOT NULL', ...condicionesFecha(desde, hasta, params)];
+  const condiciones = ["dv.tipo = 'factura'", "dv.estado != 'anulado'", 'dv.deleted_at IS NULL', ...condicionesFecha(desde, hasta, params)];
+  const filas = db
+    .prepare(
+      `SELECT s.id AS sucursal_id, s.nombre AS sucursal_nombre, COUNT(dv.id) AS num_facturas, SUM(dv.subtotal) AS subtotal,
+              SUM(dv.descuento_total) AS descuento, SUM(dv.itbis_total) AS itbis, SUM(dv.total) AS total
+       FROM documentos_venta dv JOIN sucursales s ON s.id = dv.sucursal_id
+       WHERE ${condiciones.join(' AND ')} GROUP BY s.id ORDER BY total DESC`
+    )
+    .all(...params);
+  const total = filas.reduce((a, f) => a + f.total, 0);
+  return filas.map((f) => ({ ...f, participacion_pct: total > 0 ? redondear((f.total / total) * 100) : 0 }));
+}
+
+function ventasPorVendedor(db, { desde, hasta, sucursalId } = {}) {
+  const params = [];
+  const condiciones = filtrarSucursal(["dv.tipo = 'factura'", "dv.estado != 'anulado'", 'dv.deleted_at IS NULL', 'dv.vendedor_id IS NOT NULL', ...condicionesFecha(desde, hasta, params)], params, sucursalId);
   return db
     .prepare(
       `SELECT u.id AS vendedor_id, u.nombre_completo AS vendedor_nombre,
@@ -1488,9 +1510,9 @@ function ventasPorVendedor(db, { desde, hasta } = {}) {
 
 // Cubre a la vez "Ventas por Artículo" y "Productos Más y Menos Vendidos": mismo dato,
 // distinto orden. orden: cantidad_desc (default) | cantidad_asc | ingreso_desc | ingreso_asc.
-function ventasPorArticulo(db, { desde, hasta, orden = 'cantidad_desc', limite = 100 } = {}) {
+function ventasPorArticulo(db, { desde, hasta, sucursalId, orden = 'cantidad_desc', limite = 100 } = {}) {
   const params = [];
-  const condiciones = ["dv.tipo = 'factura'", "dv.estado != 'anulado'", 'dv.deleted_at IS NULL', ...condicionesFecha(desde, hasta, params)];
+  const condiciones = filtrarSucursal(["dv.tipo = 'factura'", "dv.estado != 'anulado'", 'dv.deleted_at IS NULL', ...condicionesFecha(desde, hasta, params)], params, sucursalId);
   const columnas = { cantidad_desc: 'cantidad_vendida DESC', cantidad_asc: 'cantidad_vendida ASC', ingreso_desc: 'ingreso DESC', ingreso_asc: 'ingreso ASC' };
   params.push(limite);
   return db
@@ -1507,9 +1529,9 @@ function ventasPorArticulo(db, { desde, hasta, orden = 'cantidad_desc', limite =
     .all(...params);
 }
 
-function comisionesPorVendedor(db, { desde, hasta } = {}) {
+function comisionesPorVendedor(db, { desde, hasta, sucursalId } = {}) {
   const params = [];
-  const condiciones = ["dv.estado != 'anulado'", ...condicionesFecha(desde, hasta, params)];
+  const condiciones = filtrarSucursal(["dv.estado != 'anulado'", ...condicionesFecha(desde, hasta, params)], params, sucursalId);
   return db
     .prepare(
       `SELECT u.id AS vendedor_id, u.nombre_completo AS vendedor_nombre,
@@ -1534,9 +1556,9 @@ function marcarComisionPagada(db, { comisionId, usuarioId }) {
   configuracion.registrarAuditoria(db, { usuarioId, modulo: 'ventas', entidad: 'comisiones_vendedor', entidadId: comisionId, accion: 'marcar_pagada' });
 }
 
-function margenPorFactura(db, { desde, hasta, limite = 100 } = {}) {
+function margenPorFactura(db, { desde, hasta, sucursalId, limite = 100 } = {}) {
   const params = [];
-  const condiciones = ["dv.tipo = 'factura'", "dv.estado != 'anulado'", 'dv.deleted_at IS NULL', ...condicionesFecha(desde, hasta, params)];
+  const condiciones = filtrarSucursal(["dv.tipo = 'factura'", "dv.estado != 'anulado'", 'dv.deleted_at IS NULL', ...condicionesFecha(desde, hasta, params)], params, sucursalId);
   params.push(limite);
   const filas = db
     .prepare(
@@ -1555,28 +1577,30 @@ function margenPorFactura(db, { desde, hasta, limite = 100 } = {}) {
   });
 }
 
-function resumenCobrosDelDia(db, { fecha } = {}) {
-  const dia = fecha || hoyLocal();
+function resumenCobrosDelDia(db, { fecha, sucursalId } = {}) {
+  const dia = (fecha || hoyLocal()).slice(0, 10);
+  const porSucursal = sucursalId ? ' AND dv.sucursal_id = ?' : '';
+  const args = sucursalId ? [dia, sucursalId] : [dia];
   const facturado = db
-    .prepare("SELECT COALESCE(SUM(total), 0) AS total FROM documentos_venta WHERE tipo = 'factura' AND estado != 'anulado' AND deleted_at IS NULL AND date(fecha, 'localtime') = date(?)")
-    .get(dia).total;
+    .prepare(`SELECT COALESCE(SUM(dv.total), 0) AS total FROM documentos_venta dv WHERE dv.tipo = 'factura' AND dv.estado != 'anulado' AND dv.deleted_at IS NULL AND date(dv.fecha, 'localtime') = date(?)${porSucursal}`)
+    .get(...args).total;
   const filasPago = db
     .prepare(
       `SELECT pv.forma_pago, COALESCE(SUM(pv.monto), 0) AS total
        FROM pagos_venta pv JOIN documentos_venta dv ON dv.id = pv.documento_id
-       WHERE dv.estado != 'anulado' AND dv.deleted_at IS NULL AND date(dv.fecha, 'localtime') = date(?)
+       WHERE dv.estado != 'anulado' AND dv.deleted_at IS NULL AND date(dv.fecha, 'localtime') = date(?)${porSucursal}
        GROUP BY pv.forma_pago`
     )
-    .all(dia);
+    .all(...args);
   const porForma = { efectivo: 0, tarjeta: 0, transferencia: 0, credito: 0 };
   filasPago.forEach((f) => { porForma[f.forma_pago] = f.total; });
   const totalCobrado = redondear(Object.values(porForma).reduce((a, b) => a + b, 0));
   return { fecha: dia, totalFacturado: redondear(facturado), totalCobrado, porForma };
 }
 
-function itbisGeneradoVentas(db, { desde, hasta } = {}) {
+function itbisGeneradoVentas(db, { desde, hasta, sucursalId } = {}) {
   const params = [];
-  const condiciones = ["dv.tipo = 'factura'", "dv.estado != 'anulado'", 'dv.deleted_at IS NULL', ...condicionesFecha(desde, hasta, params)];
+  const condiciones = filtrarSucursal(["dv.tipo = 'factura'", "dv.estado != 'anulado'", 'dv.deleted_at IS NULL', ...condicionesFecha(desde, hasta, params)], params, sucursalId);
   return db
     .prepare(
       `SELECT dvd.tasa_itbis, SUM(dvd.base_imponible) AS base_total, SUM(dvd.itbis_monto) AS itbis_total
@@ -1707,6 +1731,7 @@ function register(ipcMain, getDb) {
   ipcMain.handle('ventas:listarNotas', (event, filtros) => listarNotas(getDb(), filtros || {}));
 
   ipcMain.handle('ventas:reportes:ventasPorPeriodo', (event, filtros) => ventasPorPeriodo(getDb(), filtros || {}));
+  ipcMain.handle('ventas:reportes:ventasPorSucursal', (event, filtros) => ventasPorSucursal(getDb(), filtros || {}));
   ipcMain.handle('ventas:reportes:ventasPorVendedor', (event, filtros) => ventasPorVendedor(getDb(), filtros || {}));
   ipcMain.handle('ventas:reportes:ventasPorArticulo', (event, filtros) => ventasPorArticulo(getDb(), filtros || {}));
   ipcMain.handle('ventas:reportes:comisionesPorVendedor', (event, filtros) => comisionesPorVendedor(getDb(), filtros || {}));
@@ -1739,6 +1764,6 @@ module.exports = {
   crearCotizacion, crearConduce, anularCotizacion, anularConduce, listarDocumentosVenta, crearPedido, anularPedido,
   listarPromociones, guardarPromocion, desactivarPromocion, descuentoLinea,
   crearNotaCredito, anularNotaCredito, crearNotaDebito, anularNotaDebito, listarNotas,
-  ventasPorPeriodo, ventasPorVendedor, ventasPorArticulo, comisionesPorVendedor,
+  ventasPorPeriodo, ventasPorSucursal, ventasPorVendedor, ventasPorArticulo, comisionesPorVendedor,
   marcarComisionPagada, margenPorFactura, resumenCobrosDelDia, itbisGeneradoVentas,
 };

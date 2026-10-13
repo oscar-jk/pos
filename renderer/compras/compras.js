@@ -28,7 +28,7 @@ const ETIQUETA_ESTADO_ORDEN = { convertido: 'Convertido en orden', abierto: 'Abi
 // --- Pestañas ---
 
 const ACCIONES_TAB = {
-  proveedores: '<button class="btn btn-primario" id="btn-nuevo-proveedor">+ Nuevo proveedor</button>',
+  proveedores: '<button class="btn btn-primario" id="btn-nuevo-proveedor" data-permiso="compras.orden.crear,compras.factura.crear">+ Nuevo proveedor</button>',
   presupuestos: '<button class="btn btn-primario" id="btn-nuevo-presupuesto" data-permiso="compras.orden.crear">+ Nuevo presupuesto</button>',
   ordenes: '<button class="btn btn-primario" id="btn-nueva-orden" data-permiso="compras.orden.crear">+ Nueva orden de compra</button>',
   facturas: '<button class="btn btn-primario" id="btn-nueva-factura" data-permiso="compras.factura.crear">+ Nueva factura de compra</button>',
@@ -70,7 +70,7 @@ async function cargarProveedores() {
       <td>${esc(p.nombre)}</td><td>${esc(p.rnc || '—')}</td><td>${esc(p.dias_credito)}</td>
       <td style="color:${p.saldo_pendiente > 0 ? 'var(--color-warning)' : 'inherit'};">${fmt(p.saldo_pendiente)}</td>
       <td style="color:${p.saldo_a_favor > 0 ? 'var(--color-success)' : 'inherit'};">${p.saldo_a_favor === undefined ? '—' : fmt(p.saldo_a_favor)}</td>
-      <td><span class="enlace-accion" data-editar="${esc(p.id)}">Editar</span></td>
+      <td><span class="enlace-accion" data-permiso="compras.orden.crear,compras.factura.crear" data-editar="${esc(p.id)}">Editar</span></td>
     </tr>
   `).join('');
   document.querySelectorAll('[data-editar]').forEach((el) => el.addEventListener('click', () => abrirFormularioProveedor(el.dataset.editar)));

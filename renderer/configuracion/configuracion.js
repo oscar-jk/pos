@@ -150,19 +150,22 @@ async function cargarUsuarios() {
 }
 
 function opciones(lista, valorSel, etiquetaFn) {
-  return lista.map((x) => `<option value="${esc(x.id)}" ${x.id === valorSel ? 'selected' : ''}>${etiquetaFn(x)}</option>`).join('');
+  return lista.map((x) => `<option value="${esc(x.id)}" ${x.id === valorSel ? 'selected' : ''}>${esc(etiquetaFn(x))}</option>`).join('');
 }
 
 async function abrirFormularioUsuario(usuarioId) {
   const esEdicion = Boolean(usuarioId);
   const usuarios = esEdicion ? await window.puntoXConfig.listarUsuarios() : [];
   const usuario = esEdicion ? usuarios.find((u) => u.id === usuarioId) : null;
+  const sucursales = window.__sucursalesCache || await window.puntoXConfig.listarSucursales();
+  const sucursalSel = usuario ? usuario.sucursal_id : state.info.sucursalId;
 
   window.PuntoXModal.abrirModal(esEdicion ? 'Editar usuario' : 'Nuevo usuario', `
     <div class="form-grid">
       <div class="form-field"><label>Nombre completo *</label><input id="u-nombre" value="${esc(usuario ? usuario.nombre_completo : '')}" /></div>
       <div class="form-field"><label>Usuario (acceso) *</label><input id="u-usuario" value="${esc(usuario ? usuario.usuario : '')}" ${esEdicion ? 'disabled' : ''} /></div>
       <div class="form-field"><label>Rol *</label><select id="u-rol">${opciones(state.roles, usuario ? usuario.rol_id : null, (r) => r.nombre)}</select></div>
+      <div class="form-field"><label>Sucursal</label><select id="u-sucursal">${opciones(sucursales, sucursalSel, (x) => x.nombre)}</select></div>
       <div class="form-field"><label>% Comisión de vendedor</label><input id="u-comision" type="number" step="0.01" value="${usuario ? usuario.pct_comision : 0}" /></div>
       <div class="form-field"><label>${esEdicion ? 'Nueva contraseña (opcional)' : 'Contraseña *'}</label><input id="u-password" type="password" placeholder="${esEdicion ? 'Dejar en blanco para no cambiarla' : 'Mínimo 8 caracteres; la persona la cambiará al entrar'}" /></div>
       ${esEdicion ? `<div class="form-field form-field--checkbox"><input id="u-activo" type="checkbox" ${usuario.activo ? 'checked' : ''} /><label>Activo</label></div>` : ''}
@@ -181,6 +184,7 @@ async function abrirFormularioUsuario(usuarioId) {
           usuarioId, usuarioEditorId: state.info.usuario.id,
           payload: {
             nombreCompleto: document.getElementById('u-nombre').value, rolId: document.getElementById('u-rol').value,
+            sucursalId: document.getElementById('u-sucursal').value || null,
             pctComision: parseFloat(document.getElementById('u-comision').value) || 0,
             activo: document.getElementById('u-activo').checked, password: document.getElementById('u-password').value || null,
           },
@@ -191,6 +195,7 @@ async function abrirFormularioUsuario(usuarioId) {
           payload: {
             nombreCompleto: document.getElementById('u-nombre').value, usuario: document.getElementById('u-usuario').value,
             password: document.getElementById('u-password').value, rolId: document.getElementById('u-rol').value,
+            sucursalId: document.getElementById('u-sucursal').value || null,
             pctComision: parseFloat(document.getElementById('u-comision').value) || 0,
           },
         });

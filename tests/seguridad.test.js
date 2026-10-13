@@ -28,7 +28,7 @@ test('A1: el admin del seed entra obligado a cambiar la contraseña', () => {
 test('A1: con la marca activa ninguna operación funciona (facturar)', () => {
   const { db, ctx, p } = base();
   h.tx(db, () => auth().login(db, { usuario: 'admin', password: 'admin123' }));
-  assert.throws(() => venta(db, ctx, p), /Debe cambiar su contraseña/);
+  assert.throws(() => venta(db, ctx, p), /Cambia tu contraseña/);
   assert.equal(h.session.tienePermiso('ventas.factura.crear'), false);
 });
 
@@ -40,7 +40,7 @@ test('A1: por IPC solo responden los canales auth:* mientras la marca esté acti
   const seguro = protegerIpc(ipcFalso);
   seguro.handle('ventas:listarFacturas', () => 'datos');
   seguro.handle('auth:sesionActual', () => 'sesion');
-  assert.throws(() => canales.get('ventas:listarFacturas')({}, {}), /Debe cambiar su contraseña/);
+  assert.throws(() => canales.get('ventas:listarFacturas')({}, {}), /Cambia tu contraseña/);
   assert.equal(canales.get('auth:sesionActual')({}, {}), 'sesion');
 });
 

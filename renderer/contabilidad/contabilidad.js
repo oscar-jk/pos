@@ -25,7 +25,7 @@ const TIPO_ETIQUETA = { activo: 'Activo', pasivo: 'Pasivo', patrimonio: 'Patrimo
 // --- Pestañas ---
 
 const ACCIONES_TAB = {
-  cuentas: '<button class="btn btn-primario" id="btn-nueva-cuenta">+ Nueva cuenta</button>',
+  cuentas: '<button class="btn btn-primario" id="btn-nueva-cuenta" data-permiso="contabilidad.catalogo.gestionar">+ Nueva cuenta</button>',
   diario: '<button class="btn btn-primario" id="btn-nuevo-asiento" data-permiso="contabilidad.asiento_manual.crear">+ Nuevo asiento manual</button>',
 };
 
@@ -74,7 +74,7 @@ async function cargarCuentas() {
       <td>${esc(TIPO_ETIQUETA[c.tipo] || c.tipo)}</td>
       <td>${c.es_movimiento ? 'Sí' : 'Agrupación'}</td>
       <td>${c.activo ? '<span class="pill-estado" style="background:var(--color-success);">Activa</span>' : '<span class="pill-estado" style="background:var(--color-text-faint);">Inactiva</span>'}</td>
-      <td><span class="enlace-accion" data-editar="${esc(c.id)}">Editar</span></td>
+      <td><span class="enlace-accion" data-permiso="contabilidad.catalogo.gestionar" data-editar="${esc(c.id)}">Editar</span></td>
     </tr>
   `).join('');
   document.querySelectorAll('[data-editar]').forEach((el) => el.addEventListener('click', () => abrirFormularioCuenta(el.dataset.editar)));

@@ -306,7 +306,7 @@ function actualizarPermisosRol(db, rolId, permisoIds, usuarioId) {
   const sesion = session.obtenerSesion();
   const gestionar = db.prepare("SELECT id FROM permisos WHERE codigo = 'configuracion.gestionar'").get();
   if (sesion && sesion.rolId === rolId && gestionar && !nuevoSet.has(gestionar.id)) {
-    throw new Error('No puede quitarle a su propio rol el permiso de configuración: se quedaría sin acceso. Hágalo desde otro usuario administrador.');
+    throw new Error('No puedes quitarle a tu propio rol el permiso de configuración: te quedarías sin acceso. Hazlo desde otro usuario administrador.');
   }
   const filasExistentes = db.prepare('SELECT id, permiso_id, deleted_at FROM roles_permisos WHERE rol_id = ?').all(rolId);
   const filaPorPermiso = new Map(filasExistentes.map((f) => [f.permiso_id, f]));
