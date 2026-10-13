@@ -15,6 +15,7 @@ const MIGRACIONES = [
   require('./011_columnas_sync'),
   require('./012_facturacion_electronica'),
   require('./013_ecf_receptor'),
+  require('./014_cuenta_bancaria_en_asientos'),
 ];
 
 function columnasDe(db, tabla) {

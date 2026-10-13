@@ -130,6 +130,7 @@ Seis roles de fábrica, con permisos por acción (`modulo.entidad.accion`): **Ad
 - Proveedores, órdenes de compra, facturas/recepciones (con lote y vencimiento), comparación de costos.
 - Notas de crédito (devolución a proveedor) y de débito (ajuste de precio), con efecto en costo promedio o en capas PEPS.
 - Formato **606** de la DGII (pantalla, TXT y Excel).
+- Formatos **607** (ventas serie B; facturas de consumo menores de RD$250,000 en un resumen aparte; retenciones en cero con aviso) y **608** (comprobantes anulados, tipo de anulación 4 por defecto) en Reportes → Ventas, con TXT `DGII_F_607_RNC_AAAAMM.TXT`. Los e-CF no se incluyen. Verificar con el pre-validador de la DGII y el contador antes del primer envío.
 
 ### Cuentas por cobrar
 - Clientes, límite y días de crédito, bloqueo por mora, estado de cuenta, antigüedad de saldos, facturas vencidas, gestión de cobros, CxC de empleados.
@@ -186,21 +187,27 @@ Rama `fe/facturacion-electronica`. Detalle completo en `docs/FACTURACION_ELECTRO
 - Publicar en internet los servicios del receptor, que la DGII exige para certificar.
 - Cuatro decisiones fiscales, listadas en el documento: E44 exento, nota de crédito después de 30 días, retenciones en el E31, E41/E43.
 
+### Mejoras cerradas después (ramas mejoras/d-atajos-cobro, f-icono-ci, d-estados, e-comisiones-flujo)
+- **Mostrador:** atajos de teclado (F1, F2, F3, F4, F8, F10, Supr, Esc), Enter agrega con cantidad 1, efectivo recibido con billetes y cambio en vivo (la factura registra solo lo que se debe).
+- **Pantallas de 1100×700** sin desborde horizontal; estados de carga y error iguales en todas las pantallas.
+- **Listas de precio:** pantalla en Inventario y aplicación en Ventas (categoría del cliente > sucursal > nivel); el precio de lista no cuenta como descuento manual.
+- **Conciliación bancaria por cuenta:** cada línea del libro de Bancos lleva su cuenta bancaria; con varias cuentas, lo que no se sabe de cuál es se asigna al emparejarlo o a mano.
+- **Comisiones:** base configurable (`comision_base`: total o subtotal; por defecto total).
+- **Reportes de inventario:** valorización a fecha (comparable), reposición, sobre-stock, rotación y bitácora de movimientos.
+- **Proyección de cobros y pagos** y **flujo de caja** diario/semanal.
+- **Etiquetas** de código de barras (Code 128) y precio, de anaquel y de caja.
+- **Ícono** de la aplicación, empaquetado de Windows verificado y **CI** en GitHub Actions. El instalador necesita el Modo desarrollador de Windows (o terminal de administrador) para crear enlaces simbólicos.
+
 ### Parcial (hay código pero falta cerrar)
-- **Listas de precio:** el backend existe (`inventario.js`: crear/editar/desactivar, `listasParaVenta`, `precioSegunListas`; regla acordada: **lista de la categoría del cliente > lista de la sucursal > nivel de precio normal**) y está probado. **Falta:** la pantalla para administrarlas y conectarlas al carrito de Ventas (aplicar el precio y mostrarlo).
 - **Conversión de producto:** backend y pestaña listos; la pestaña no tiene prueba de interfaz.
-- **Liquidación de importación:** solo existen las tablas.
 
 ### Pendiente (en el orden acordado)
-1. Listas de precio: pantalla + integración con Ventas.
-2. **Etiquetas** de código de barra y precio (individual y en lote) — permiso `inventario.etiqueta.imprimir` ya creado.
-3. **Reportes de inventario:** valorización a fecha (comparable entre dos fechas), reposición sugerida, sobre-stock, bitácora de movimientos, rotación.
-4. **Compras:** liquidación de importación, presupuesto de compra, recepción sin factura.
-5. **Proyecciones** de cobros y pagos, flujo de caja, historial de cobros por vendedor.
-6. **Multi-sucursal real** (hoy hay sucursales y almacenes, pero el flujo es de una).
-7. Formatos **607** y **608** de la DGII (acordado incluirlos).
-8. **Instalador:** `electron-builder` configurado, pero falta `assets/icon.ico` / ícono en `build/` y probar `npm run dist`.
-9. Fuera de alcance acordado: **delivery** (se decidió no incluirlo) y sincronización con Supabase/Vercel (fase futura).
+1. **Compras:** presupuesto de compra, recepción sin factura.
+2. Historial de cobros por vendedor.
+3. **Multi-sucursal real** (hoy hay sucursales y almacenes, pero el flujo es de una).
+4. Formatos **607** y **608** de la DGII (acordado incluirlos).
+5. **Instalador:** el ícono y el empaquetado ya están; falta correr `npm run dist` con el Modo desarrollador de Windows activado.
+6. Fuera de alcance acordado: **delivery**, **liquidación de importación** (se descartó; sus tablas quedan sin uso) y la sincronización con Supabase/Vercel (fase futura).
 
 ### Decisiones tomadas con el usuario
 - Cuentas abiertas: tipo bar/mesa, módulo opcional.

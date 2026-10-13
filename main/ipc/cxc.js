@@ -372,6 +372,48 @@ function listarRecibos(db, { clienteId, limite = 50 } = {}) {
     .all(...params);
 }
 
+// Historial de cobros: cada cobro aplicado a una factura, con el vendedor de esa factura, para
+// medir la efectividad de la cobranza por cliente y por vendedor. Los recibos anulados no cuentan.
+// Los días de cobro son los transcurridos entre la factura y el recibo.
+function historialCobros(db, { desde, hasta, clienteId, vendedorId } = {}) {
+  session.requerirPermiso('cxc.reportes.ver');
+  const condiciones = ["ri.estado != 'anulado'", 'ri.deleted_at IS NULL', 'a.deleted_at IS NULL'];
+  const params = [];
+  // Días en hora local (UTC-4): el día D empieza a las 04:00 UTC.
+  if (desde) { condiciones.push('ri.fecha >= ?'); params.push(`${desde.slice(0, 10)}T04:00:00.000Z`); }
+  if (hasta) { condiciones.push('ri.fecha < ?'); params.push(new Date(Date.parse(`${hasta.slice(0, 10)}T04:00:00.000Z`) + 86400000).toISOString()); }
+  if (clienteId) { condiciones.push('ri.cliente_id = ?'); params.push(clienteId); }
+  if (vendedorId === 'sin_vendedor') condiciones.push('f.vendedor_id IS NULL');
+  else if (vendedorId) { condiciones.push('f.vendedor_id = ?'); params.push(vendedorId); }
+  const filas = db.prepare(
+    `SELECT ri.id AS recibo_id, ri.numero AS recibo_numero, ri.fecha, ri.forma_pago, c.id AS cliente_id, c.nombre AS cliente_nombre,
+            f.id AS factura_id, f.numero AS factura_numero, f.fecha AS factura_fecha, f.vendedor_id,
+            COALESCE(v.nombre_completo, 'Sin vendedor') AS vendedor_nombre, a.monto_aplicado
+     FROM recibos_ingreso_aplicaciones a JOIN recibos_ingreso ri ON ri.id = a.recibo_id
+     JOIN documentos_venta f ON f.id = a.documento_venta_id JOIN clientes c ON c.id = ri.cliente_id
+     LEFT JOIN usuarios v ON v.id = f.vendedor_id
+     WHERE ${condiciones.join(' AND ')} ORDER BY ri.fecha DESC, ri.numero`
+  ).all(...params).map((x) => ({ ...x, monto_aplicado: redondear(x.monto_aplicado), dias_cobro: Math.max(0, Math.round((Date.parse(x.fecha) - Date.parse(x.factura_fecha)) / 86400000)) }));
+
+  const resumir = (clave, nombre) => {
+    const g = new Map();
+    for (const x of filas) {
+      const k = x[clave] || 'sin_vendedor';
+      if (!g.has(k)) g.set(k, { id: k, nombre: x[nombre], cobrado: 0, aplicaciones: 0, recibos: new Set(), facturas: new Set(), sumaDias: 0 });
+      const e = g.get(k);
+      e.cobrado += x.monto_aplicado; e.aplicaciones += 1; e.recibos.add(x.recibo_id); e.facturas.add(x.factura_id); e.sumaDias += x.dias_cobro;
+    }
+    return [...g.values()].map((e) => ({
+      id: e.id, nombre: e.nombre, cobrado: redondear(e.cobrado), recibos: e.recibos.size, facturas: e.facturas.size,
+      diasPromedio: e.aplicaciones ? redondear(e.sumaDias / e.aplicaciones) : 0,
+    })).sort((a, b) => b.cobrado - a.cobrado);
+  };
+  return {
+    filas, porVendedor: resumir('vendedor_id', 'vendedor_nombre'), porCliente: resumir('cliente_id', 'cliente_nombre'),
+    total: redondear(filas.reduce((acc, x) => acc + x.monto_aplicado, 0)),
+  };
+}
+
 // =========================================================================
 // Reportes: antigüedad de saldos y facturas vencidas
 // =========================================================================
@@ -543,6 +585,7 @@ function register(ipcMain, getDb) {
     return db.transaction(() => anularRecibo(db, payload))();
   });
   ipcMain.handle('cxc:listarRecibos', (event, filtros) => listarRecibos(getDb(), filtros || {}));
+  ipcMain.handle('cxc:historialCobros', (event, filtros) => historialCobros(getDb(), filtros || {}));
 
   ipcMain.handle('cxc:antiguedadSaldos', () => antiguedadSaldos(getDb()));
   ipcMain.handle('cxc:facturasVencidas', () => facturasVencidas(getDb()));
@@ -567,6 +610,6 @@ function register(ipcMain, getDb) {
 module.exports = {
   register, obtenerCliente, saldoPendienteCliente, saldoPorFactura, facturasAbiertasCliente,
   verificarBloqueoPorMora, guardarCliente, listarClientes, estadoCuenta,
-  crearRecibo, anularRecibo, listarRecibos, antiguedadSaldos, facturasVencidas,
+  crearRecibo, anularRecibo, listarRecibos, historialCobros, antiguedadSaldos, facturasVencidas,
   crearGestionCobro, listarGestionCobros, crearCxcEmpleado, registrarPagoCxcEmpleado, listarCxcEmpleados,
 };

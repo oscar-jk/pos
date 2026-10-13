@@ -15,6 +15,9 @@ const cxpIpc = require('./ipc/cxp');
 const configuracionIpc = require('./ipc/configuracion');
 const impresion = require('./printing');
 const ecfIpc = require('./ipc/ecf');
+const reportesInvIpc = require('./ipc/reportes-inventario');
+const proyeccionesIpc = require('./ipc/proyecciones');
+const formatosVentasIpc = require('./ipc/formatos-ventas');
 const colaEcf = require('./ecf/cola');
 const ecfEmision = require('./ecf/emision');
 
@@ -74,6 +77,9 @@ function registerCoreIpc() {
   configuracionIpc.register(ipcSeguro, getDb);
   impresion.register(ipcSeguro, getDb);
   ecfIpc.register(ipcSeguro, getDb);
+  reportesInvIpc.register(ipcSeguro, getDb);
+  proyeccionesIpc.register(ipcSeguro, getDb);
+  formatosVentasIpc.register(ipcSeguro, getDb);
 }
 
 function createMainWindow() {

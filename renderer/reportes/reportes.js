@@ -62,6 +62,100 @@ function renderReporte606(r) {
   `;
 }
 
+const fechaDMA = (s) => `${s.slice(6)}/${s.slice(4, 6)}/${s.slice(0, 4)}`;
+
+function avisosHtml(avisos) {
+  return (avisos || []).map((a) => `<div class="conc-aviso" style="margin:6px 0;">${esc(a)}</div>`).join('');
+}
+
+function botonesExportar(r, formato) {
+  return `
+    <div style="display:flex; gap:8px; margin:6px 0 12px; flex-wrap:wrap;">
+      <button class="btn btn-primario btn-chico" data-exportar="txt" ${!r.rncNegocio || r.registros.length === 0 ? 'disabled' : ''}>Descargar TXT para la DGII</button>
+      ${formato === '607' ? `<button class="btn btn-secundario btn-chico" data-exportar="csv" ${r.registros.length === 0 ? 'disabled' : ''}>Descargar para Excel (CSV)</button>` : ''}
+    </div>
+    <div id="aviso-exportado" style="display:none; font-size:12px; margin-bottom:12px; color:var(--color-success); font-weight:600;"></div>`;
+}
+
+function enlazarExportacion(contenedor, formato, filtros, exportar) {
+  contenedor.querySelectorAll('[data-exportar]').forEach((btn) => btn.addEventListener('click', async () => {
+    mostrarError(null);
+    try {
+      const r = await exportar({ periodo: filtros.periodo, formato: btn.dataset.exportar });
+      if (r && r.ruta) {
+        const aviso = contenedor.querySelector('#aviso-exportado');
+        aviso.textContent = `Archivo guardado (${r.registros} registros): ${r.ruta}`;
+        aviso.style.display = 'block';
+      }
+    } catch (err) { mostrarError(err.message); }
+  }));
+}
+
+function renderReporte607(r) {
+  const c = r.resumenConsumo;
+  return `
+    ${!r.rncNegocio ? `<div class="mensaje-error" style="display:block;">Falta el RNC del negocio. Configúralo en <strong>Configuración → Negocio</strong> para poder generar el archivo TXT.</div>` : ''}
+    ${renderTarjetas([
+      { label: 'Registros detallados', valor: r.totales.cantidad },
+      { label: 'Monto facturado (sin ITBIS)', valor: r.totales.facturado, formato: 'moneda' },
+      { label: 'ITBIS facturado', valor: r.totales.itbis, formato: 'moneda' },
+      { label: 'Excluidos', valor: r.excluidos.length, color: r.excluidos.length ? 'var(--color-warning)' : undefined },
+    ])}
+    ${botonesExportar(r, '607')}
+    ${avisosHtml(r.avisos)}
+    <p style="font-size:12px; color:var(--color-text-muted); margin:6px 0 14px;">
+      Periodo ${esc(r.periodo.slice(4))}/${esc(r.periodo.slice(0, 4))} · RNC informante ${esc(r.rncNegocio) || '—'}. Solo comprobantes serie B (los e-CF ya los tiene la DGII).
+      <strong>Revisa el archivo con tu contador y la herramienta de pre-validación de la DGII antes del primer envío.</strong>
+    </p>
+    <div class="reportes-panel__header"><h3 style="font-size:14px; margin:0;">Resumen de facturas de consumo (menores de RD$250,000)</h3></div>
+    <p style="font-size:12px; color:var(--color-text-muted); margin:4px 0 8px;">No van en el archivo: se digitan en el formulario de la Oficina Virtual como "Resumen General de Facturas de Consumo".</p>
+    ${renderTarjetas([
+      { label: 'Cantidad de facturas', valor: c.cantidad },
+      { label: 'Monto facturado', valor: c.montoFacturado, formato: 'moneda' },
+      { label: 'ITBIS', valor: c.itbis, formato: 'moneda' },
+      { label: 'Total', valor: c.total, formato: 'moneda' },
+    ])}
+    ${r.excluidos.length ? `
+      <div class="reportes-panel__header" style="margin-top:4px;"><h3 style="font-size:14px; margin:0;">No incluidos en el 607 (${esc(r.excluidos.length)})</h3></div>
+      ${renderTabla([
+        { label: 'Documento', key: (e) => `${e.origen} ${e.numero}` }, { label: 'Cliente', key: 'cliente' },
+        { label: 'Fecha', key: 'fecha', formato: 'fecha' }, { label: 'Total', key: 'total', formato: 'moneda', alinear: 'right' },
+        { label: 'Motivo', key: 'motivo' },
+      ], r.excluidos)}` : ''}
+    <div class="reportes-panel__header" style="margin-top:16px;"><h3 style="font-size:14px; margin:0;">Registros</h3></div>
+    ${renderTabla([
+      { label: 'Documento', key: (x) => `${x.origen} ${x.numero}` }, { label: 'RNC/Cédula', key: 'rnc' }, { label: 'NCF', key: 'ncf' },
+      { label: 'NCF modificado', key: 'ncf_modificado' }, { label: 'Fecha', key: (x) => fechaDMA(x.fecha_comprobante) },
+      { label: 'Facturado', key: 'monto_facturado', formato: 'moneda', alinear: 'right' }, { label: 'ITBIS', key: 'itbis_facturado', formato: 'moneda', alinear: 'right' },
+      { label: 'Efectivo', key: 'efectivo', formato: 'moneda', alinear: 'right' }, { label: 'Transf./cheque', key: 'cheque_transferencia', formato: 'moneda', alinear: 'right' },
+      { label: 'Tarjeta', key: 'tarjeta', formato: 'moneda', alinear: 'right' }, { label: 'Crédito', key: 'credito', formato: 'moneda', alinear: 'right' },
+    ], r.registros)}
+  `;
+}
+
+function renderReporte608(r) {
+  return `
+    ${!r.rncNegocio ? `<div class="mensaje-error" style="display:block;">Falta el RNC del negocio. Configúralo en <strong>Configuración → Negocio</strong> para poder generar el archivo TXT.</div>` : ''}
+    ${renderTarjetas([
+      { label: 'Comprobantes anulados', valor: r.registros.length },
+      { label: 'Excluidos', valor: r.excluidos.length, color: r.excluidos.length ? 'var(--color-warning)' : undefined },
+    ])}
+    ${botonesExportar(r, '608')}
+    ${avisosHtml(r.avisos)}
+    <p style="font-size:12px; color:var(--color-text-muted); margin:6px 0 14px;">
+      Periodo ${esc(r.periodo.slice(4))}/${esc(r.periodo.slice(0, 4))} · RNC informante ${esc(r.rncNegocio) || '—'}. Tipo de anulación por defecto: 4 (corrección de la información), o 6 (devolución) en notas de crédito.
+    </p>
+    ${r.excluidos.length ? `
+      <div class="reportes-panel__header" style="margin-top:4px;"><h3 style="font-size:14px; margin:0;">No incluidos en el 608 (${esc(r.excluidos.length)})</h3></div>
+      ${renderTabla([{ label: 'Documento', key: 'numero' }, { label: 'Cliente', key: 'cliente' }, { label: 'Total', key: 'total', formato: 'moneda', alinear: 'right' }, { label: 'Motivo', key: 'motivo' }], r.excluidos)}` : ''}
+    <div class="reportes-panel__header" style="margin-top:16px;"><h3 style="font-size:14px; margin:0;">Registros</h3></div>
+    ${renderTabla([
+      { label: 'Documento', key: 'numero' }, { label: 'NCF', key: 'ncf' }, { label: 'Fecha comprobante', key: (x) => fechaDMA(x.fecha_comprobante) },
+      { label: 'Tipo de anulación', key: (x) => `${x.tipo_anulacion} ${x.tipo_anulacion_texto}` }, { label: 'Motivo registrado', key: 'motivo_anulacion' },
+    ], r.registros)}
+  `;
+}
+
 function mostrarError(msg) {
   const el = document.getElementById('mensaje-error');
   if (!msg) { el.style.display = 'none'; return; }
@@ -246,6 +340,24 @@ const CATALOGO = [
           { label: 'Estado', key: 'estado' }, { label: 'Motivo anulación', key: 'motivo_anulacion' }, { label: 'Anuló', key: 'usuario_anulo_nombre' },
         ],
       },
+      {
+        clave: 'ventas-607', etiqueta: 'Ventas 607 (DGII)',
+        disponible: () => Boolean(window.puntoXFormatosVentas),
+        filtros: [{ tipo: 'mes', clave: 'periodo', label: 'Mes a reportar', valorDefault: mesAnterior() }],
+        personalizado: true,
+        cargar: (v) => window.puntoXFormatosVentas.reporte607({ periodo: v.periodo }),
+        render: renderReporte607,
+        alRenderizar: (datos, contenedor, filtros) => enlazarExportacion(contenedor, '607', filtros, window.puntoXFormatosVentas.exportar607),
+      },
+      {
+        clave: 'ventas-608', etiqueta: 'Comprobantes anulados 608 (DGII)',
+        disponible: () => Boolean(window.puntoXFormatosVentas),
+        filtros: [{ tipo: 'mes', clave: 'periodo', label: 'Mes a reportar', valorDefault: mesAnterior() }],
+        personalizado: true,
+        cargar: (v) => window.puntoXFormatosVentas.reporte608({ periodo: v.periodo }),
+        render: renderReporte608,
+        alRenderizar: (datos, contenedor, filtros) => enlazarExportacion(contenedor, '608', filtros, window.puntoXFormatosVentas.exportar608),
+      },
     ],
   },
   {
@@ -269,6 +381,83 @@ const CATALOGO = [
           { label: 'Producto', key: 'descripcion' }, { label: 'Lote', key: 'numero_lote' }, { label: 'Almacén', key: 'almacen_nombre' },
           { label: 'Cantidad', key: 'cantidad', alinear: 'right' }, { label: 'Vence', key: 'fecha_vencimiento', formato: 'fecha' },
           { label: 'Días restantes', key: 'dias_restantes', alinear: 'right' },
+        ],
+      },
+      {
+        clave: 'inv-valorizacion', etiqueta: 'Valorización de Inventario a Fecha',
+        disponible: () => Boolean(window.puntoXReportesInv),
+        filtros: [{ tipo: 'fecha', clave: 'fecha', label: 'A la fecha', valorDefault: hoyISO() }, { tipo: 'fecha', clave: 'compararCon', label: 'Comparar con (opcional)' }],
+        personalizado: true,
+        cargar: (v) => window.puntoXReportesInv.valorizacion({ fecha: v.fecha || undefined, compararCon: v.compararCon || undefined }),
+        render: (r) => {
+          const tarjetas = [{ label: `Valor al ${fechaCorta(r.fecha)}`, valor: r.total, formato: 'moneda' }];
+          const columnas = [
+            { label: 'Código', key: 'codigo_interno' }, { label: 'Producto', key: 'descripcion' }, { label: 'Categoría', key: 'categoria_nombre' },
+            { label: 'Cantidad', key: 'cantidad', alinear: 'right' }, { label: 'Valor', key: 'valor', formato: 'moneda', alinear: 'right' },
+          ];
+          if (r.compararCon) {
+            tarjetas.push({ label: `Valor al ${fechaCorta(r.compararCon)}`, valor: r.totalPrevio, formato: 'moneda' }, { label: 'Diferencia', valor: r.diferencia, formato: 'moneda', color: r.diferencia < 0 ? 'var(--color-danger)' : 'var(--color-success)' });
+            columnas.push({ label: 'Cantidad previa', key: 'cantidad_previa', alinear: 'right' }, { label: 'Valor previo', key: 'valor_previo', formato: 'moneda', alinear: 'right' }, { label: 'Diferencia', key: 'diferencia', formato: 'moneda', alinear: 'right' });
+          }
+          return renderTarjetas(tarjetas) + renderTabla(columnas, r.filas);
+        },
+      },
+      {
+        clave: 'inv-reposicion', etiqueta: 'Reposición Sugerida',
+        disponible: () => Boolean(window.puntoXReportesInv),
+        filtros: [],
+        cargar: () => window.puntoXReportesInv.reposicion(),
+        columnas: [
+          { label: 'Código', key: 'codigo_interno' }, { label: 'Producto', key: 'descripcion' },
+          { label: 'Existencia', key: 'existencia', alinear: 'right' }, { label: 'Mínimo', key: 'stock_minimo', alinear: 'right' },
+          { label: 'Consumo diario (90 d)', key: 'consumo_diario', alinear: 'right' }, { label: 'Días de cobertura', key: 'dias_cobertura', alinear: 'right' },
+          { label: 'Cantidad sugerida', key: 'cantidad_sugerida', alinear: 'right' },
+        ],
+      },
+      {
+        clave: 'inv-sobrestock', etiqueta: 'Sobre-stock',
+        disponible: () => Boolean(window.puntoXReportesInv),
+        filtros: [],
+        cargar: () => window.puntoXReportesInv.sobreStock(),
+        columnas: [
+          { label: 'Código', key: 'codigo_interno' }, { label: 'Producto', key: 'descripcion' }, { label: 'Existencia', key: 'existencia', alinear: 'right' },
+          { label: 'Máximo', key: 'stock_maximo', alinear: 'right' }, { label: 'Días de cobertura', key: 'dias_cobertura', alinear: 'right' },
+          { label: 'Exceso', key: 'cantidad_exceso', alinear: 'right' }, { label: 'Valor del exceso', key: 'valor_exceso', formato: 'moneda', alinear: 'right' },
+          { label: 'Motivo', key: 'motivo' },
+        ],
+      },
+      {
+        clave: 'inv-rotacion', etiqueta: 'Rotación de Inventario',
+        disponible: () => Boolean(window.puntoXReportesInv),
+        filtros: [
+          { tipo: 'select', clave: 'agrupar', label: 'Por', valorDefault: 'producto', opciones: [{ value: 'producto', label: 'Producto' }, { value: 'categoria', label: 'Categoría' }] },
+          { tipo: 'fecha', clave: 'desde', label: 'Desde' }, { tipo: 'fecha', clave: 'hasta', label: 'Hasta' },
+        ],
+        cargar: (v) => window.puntoXReportesInv.rotacion({ agrupar: v.agrupar, desde: v.desde || undefined, hasta: v.hasta || undefined }),
+        columnas: [
+          { label: 'Código', key: 'codigo_interno' }, { label: 'Producto / categoría', key: 'descripcion' },
+          { label: 'Costo de ventas', key: 'costo_ventas', formato: 'moneda', alinear: 'right' }, { label: 'Inventario promedio', key: 'inventario_promedio', formato: 'moneda', alinear: 'right' },
+          { label: 'Rotación', key: 'rotacion', alinear: 'right' }, { label: 'Días de inventario', key: 'dias_inventario', alinear: 'right' },
+        ],
+      },
+      {
+        clave: 'inv-bitacora', etiqueta: 'Bitácora de Movimientos',
+        disponible: () => Boolean(window.puntoXReportesInv),
+        filtros: [
+          { tipo: 'select', clave: 'tipo', label: 'Tipo', valorDefault: '', opciones: [
+            { value: '', label: 'Todos' }, { value: 'entrada_compra', label: 'Entradas de compra' }, { value: 'salida_venta', label: 'Salidas por venta' },
+            { value: 'ajuste_entrada', label: 'Ajustes de entrada' }, { value: 'ajuste_salida', label: 'Ajustes de salida' },
+            { value: 'transferencia_entrada', label: 'Transferencias (entrada)' }, { value: 'transferencia_salida', label: 'Transferencias (salida)' },
+            { value: 'merma', label: 'Mermas' }, { value: 'conversion', label: 'Conversiones' },
+          ] },
+          { tipo: 'fecha', clave: 'desde', label: 'Desde' }, { tipo: 'fecha', clave: 'hasta', label: 'Hasta' },
+        ],
+        cargar: (v) => window.puntoXReportesInv.bitacora({ tipo: v.tipo || undefined, desde: v.desde || undefined, hasta: v.hasta || undefined }),
+        columnas: [
+          { label: 'Fecha', key: 'fecha', formato: 'fechahora' }, { label: 'Producto', key: 'descripcion' }, { label: 'Almacén', key: 'almacen_nombre' },
+          { label: 'Tipo', key: 'tipo_movimiento' }, { label: 'Cantidad', key: 'cantidad', alinear: 'right' },
+          { label: 'Costo unitario', key: 'costo_unitario', formato: 'moneda', alinear: 'right' }, { label: 'Saldo', key: 'saldo_cantidad', alinear: 'right' },
+          { label: 'Usuario', key: 'usuario_nombre' },
         ],
       },
       {
@@ -350,6 +539,18 @@ const CATALOGO = [
     grupo: 'Cuentas por Cobrar', modulo: 'cxc',
     reportes: [
       {
+        clave: 'cxc-proyeccion', etiqueta: 'Proyección de Cobros',
+        disponible: () => Boolean(window.puntoXProyecciones),
+        filtros: [{ tipo: 'select', clave: 'agrupar', label: 'Agrupar por', valorDefault: 'semana', opciones: [{ value: 'semana', label: 'Semana (7 días)' }, { value: 'mes', label: 'Mes (30 días)' }] }, { tipo: 'select', clave: 'periodos', label: 'Periodos', valorDefault: '8', opciones: [{ value: '4', label: '4' }, { value: '8', label: '8' }, { value: '12', label: '12' }] }],
+        personalizado: true,
+        cargar: (v) => window.puntoXProyecciones.cobros({ agrupar: v.agrupar, periodos: Number(v.periodos) }),
+        render: (r) => renderTarjetas([{ label: 'Por cobrar', valor: r.total, formato: 'moneda' }, { label: 'Ya vencido', valor: r.vencido, formato: 'moneda', color: r.vencido > 0 ? 'var(--color-danger)' : undefined }])
+          + renderTabla([
+            { label: 'Periodo', key: 'etiqueta' }, { label: 'Desde', key: 'desde', formato: 'fecha' }, { label: 'Hasta', key: 'hasta', formato: 'fecha' },
+            { label: 'Documentos', key: 'documentos', alinear: 'right' }, { label: 'Monto', key: 'monto', formato: 'moneda', alinear: 'right' },
+          ], r.periodos),
+      },
+      {
         clave: 'cxc-listado', etiqueta: 'Listado de CxC',
         filtros: [],
         cargar: () => window.puntoXCxc.listarClientes({ limite: 200 }),
@@ -393,6 +594,27 @@ const CATALOGO = [
         ],
       },
       {
+        clave: 'cxc-cobros-vendedor', etiqueta: 'Historial de Cobros por Vendedor',
+        disponible: () => Boolean(window.puntoXCxc.historialCobros),
+        filtros: [{ tipo: 'fecha', clave: 'desde', label: 'Desde' }, { tipo: 'fecha', clave: 'hasta', label: 'Hasta' }],
+        personalizado: true,
+        cargar: (v) => window.puntoXCxc.historialCobros({ desde: v.desde, hasta: v.hasta }),
+        render: (r) => `
+          ${renderTarjetas([{ label: 'Total cobrado', valor: r.total, formato: 'moneda' }, { label: 'Vendedores', valor: r.porVendedor.length }, { label: 'Cobros aplicados', valor: r.filas.length }])}
+          <div class="reportes-panel__header"><h3 style="font-size:14px; margin:0;">Por vendedor de la factura</h3></div>
+          ${renderTabla([
+            { label: 'Vendedor', key: 'nombre' }, { label: 'Cobrado', key: 'cobrado', formato: 'moneda', alinear: 'right' },
+            { label: 'Recibos', key: 'recibos', alinear: 'right' }, { label: 'Facturas cobradas', key: 'facturas', alinear: 'right' },
+            { label: 'Días promedio de cobro', key: 'diasPromedio', alinear: 'right' },
+          ], r.porVendedor)}
+          <div class="reportes-panel__header" style="margin-top:16px;"><h3 style="font-size:14px; margin:0;">Detalle</h3></div>
+          ${renderTabla([
+            { label: 'Recibo', key: 'recibo_numero' }, { label: 'Fecha', key: 'fecha', formato: 'fecha' }, { label: 'Cliente', key: 'cliente_nombre' },
+            { label: 'Factura', key: 'factura_numero' }, { label: 'Vendedor', key: 'vendedor_nombre' }, { label: 'Forma de pago', key: 'forma_pago' },
+            { label: 'Aplicado', key: 'monto_aplicado', formato: 'moneda', alinear: 'right' }, { label: 'Días', key: 'dias_cobro', alinear: 'right' },
+          ], r.filas)}`,
+      },
+      {
         clave: 'cxc-pagos', etiqueta: 'Historial de Pagos',
         filtros: [],
         cargar: () => window.puntoXCxc.listarRecibos({ limite: 200 }),
@@ -424,6 +646,18 @@ const CATALOGO = [
   {
     grupo: 'Cuentas por Pagar', modulo: 'cxp',
     reportes: [
+      {
+        clave: 'cxp-proyeccion', etiqueta: 'Proyección de Pagos',
+        disponible: () => Boolean(window.puntoXProyecciones),
+        filtros: [{ tipo: 'select', clave: 'agrupar', label: 'Agrupar por', valorDefault: 'semana', opciones: [{ value: 'semana', label: 'Semana (7 días)' }, { value: 'mes', label: 'Mes (30 días)' }] }, { tipo: 'select', clave: 'periodos', label: 'Periodos', valorDefault: '8', opciones: [{ value: '4', label: '4' }, { value: '8', label: '8' }, { value: '12', label: '12' }] }],
+        personalizado: true,
+        cargar: (v) => window.puntoXProyecciones.pagos({ agrupar: v.agrupar, periodos: Number(v.periodos) }),
+        render: (r) => renderTarjetas([{ label: 'Por pagar', valor: r.total, formato: 'moneda' }, { label: 'Ya vencido', valor: r.vencido, formato: 'moneda', color: r.vencido > 0 ? 'var(--color-danger)' : undefined }])
+          + renderTabla([
+            { label: 'Periodo', key: 'etiqueta' }, { label: 'Desde', key: 'desde', formato: 'fecha' }, { label: 'Hasta', key: 'hasta', formato: 'fecha' },
+            { label: 'Documentos', key: 'documentos', alinear: 'right' }, { label: 'Monto', key: 'monto', formato: 'moneda', alinear: 'right' },
+          ], r.periodos),
+      },
       {
         clave: 'cxp-listado', etiqueta: 'Listado de CxP',
         filtros: [],
@@ -469,6 +703,23 @@ const CATALOGO = [
   {
     grupo: 'Caja y Tesorería', modulo: 'caja',
     reportes: [
+      {
+        clave: 'caja-flujo', etiqueta: 'Flujo de Caja Diario/Semanal',
+        disponible: () => Boolean(window.puntoXProyecciones),
+        filtros: [
+          { tipo: 'select', clave: 'agrupar', label: 'Agrupar por', valorDefault: 'dia', opciones: [{ value: 'dia', label: 'Día' }, { value: 'semana', label: 'Semana' }] },
+          { tipo: 'fecha', clave: 'desde', label: 'Desde' }, { tipo: 'fecha', clave: 'hasta', label: 'Hasta' },
+        ],
+        personalizado: true,
+        cargar: (v) => window.puntoXProyecciones.flujoCaja({ agrupar: v.agrupar, desde: v.desde || undefined, hasta: v.hasta || undefined }),
+        render: (r) => renderTarjetas([
+          { label: 'Entradas', valor: r.entradas, formato: 'moneda', color: 'var(--color-success)' }, { label: 'Salidas', valor: r.salidas, formato: 'moneda', color: 'var(--color-danger)' }, { label: 'Neto', valor: r.neto, formato: 'moneda' },
+        ]) + renderTabla([
+          { label: r.agrupar === 'semana' ? 'Semana desde' : 'Día', key: 'periodo', formato: 'fecha' }, { label: 'Entradas', key: 'entradas', formato: 'moneda', alinear: 'right' },
+          { label: 'Salidas', key: 'salidas', formato: 'moneda', alinear: 'right' }, { label: 'Neto', key: 'neto', formato: 'moneda', alinear: 'right' },
+          { label: 'Acumulado', key: 'acumulado', formato: 'moneda', alinear: 'right' }, { label: 'Ventas en efectivo', key: 'ventas_efectivo', formato: 'moneda', alinear: 'right' },
+        ], r.filas),
+      },
       {
         clave: 'caja-arqueo', etiqueta: 'Arqueo de Caja por Turno',
         filtros: [],

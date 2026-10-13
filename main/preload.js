@@ -64,6 +64,7 @@ contextBridge.exposeInMainWorld('puntoXCxc', {
   crearRecibo: invoke('cxc:crearRecibo'),
   anularRecibo: invoke('cxc:anularRecibo'),
   listarRecibos: invoke('cxc:listarRecibos'),
+  historialCobros: invoke('cxc:historialCobros'),
 
   antiguedadSaldos: invoke('cxc:antiguedadSaldos'),
   facturasVencidas: invoke('cxc:facturasVencidas'),
@@ -106,6 +107,7 @@ contextBridge.exposeInMainWorld('puntoXCaja', {
   agregarPartidasConciliacion: invoke('caja:agregarPartidasConciliacion'),
   eliminarPartidaConciliacion: invoke('caja:eliminarPartidaConciliacion'),
   conciliarPareja: invoke('caja:conciliarPareja'),
+  asignarCuentaMovimiento: invoke('caja:asignarCuentaMovimiento'),
   conciliarAutomaticamente: invoke('caja:conciliarAutomaticamente'),
   registrarPartidaEnContabilidad: invoke('caja:registrarPartidaEnContabilidad'),
   deshacerConciliacionPartida: invoke('caja:deshacerConciliacionPartida'),
@@ -148,6 +150,10 @@ contextBridge.exposeInMainWorld('puntoXCompras', {
   listarOrdenes: invoke('compras:listarOrdenes'),
   obtenerOrden: invoke('compras:obtenerOrden'),
   anularOrden: invoke('compras:anularOrden'),
+  crearPresupuesto: invoke('compras:crearPresupuesto'),
+  listarPresupuestos: invoke('compras:listarPresupuestos'),
+  convertirPresupuesto: invoke('compras:convertirPresupuesto'),
+  compararPresupuestos: invoke('compras:compararPresupuestos'),
 
   comparacionMejorCosto: invoke('compras:comparacionMejorCosto'),
   comprasPorProducto: invoke('compras:comprasPorProducto'),
@@ -218,6 +224,7 @@ contextBridge.exposeInMainWorld('puntoXImpresion', {
   listarDispositivos: invoke('impresion:listarDispositivos'),
   imprimirFactura: invoke('impresion:imprimirFactura'),
   imprimirArqueo: invoke('impresion:imprimirArqueo'),
+  imprimirEtiquetas: invoke('impresion:imprimirEtiquetas'),
   imprimirPrecuenta: invoke('impresion:imprimirPrecuenta'),
 });
 
@@ -285,4 +292,28 @@ contextBridge.exposeInMainWorld('puntoXEcf', {
   listarRecibidos: invoke('ecf:listarRecibidos'),
   aprobarRecibido: invoke('ecf:aprobarRecibido'),
   obtenerXmlRecibido: invoke('ecf:obtenerXmlRecibido'),
+});
+
+// Reportes de inventario: valorización a fecha, reposición, sobre-stock, rotación y bitácora.
+contextBridge.exposeInMainWorld('puntoXReportesInv', {
+  valorizacion: invoke('reportesInv:valorizacion'),
+  reposicion: invoke('reportesInv:reposicion'),
+  sobreStock: invoke('reportesInv:sobreStock'),
+  rotacion: invoke('reportesInv:rotacion'),
+  bitacora: invoke('reportesInv:bitacora'),
+});
+
+// Proyección de cobros y pagos, y flujo de caja.
+contextBridge.exposeInMainWorld('puntoXProyecciones', {
+  cobros: invoke('proyecciones:cobros'),
+  pagos: invoke('proyecciones:pagos'),
+  flujoCaja: invoke('proyecciones:flujoCaja'),
+});
+
+// Formatos 607 (ventas) y 608 (comprobantes anulados) de la DGII.
+contextBridge.exposeInMainWorld('puntoXFormatosVentas', {
+  reporte607: invoke('formatos:reporte607'),
+  reporte608: invoke('formatos:reporte608'),
+  exportar607: invoke('formatos:exportar607'),
+  exportar608: invoke('formatos:exportar608'),
 });

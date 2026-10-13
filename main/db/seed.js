@@ -144,6 +144,7 @@ const PARAMETROS_NEGOCIO_NUEVOS = [
   ['negocio_direccion', '', 'Dirección del negocio, impresa en el encabezado de factura'],
   ['negocio_telefono', '', 'Teléfono del negocio, impreso en el encabezado de factura'],
   ['modulo_cuentas_abiertas', '0', 'Módulo opcional: cuentas abiertas tipo bar/mesa (1 = activo)'],
+  ['comision_base', 'total', 'Base de la comisión de vendedores: total (con ITBIS) o subtotal (sin ITBIS)'],
   ['metodo_valoracion', 'promedio_ponderado', 'Método de valoración de inventario para los productos que no definen uno propio'],
   ['negocio_razon_social', '', 'Razón social registrada en la DGII; va como emisor en los e-CF'],
   ['ecf_modo', 'tradicional', 'Comprobantes fiscales: tradicional (NCF serie B) o electronico (e-CF)'],

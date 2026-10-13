@@ -106,7 +106,7 @@ function actualizarModulo(db, { clave, activo, usuarioId }) {
   registrarAuditoria(db, { usuarioId, modulo: 'configuracion', entidad: 'parametros_negocio', entidadId: `modulo_${clave}`, accion: activo ? 'activar_modulo' : 'desactivar_modulo' });
 }
 
-const VALORES_PERMITIDOS = { metodo_valoracion: ['promedio_ponderado', 'peps'] };
+const VALORES_PERMITIDOS = { metodo_valoracion: ['promedio_ponderado', 'peps'], comision_base: ['total', 'subtotal'] };
 
 function actualizarParametroNegocio(db, clave, valor, usuarioId) {
   session.requerirPermiso('configuracion.gestionar');

@@ -393,7 +393,9 @@ function crearFactura(db, payload) {
   if (vendedorId) {
     const vendedor = db.prepare('SELECT pct_comision FROM usuarios WHERE id = ?').get(vendedorId);
     if (vendedor && vendedor.pct_comision > 0) {
-      const monto = redondear(total * (vendedor.pct_comision / 100));
+      // Base configurable (Configuración > Parámetros de negocio): total con ITBIS o subtotal sin ITBIS.
+      const baseComision = (db.prepare("SELECT valor FROM parametros_negocio WHERE clave = 'comision_base'").get() || {}).valor === 'subtotal' ? subtotal : total;
+      const monto = redondear(baseComision * (vendedor.pct_comision / 100));
       db.prepare(
         `INSERT INTO comisiones_vendedor (id, vendedor_id, documento_venta_id, monto_comision)
          VALUES (?, ?, ?, ?)`

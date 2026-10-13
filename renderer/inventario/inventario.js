@@ -42,7 +42,7 @@ function selectorLote(lotes, seleccionado, atributos) {
 // --- Pestañas ---
 
 const ACCIONES_TAB = {
-  productos: '<button class="btn btn-primario" id="btn-nuevo-producto" data-permiso="inventario.producto.crear">+ Nuevo producto</button>',
+  productos: '<button class="btn btn-secundario" id="btn-etiquetas" data-permiso="inventario.etiqueta.imprimir" style="margin-right:8px;">Imprimir etiquetas</button><button class="btn btn-primario" id="btn-nuevo-producto" data-permiso="inventario.producto.crear">+ Nuevo producto</button>',
   ajustes: '<button class="btn btn-primario" id="btn-nuevo-ajuste" data-permiso="inventario.ajuste.crear">+ Nuevo ajuste</button>',
   mermas: '<button class="btn btn-primario" id="btn-nueva-merma" data-permiso="inventario.merma.crear">+ Nueva merma</button>',
   transferencias: '<button class="btn btn-primario" id="btn-nueva-transferencia" data-permiso="inventario.transferencia.crear">+ Nueva transferencia</button>',
@@ -57,7 +57,7 @@ function cambiarTab(tab) {
   document.getElementById('acciones-tab').innerHTML = ACCIONES_TAB[tab] || '';
   mostrarError(null);
 
-  if (tab === 'productos') { cargarProductos(); enlazarBtn('btn-nuevo-producto', () => abrirFormularioProducto()); }
+  if (tab === 'productos') { cargarProductos(); enlazarBtn('btn-nuevo-producto', () => abrirFormularioProducto()); enlazarBtn('btn-etiquetas', () => window.PuntoXEtiquetas && window.PuntoXEtiquetas.abrir()); }
   if (tab === 'existencias') cargarExistencias();
   if (tab === 'ajustes') { cargarAjustes(); enlazarBtn('btn-nuevo-ajuste', () => abrirFormularioAjuste()); }
   if (tab === 'mermas') { cargarMermas(); enlazarBtn('btn-nueva-merma', () => abrirFormularioMerma()); }

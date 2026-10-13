@@ -1076,6 +1076,7 @@ CREATE TABLE asientos_contables_detalle (
   debe        REAL NOT NULL DEFAULT 0,
   haber       REAL NOT NULL DEFAULT 0,
   descripcion TEXT,
+  cuenta_bancaria_id TEXT REFERENCES cuentas_bancarias(id), -- líneas de Bancos (1200): a qué cuenta bancaria pertenecen
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
   updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
   deleted_at TEXT,

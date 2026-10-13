@@ -26,6 +26,7 @@
 
       <div class="tabs">
         <button class="tab-btn is-active" data-tab="proveedores">Proveedores</button>
+        <button class="tab-btn" data-tab="presupuestos">Presupuestos</button>
         <button class="tab-btn" data-tab="ordenes">Órdenes de compra</button>
         <button class="tab-btn" data-tab="facturas">Facturas de compra</button>
         <button class="tab-btn" data-tab="notas">Notas de crédito/débito</button>
@@ -41,6 +42,16 @@
           <tbody id="proveedores-tbody"></tbody>
         </table>
         <div id="proveedores-vacio" class="empty-state" style="display:none;">No hay proveedores registrados. Crea el primero con "+ Nuevo proveedor".</div>
+      </div>
+
+      <div id="tab-presupuestos" class="tab-panel" style="display:none;">
+        <p style="font-size:12px; color:var(--color-text-muted); margin:0 0 12px;">Cotizaciones sin compromiso: no mueven inventario ni costo. Compáralas y convierte la ganadora en orden de compra.</p>
+        <div id="presupuestos-comparacion"></div>
+        <table class="data-table">
+          <thead><tr><th>Número</th><th>Proveedor</th><th>Fecha</th><th>Total</th><th>Estado</th><th></th></tr></thead>
+          <tbody id="presupuestos-tbody"></tbody>
+        </table>
+        <div id="presupuestos-vacio" class="empty-state" style="display:none;">Aún no hay presupuestos de compra.</div>
       </div>
 
       <div id="tab-ordenes" class="tab-panel" style="display:none;">
