@@ -533,6 +533,10 @@ h1, h2, h3, h4 {
   flex-shrink: 0;
 }
 
+.alert-item--enlace { color: inherit; text-decoration: none; }
+@media (hover: hover) { .alert-item--enlace:hover { background: var(--color-surface-sunken); opacity: 1; } }
+.alert-item__ir { margin-left: auto; color: var(--color-text-muted); font-size: 18px; line-height: 1; }
+
 .alert-item__text {
   font-size: 13px;
   color: var(--color-text);
@@ -954,3 +958,7 @@ select.input-normal, input.input-normal {
 @media (max-width: 480px) {
   .kpi-grid { grid-template-columns: 1fr; }
 }
+input[type="checkbox"], input[type="radio"] { accent-color: var(--color-accent); }
+
+/* Modales con tablas anchas (kardex, estado de cuenta). */
+.modal-box.modal-box--ancho { width: 960px; }

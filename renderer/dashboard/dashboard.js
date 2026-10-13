@@ -46,8 +46,9 @@ async function alertasEcf() {
 }
 
 async function cargarAlertas() {
-  const [stockBajo, vencimientos, facturasVencidas, empleadosDeuda, facturasPorPagar, avisosEcf] = await Promise.all([
+  const [stockBajo, sobreMaximo, vencimientos, facturasVencidas, empleadosDeuda, facturasPorPagar, avisosEcf] = await Promise.all([
     window.puntoXInventario.existencias({ soloBajoMinimo: true }),
+    window.puntoXInventario.existencias({ soloSobreMaximo: true }).then((l) => l.filter((p) => p.stock_maximo > 0 && p.existencia_total > p.stock_maximo)),
     window.puntoXInventario.vencimientos(),
     window.puntoXCxc.facturasVencidas(),
     window.puntoXCxc.listarCxcEmpleados({}),
@@ -58,21 +59,29 @@ async function cargarAlertas() {
   const facturasPorPagarUrgentes = facturasPorPagar.filter((f) => f.dias_restantes <= 7);
 
   const alertas = [
-    ...avisosEcf,
+    ...avisosEcf.map((a) => ({ ...a, enlace: '../ventas/ecf.html' })),
     ...stockBajo.map((p) => ({
-      tag: 'Stock bajo', color: 'var(--color-danger)',
+      tag: 'Stock bajo', color: 'var(--color-danger)', enlace: '../inventario/index.html#existencias',
       texto: `${p.descripcion} — quedan ${p.existencia_total}, mínimo ${p.stock_minimo}`,
     })),
+    ...sobreMaximo.map((p) => ({
+      tag: 'Sobre el máximo', color: 'var(--color-info)', enlace: '../inventario/index.html#existencias',
+      texto: `${p.descripcion} — hay ${p.existencia_total}, máximo ${p.stock_maximo}`,
+    })),
     ...vencimientos.map((l) => ({
-      tag: l.dias_restantes < 0 ? 'Vencido' : 'Por vencer', color: 'var(--color-warning)',
+      tag: l.dias_restantes < 0 ? 'Vencido' : 'Por vencer', color: 'var(--color-warning)', enlace: '../inventario/index.html#vencimientos',
       texto: `${l.descripcion} (lote ${l.numero_lote}) — ${l.dias_restantes < 0 ? 'vencido' : `vence en ${l.dias_restantes} días`}, ${l.cantidad} en ${l.almacen_nombre}`,
     })),
     ...facturasVencidas.map((f) => ({
-      tag: 'Cliente atrasado', color: 'var(--color-danger)',
+      tag: 'Cliente atrasado', color: 'var(--color-danger)', enlace: '../cuentas-por-cobrar/index.html#vencidas',
       texto: `${f.cliente_nombre} — ${f.dias_mora} días de mora, ${fmt(f.saldo_pendiente)} pendientes`,
     })),
+    ...empleadosConSaldo.map((e) => ({
+      tag: 'Empleado con saldo', color: 'var(--color-info)', enlace: '../cuentas-por-cobrar/index.html#empleados',
+      texto: `${e.empleado_nombre || 'Empleado'} — ${fmt(e.saldo_pendiente)} pendiente; sugerido descontar ${fmt(e.descuento_sugerido_nomina || 0)} en nómina`,
+    })),
     ...facturasPorPagarUrgentes.map((f) => ({
-      tag: 'Por pagar', color: 'var(--color-warning)',
+      tag: 'Por pagar', color: 'var(--color-warning)', enlace: '../cuentas-por-pagar/index.html#proximas',
       texto: `${f.proveedor_nombre} — factura ${f.numero} ${f.dias_restantes < 0 ? `vencida hace ${-f.dias_restantes} días` : `vence en ${f.dias_restantes} días`}, ${fmt(f.saldo_pendiente)}`,
     })),
   ];
@@ -82,11 +91,12 @@ async function cargarAlertas() {
     contenedor.innerHTML = '<div class="empty-state">Sin alertas por ahora.</div>';
   } else {
     contenedor.innerHTML = `<div class="alert-list">${alertas.slice(0, 8).map((a) => `
-      <div class="alert-item">
+      <a class="alert-item alert-item--enlace" href="${esc(a.enlace || '#')}">
         <span class="alert-item__bar" style="background:${esc(a.color)};"></span>
         <span class="alert-item__tag" style="color:${esc(a.color)};">${esc(a.tag)}</span>
         <span class="alert-item__text">${esc(a.texto)}</span>
-      </div>
+        <span class="alert-item__ir" aria-hidden="true">›</span>
+      </a>
     `).join('')}</div>`;
   }
 
