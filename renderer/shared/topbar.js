@@ -14,13 +14,16 @@ function renderTopbar(usuario) {
     <header class="topbar">
       <div class="topbar__search">
         <span class="topbar__search-icon">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8A9490" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+          ${window.PuntoXIconos.icono('buscar', 18)}
         </span>
         <input type="text" id="topbar-consulta" placeholder="Consultar precio y existencia de un producto (F2)..." autocomplete="off" />
         <div id="topbar-consulta-resultados" class="topbar__consulta" style="display:none;"></div>
       </div>
-      <button class="topbar__bell" aria-label="Notificaciones">
-        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 3 1 5 2 6H4c1-1 2-3 2-6z"/><path d="M9.5 18a2.5 2.5 0 0 0 5 0"/></svg>
+      <button class="topbar__bell topbar__tema" id="topbar-tema" type="button" aria-label="Cambiar entre tema claro y oscuro" title="Tema claro/oscuro">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></svg>
+      </button>
+      <button class="topbar__bell" type="button" aria-label="Notificaciones">
+        ${window.PuntoXIconos.icono('alerta', 20)}
       </button>
       <div class="topbar__user">
         <div class="topbar__user-avatar">${esc(initials(nombre))}</div>
@@ -28,8 +31,8 @@ function renderTopbar(usuario) {
           <div class="topbar__user-name">${esc(nombre)}</div>
           <div class="topbar__user-role">${esc(rol)}</div>
         </div>
-        <button id="topbar-btn-salir" title="Cerrar sesión" style="background:none; border:none; cursor:pointer; color:var(--color-text-faint); margin-left:4px; padding:6px;">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/></svg>
+        <button id="topbar-btn-salir" type="button" aria-label="Cerrar sesión" title="Cerrar sesión" style="background:none; border:none; cursor:pointer; color:var(--color-text-muted); margin-left:4px; padding:8px;">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/></svg>
         </button>
       </div>
     </header>
@@ -89,4 +92,11 @@ function enlazarConsultaPrecio(info) {
   document.addEventListener('keydown', (e) => { if (e.key === 'F2') { e.preventDefault(); input.focus(); input.select(); } });
 }
 
-window.PuntoXTopbar = { renderTopbar, enlazarConsultaPrecio };
+// Botón de tema: alterna claro/oscuro y recuerda la elección en este equipo.
+function enlazarTema() {
+  const boton = document.getElementById('topbar-tema');
+  if (!boton || !window.PuntoXTema) return;
+  boton.addEventListener('click', () => window.PuntoXTema.alternar());
+}
+
+window.PuntoXTopbar = { renderTopbar, enlazarConsultaPrecio, enlazarTema };

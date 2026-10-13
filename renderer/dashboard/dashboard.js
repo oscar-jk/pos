@@ -26,7 +26,7 @@ function renderModuleGrid(modulosActivos) {
   contenedor.innerHTML = modulos.map(({ clave, etiqueta, ruta, icono }) => `
     <a class="module-card" href="${ruta}">
       <div class="module-card__icon">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${icono}</svg>
+        ${window.PuntoXIconos.icono(icono, 20)}
       </div>
       <div class="module-card__title">${etiqueta}</div>
       <div class="module-card__sub">${MODULOS_CONSTRUIDOS.has(clave) ? 'Disponible' : 'En construcción'}</div>

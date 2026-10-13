@@ -537,10 +537,10 @@ async function cargarHistorial() {
     return `
       <tr>
         <td>${esc(f.numero)}</td>
-        <td>${esc(f.ncf)}${f.ecf_estado ? `<div style="font-size:11px; font-weight:700; color:${esc(COLOR_ECF[f.ecf_estado] || 'var(--color-text-muted)')};">${esc(TEXTO_ECF[f.ecf_estado] || f.ecf_estado)}</div>` : ''}</td>
+        <td>${esc(f.ncf)}${f.ecf_estado ? `<div style="font-size: 12px; font-weight:700; color:${esc(COLOR_ECF[f.ecf_estado] || 'var(--color-text-muted)')};">${esc(TEXTO_ECF[f.ecf_estado] || f.ecf_estado)}</div>` : ''}</td>
         <td>${esc(f.cliente_nombre)}</td>
         <td>${fecha}</td>
-        <td>${fmt(f.total)}${f.moneda_codigo && f.moneda_codigo !== 'DOP' ? ` <span style="font-size:11px; font-weight:700; color:var(--color-info);">${esc(f.moneda_codigo)}</span>` : ''}</td>
+        <td>${fmt(f.total)}${f.moneda_codigo && f.moneda_codigo !== 'DOP' ? ` <span style="font-size: 12px; font-weight:700; color:var(--color-info);">${esc(f.moneda_codigo)}</span>` : ''}</td>
         <td><span class="status-pill" style="background:${colorEstado};">${esc(f.estado)}</span></td>
         <td>
           ${f.estado !== 'anulado' ? `<a href="#" class="btn-anular" data-permiso="ventas.factura.anular" data-id="${esc(f.id)}" style="color:var(--color-danger); font-size:12px; font-weight:700;">Anular</a>` : ''}

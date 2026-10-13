@@ -61,8 +61,11 @@ function filasImpuestos(itbisPorTasa, formato) {
 }
 
 function encabezadoNegocio(negocio, ri) {
+  const logo = negocio.logo && /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(negocio.logo)
+    ? `<img src="${negocio.logo}" alt="" style="max-height:64px; max-width:200px; display:block; margin-bottom:8px;" />` : '';
   return `
     <div style="margin-bottom:12px;">
+      ${logo}
       <div style="font-size:20px; font-weight:800;">${escapar(negocio.nombre || 'Mi Negocio')}</div>
       ${ri && ri.razonSocial && ri.razonSocial !== negocio.nombre ? `<div>${escapar(ri.razonSocial)}</div>` : ''}
       ${negocio.rnc ? `<div>RNC: ${escapar(negocio.rnc)}</div>` : ''}
@@ -198,7 +201,7 @@ function plantillaFactura(factura, negocio) {
 
     ${bloqueFiscal(ri)}
 
-    <div class="pie">Documento generado por Punto X</div>
+    <div class="pie">Documento generado por Nodo</div>
   </body></html>`;
 }
 
@@ -258,7 +261,7 @@ function plantillaTique(factura, negocio) {
     <hr />
     <div>${(factura.pagos || []).map((p) => `${FORMAS_PAGO_LABEL[p.forma_pago] || p.forma_pago}: ${mon.n(p.monto)}`).join('<br/>') || '—'}</div>
     ${bloqueFiscal(ri, { centrado: true })}
-    <div class="pie">¡Gracias por su compra!<br/>Generado por Punto X</div>
+    <div class="pie">¡Gracias por su compra!<br/>Generado por Nodo</div>
   </body></html>`;
 }
 
@@ -346,7 +349,7 @@ function plantillaArqueoTurno(turno, movimientos, negocio) {
         <tr><td>${TIPO_MOVIMIENTO_LABEL[m.tipo] || m.tipo}</td><td class="num">${m.monto > 0 ? '+' : ''}${fmtMoneda(m.monto)}</td></tr>
       `).join('')}
     </table>
-    <div class="pie">Generado por Punto X</div>
+    <div class="pie">Generado por Nodo</div>
   </body></html>`;
 }
 

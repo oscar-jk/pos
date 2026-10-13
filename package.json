@@ -14,7 +14,8 @@
     "rebuild:node": "npm rebuild better-sqlite3",
     "rebuild:electron": "electron-rebuild -f -w better-sqlite3",
     "icono": "electron scripts/generar-icono.js",
-    "esquemas": "node scripts/compilar-esquemas-ecf.js"
+    "esquemas": "node scripts/compilar-esquemas-ecf.js",
+    "iconos": "node scripts/generar-iconos.js"
   },
   "dependencies": {
     "@xmldom/xmldom": "0.9.12",

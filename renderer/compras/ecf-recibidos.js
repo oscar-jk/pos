@@ -15,8 +15,8 @@
     }
     const [texto, color] = APROBACION[r.aprobacion_estado];
     return `<span class="pill-estado" style="background:${esc(color)};">${esc(texto)}</span>
-      <div style="font-size:11px; color:var(--color-text-muted); margin-top:3px;">${esc(ENVIO[r.aprobacion_envio] || '')}${r.aprobacion_error ? `: ${esc(r.aprobacion_error)}` : ''}</div>
-      ${r.aprobacion_motivo ? `<div style="font-size:11px; color:var(--color-text-muted);">${esc(r.aprobacion_motivo)}</div>` : ''}`;
+      <div style="font-size: 12px; color:var(--color-text-muted); margin-top:3px;">${esc(ENVIO[r.aprobacion_envio] || '')}${r.aprobacion_error ? `: ${esc(r.aprobacion_error)}` : ''}</div>
+      ${r.aprobacion_motivo ? `<div style="font-size: 12px; color:var(--color-text-muted);">${esc(r.aprobacion_motivo)}</div>` : ''}`;
   }
 
   async function cargar() {
@@ -38,13 +38,13 @@
       document.getElementById('recibidos-vacio').style.display = lista.length ? 'none' : 'block';
       document.getElementById('recibidos-tbody').innerHTML = lista.map((r) => `
         <tr>
-          <td><strong>${esc(r.encf)}</strong><div style="font-size:11px; color:var(--color-text-muted);">${esc(r.nombre_tipo || '')}${r.via === 'importado' ? ' · importado' : ''}</div></td>
-          <td>${esc(r.proveedor_nombre || r.razon_social_emisor || '—')}<div style="font-size:11px; color:var(--color-text-muted);">RNC ${esc(r.rnc_emisor)}</div></td>
+          <td><strong>${esc(r.encf)}</strong><div style="font-size: 12px; color:var(--color-text-muted);">${esc(r.nombre_tipo || '')}${r.via === 'importado' ? ' · importado' : ''}</div></td>
+          <td>${esc(r.proveedor_nombre || r.razon_social_emisor || '—')}<div style="font-size: 12px; color:var(--color-text-muted);">RNC ${esc(r.rnc_emisor)}</div></td>
           <td>${esc(r.fecha_emision || '—')}</td>
           <td>${esc(fmt(r.monto_total))}</td>
           <td>${esc(fmt(r.total_itbis))}</td>
           <td><span class="pill-estado" style="background:${r.acuse_estado === 0 ? 'var(--color-success)' : 'var(--color-danger)'};">${esc(r.acuse_texto)}</span>
-            ${r.motivo_texto ? `<div style="font-size:11px; color:var(--color-text-muted); margin-top:3px;">${esc(r.motivo_texto)}</div>` : ''}</td>
+            ${r.motivo_texto ? `<div style="font-size: 12px; color:var(--color-text-muted); margin-top:3px;">${esc(r.motivo_texto)}</div>` : ''}</td>
           <td>${celdaAprobacion(r)}</td>
           <td><span class="enlace-accion" data-xml="${esc(r.id)}">XML</span></td>
         </tr>`).join('');
@@ -81,7 +81,7 @@
   async function verXml(id) {
     try {
       const r = await window.puntoXEcf.obtenerXmlRecibido({ id });
-      window.PuntoXModal.abrirModal(`e-CF ${r.encf}`, '<div id="xml-recibido" style="white-space:pre-wrap; word-break:break-all; font-family:Consolas, monospace; font-size:11px; max-height:60vh; overflow:auto;"></div>');
+      window.PuntoXModal.abrirModal(`e-CF ${r.encf}`, '<div id="xml-recibido" style="white-space:pre-wrap; word-break:break-all; font-family:Consolas, monospace; font-size: 12px; max-height:60vh; overflow:auto;"></div>');
       document.getElementById('xml-recibido').textContent = r.xml.replace(/></g, '>\n<');
     } catch (err) { mostrarError(err.message); }
   }

@@ -46,7 +46,7 @@ function pedirTexto(mensaje, valorInicial = '', { tipo = 'text', obligatorio = t
         <div class="modal-box__header"><h2>${esc(mensaje)}</h2></div>
         <div style="padding:16px 20px;display:flex;flex-direction:column;gap:12px">
           <input class="input-normal" style="width:100%" name="valor" type="${tipo}" ${tipo === 'number' ? 'step="any"' : ''} value="${esc(valorInicial)}" autocomplete="off">
-          <p class="pedir-error" style="color:#b42318;font-size:13px;margin:0;display:none">Este dato es obligatorio.</p>
+          <p class="pedir-error" style="color:var(--color-danger);font-size:13px;margin:0;display:none">Este dato es obligatorio.</p>
           <div style="display:flex;justify-content:flex-end;gap:8px">
             <button type="button" class="btn btn-secundario" data-cancelar>Cancelar</button>
             <button type="submit" class="btn btn-primario">Aceptar</button>

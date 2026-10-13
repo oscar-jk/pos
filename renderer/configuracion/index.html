@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'" />
-  <title>Punto X — Configuración</title>
+  <title>Nodo — Configuración</title>
   <link rel="stylesheet" href="../shared/styles.css" />
   <link rel="stylesheet" href="./configuracion.css" />
 </head>
@@ -39,10 +39,22 @@
       </div>
 
       <div id="tab-negocio" class="tab-panel">
+        <div class="logo-negocio" id="bloque-logo" style="display:none;">
+          <div class="logo-negocio__vista" id="logo-vista" aria-hidden="true"></div>
+          <div class="logo-negocio__texto">
+            <div class="logo-negocio__titulo">Logo del negocio</div>
+            <p class="logo-negocio__ayuda">Aparece en el menú lateral, en la pantalla de inicio de sesión y en las facturas impresas. PNG, JPG o WebP; se reduce solo a 256 px.</p>
+            <div class="logo-negocio__acciones" data-permiso="configuracion.gestionar">
+              <button type="button" class="btn btn-secundario btn-chico" id="btn-logo-cargar">Cargar logo</button>
+              <button type="button" class="btn btn-peligro btn-chico" id="btn-logo-quitar" style="display:none;">Quitar logo</button>
+              <input type="file" id="logo-archivo" accept="image/png,image/jpeg,image/webp" hidden />
+            </div>
+          </div>
+        </div>
         <div class="form-grid" style="max-width:600px;">
           <div class="form-field"><label>Nombre del negocio</label><input id="neg-nombre" class="input-normal" /></div>
           <div class="form-field"><label>Iniciales (distintivo del sidebar)</label><input id="neg-iniciales" class="input-normal" maxlength="3" /></div>
-          <div class="form-field"><label>Color de acento</label><input id="neg-color" class="input-normal" type="color" /></div>
+          <div class="form-field"><label>Color de marca</label><input id="neg-color" class="input-normal" type="color" /></div>
           <div class="form-field"><label>RNC del negocio</label><input id="neg-rnc" class="input-normal" placeholder="Se imprime en el encabezado de la factura" /></div>
           <div class="form-field"><label>Razón social (como aparece en la DGII)</label><input id="neg-razon-social" class="input-normal" maxlength="150" placeholder="Emisor de los comprobantes electrónicos" /></div>
           <div class="form-field"><label>Teléfono</label><input id="neg-telefono" class="input-normal" /></div>
@@ -158,6 +170,8 @@
 
   <script src="../shared/escape.js"></script>
   <script src="../shared/estados.js"></script>
+  <script src="../shared/tema.js"></script>
+  <script src="../shared/iconos.js"></script>
   <script src="../shared/web/store.js"></script>
   <script src="../shared/web/api-auth-app.js"></script>
   <script src="../shared/web/api-contabilidad.js"></script>

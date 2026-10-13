@@ -15,7 +15,7 @@ Punto X es un sistema de Punto de Venta (POS) de escritorio para negocios domini
 
 ## Estado del diseño visual
 
-Ya existe un diseño de referencia (Dashboard + las 10 pantallas: Ventas, Inventario, Compras, CxC, CxP, Caja, Contabilidad, Reportes, Configuración) hecho como mockup, con sidebar verde oscuro (`#0F3D34`), acento `#146356`, tipografía Manrope/Sora, y un patrón de tarjetas + tablas ya definido. Ese diseño es la referencia visual — replica su estructura de layout (sidebar fijo, topbar con búsqueda/notificaciones, tarjetas de indicadores, tablas de datos) en las pantallas reales de Electron, adaptando el HTML/CSS a la app en vez de copiar el formato `.dc.html` del mockup (ese formato es solo del editor de diseño, no se usa en el producto final).
+La identidad vigente es **Nodo** (sistema de diseño: tokens en `renderer/shared/styles.css`, logos en `assets/marca/`, iconos en `renderer/shared/iconos.js`, generado con `npm run iconos`): superficie casi blanca, tinta casi negra, verde azulado `#0A6B68` como único color de acción, punto ámbar como acento, tipografías Manrope / Instrument Sans / JetBrains Mono (locales, la app funciona sin internet), tema claro y oscuro con los mismos nombres de token, y bordes antes que sombras. Sidebar fijo, topbar con búsqueda, tarjetas y tablas. El negocio carga su propio logo en Configuración → Negocio (se muestra en el menú, el login y la factura impresa). Nada de texto bajo 12 px y contraste mínimo 4.5:1 (lo verifica `tests/identidad-nodo.test.js`). La referencia anterior (verde oscuro `#0F3D34`, Sora) ya no aplica.
 
 ## Decisiones de arquitectura ya tomadas (no las reabras sin que el usuario lo pida)
 

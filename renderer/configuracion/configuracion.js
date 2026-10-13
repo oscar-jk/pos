@@ -60,11 +60,83 @@ document.querySelectorAll('.tab-btn').forEach((b) => b.addEventListener('click',
 
 // --- Negocio ---
 
+// --- Logo del negocio ---
+
+const LOGO_LADO = 256;
+const LOGO_MAX_BYTES = 300 * 1024;
+
+function mostrarLogo(dataUrl, iniciales) {
+  const vista = document.getElementById('logo-vista');
+  vista.innerHTML = dataUrl ? `<img src="${esc(dataUrl)}" alt="" />` : esc(iniciales || 'MN');
+  document.getElementById('btn-logo-quitar').style.display = dataUrl ? '' : 'none';
+  // El distintivo del menú lateral se actualiza al momento.
+  const badge = document.querySelector('.sidebar__badge');
+  if (badge) {
+    badge.classList.toggle('sidebar__badge--logo', Boolean(dataUrl));
+    badge.innerHTML = dataUrl ? `<img src="${esc(dataUrl)}" alt="" />` : esc(iniciales || 'MN');
+  }
+}
+
+function bytesDeDataUrl(d) { return Math.floor((d.length - d.indexOf(',') - 1) * 3 / 4); }
+
+// Reduce la imagen a 256 px como máximo (conserva la transparencia en PNG) y la mantiene bajo 300 KB.
+function prepararLogo(archivo) {
+  return new Promise((resolve, reject) => {
+    if (!/^image\/(png|jpeg|webp)$/.test(archivo.type)) { reject(new Error('El logo debe ser una imagen PNG, JPG o WebP')); return; }
+    const url = URL.createObjectURL(archivo);
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const escala = Math.min(1, LOGO_LADO / Math.max(img.naturalWidth, img.naturalHeight));
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.max(1, Math.round(img.naturalWidth * escala));
+      canvas.height = Math.max(1, Math.round(img.naturalHeight * escala));
+      canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+      const intentos = [['image/png'], ['image/webp', 0.9], ['image/webp', 0.7], ['image/jpeg', 0.7]];
+      for (const [tipo, calidad] of intentos) {
+        const d = canvas.toDataURL(tipo, calidad);
+        if (d.startsWith(`data:${tipo}`) && bytesDeDataUrl(d) <= LOGO_MAX_BYTES) { resolve(d); return; }
+      }
+      reject(new Error('El logo es demasiado pesado. Usa una imagen más sencilla'));
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('No se pudo leer la imagen')); };
+    img.src = url;
+  });
+}
+
+function enlazarLogo() {
+  const bloque = document.getElementById('bloque-logo');
+  if (!window.puntoXConfig.guardarLogoNegocio) return; // la versión web de prueba no guarda logo
+  bloque.style.display = 'flex';
+  const archivo = document.getElementById('logo-archivo');
+  document.getElementById('btn-logo-cargar').addEventListener('click', () => archivo.click());
+  archivo.addEventListener('change', async () => {
+    const f = archivo.files[0];
+    archivo.value = '';
+    if (!f) return;
+    try {
+      const dataUrl = await prepararLogo(f);
+      await window.puntoXConfig.guardarLogoNegocio({ dataUrl, usuarioId: state.info.usuario.id });
+      mostrarLogo(dataUrl, document.getElementById('neg-iniciales').value);
+      mostrarExito('Logo actualizado.');
+    } catch (err) { mostrarError(err.message); }
+  });
+  document.getElementById('btn-logo-quitar').addEventListener('click', async () => {
+    try {
+      await window.puntoXConfig.quitarLogoNegocio({ usuarioId: state.info.usuario.id });
+      mostrarLogo(null, document.getElementById('neg-iniciales').value);
+      mostrarExito('Logo quitado.');
+    } catch (err) { mostrarError(err.message); }
+  });
+}
+enlazarLogo();
+
 async function cargarNegocio() {
   const datos = await window.puntoXConfig.obtenerDatosNegocio();
+  mostrarLogo(datos.negocio_logo || null, datos.negocio_iniciales);
   document.getElementById('neg-nombre').value = datos.negocio_nombre || '';
   document.getElementById('neg-iniciales').value = datos.negocio_iniciales || '';
-  document.getElementById('neg-color').value = datos.negocio_color_acento || '#146356';
+  document.getElementById('neg-color').value = datos.negocio_color_acento || '#0A6B68';
   document.getElementById('neg-rnc').value = datos.negocio_rnc || '';
   document.getElementById('neg-razon-social').value = datos.negocio_razon_social || '';
   document.getElementById('neg-direccion').value = datos.negocio_direccion || '';
@@ -168,7 +240,7 @@ async function cargarRoles() {
     <div class="rol-card ${r.id === state.rolSeleccionadoId ? 'is-active' : ''}" data-rol="${esc(r.id)}">
       <div>
         <div style="font-weight:700; font-size:13px;">${esc(r.nombre)}</div>
-        <div style="font-size:11px; color:var(--color-text-muted);">${esc(r.total_usuarios)} usuario${r.total_usuarios === 1 ? '' : 's'}</div>
+        <div style="font-size: 12px; color:var(--color-text-muted);">${esc(r.total_usuarios)} usuario${r.total_usuarios === 1 ? '' : 's'}</div>
       </div>
     </div>
   `).join('');
@@ -581,7 +653,7 @@ async function cargarBitacora() {
   document.getElementById('bitacora-tbody').innerHTML = entradas.map((e) => `
     <tr>
       <td>${fechaHora(e.created_at)}</td><td>${esc(e.usuario_nombre || '—')}</td><td>${esc(MODULO_ETIQUETA[e.modulo] || e.modulo)}</td>
-      <td>${esc(e.entidad)}</td><td>${esc(e.accion)}</td><td style="font-size:11px; color:var(--color-text-muted);">${esc(e.detalle || '')}</td>
+      <td>${esc(e.entidad)}</td><td>${esc(e.accion)}</td><td style="font-size: 12px; color:var(--color-text-muted);">${esc(e.detalle || '')}</td>
     </tr>
   `).join('');
 }
