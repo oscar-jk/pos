@@ -65,6 +65,8 @@ contextBridge.exposeInMainWorld('puntoXCxc', {
   anularRecibo: invoke('cxc:anularRecibo'),
   listarRecibos: invoke('cxc:listarRecibos'),
   historialCobros: invoke('cxc:historialCobros'),
+  exportarEstadoCuenta: invoke('cxc:exportarEstadoCuenta'),
+  listadoCxc: invoke('cxc:listadoCxc'),
 
   antiguedadSaldos: invoke('cxc:antiguedadSaldos'),
   facturasVencidas: invoke('cxc:facturasVencidas'),
@@ -93,6 +95,9 @@ contextBridge.exposeInMainWorld('puntoXCaja', {
 
   obtenerCajaChica: invoke('caja:cajaChica'),
   crearGastoCajaChica: invoke('caja:crearGastoCajaChica'),
+  resumenCajaChica: invoke('caja:resumenCajaChica'),
+  reponerCajaChica: invoke('caja:reponerCajaChica'),
+  fondoCajaChica: invoke('caja:fondoCajaChica'),
   listarGastosCajaChica: invoke('caja:listarGastosCajaChica'),
 
   listarCuentasBancarias: invoke('caja:listarCuentasBancarias'),
@@ -154,6 +159,8 @@ contextBridge.exposeInMainWorld('puntoXCompras', {
   listarPresupuestos: invoke('compras:listarPresupuestos'),
   convertirPresupuesto: invoke('compras:convertirPresupuesto'),
   compararPresupuestos: invoke('compras:compararPresupuestos'),
+  historialCompras: invoke('compras:historial'),
+  listadoCxp: invoke('compras:listadoCxp'),
 
   comparacionMejorCosto: invoke('compras:comparacionMejorCosto'),
   comprasPorProducto: invoke('compras:comprasPorProducto'),
@@ -198,6 +205,9 @@ contextBridge.exposeInMainWorld('puntoXConfig', {
   permisosDeRol: invoke('config:permisosDeRol'),
   actualizarPermisosRol: invoke('config:actualizarPermisosRol'),
   actualizarLimiteDescuentoRol: invoke('config:actualizarLimiteDescuentoRol'),
+  crearRol: invoke('config:crearRol'),
+  editarRol: invoke('config:editarRol'),
+  eliminarRol: invoke('config:eliminarRol'),
 
   listarTasasItbis: invoke('config:listarTasasItbis'),
   crearTasaItbis: invoke('config:crearTasaItbis'),
@@ -226,6 +236,7 @@ contextBridge.exposeInMainWorld('puntoXImpresion', {
   listarDispositivos: invoke('impresion:listarDispositivos'),
   imprimirFactura: invoke('impresion:imprimirFactura'),
   imprimirArqueo: invoke('impresion:imprimirArqueo'),
+  imprimirEstadoCuenta: invoke('impresion:imprimirEstadoCuenta'),
   imprimirEtiquetas: invoke('impresion:imprimirEtiquetas'),
   imprimirPrecuenta: invoke('impresion:imprimirPrecuenta'),
 });
@@ -310,6 +321,14 @@ contextBridge.exposeInMainWorld('puntoXProyecciones', {
   cobros: invoke('proyecciones:cobros'),
   pagos: invoke('proyecciones:pagos'),
   flujoCaja: invoke('proyecciones:flujoCaja'),
+});
+
+// Delivery: pedidos a domicilio, su despacho y tiempos de entrega.
+contextBridge.exposeInMainWorld('puntoXDelivery', {
+  repartidores: invoke('delivery:repartidores'),
+  listar: invoke('delivery:listar'),
+  avanzar: invoke('delivery:avanzar'),
+  reporteTiempos: invoke('delivery:reporteTiempos'),
 });
 
 // Asistente de configuración inicial.

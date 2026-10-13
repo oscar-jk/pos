@@ -68,4 +68,12 @@ function activarControlDePermisos(info) {
   observer.observe(document.body, { childList: true, subtree: true });
 }
 
-window.PuntoXShell = { initPuntoXShell };
+// Pestaña con la que abre una pantalla: la del enlace (p. ej. ../inventario/index.html#existencias,
+// desde una alerta del dashboard) si existe en la pantalla, o la de siempre.
+function tabInicial(defecto) {
+  const pedida = decodeURIComponent(window.location.hash.slice(1));
+  const existe = pedida && [...document.querySelectorAll('.tab-btn')].some((b) => b.dataset.tab === pedida && b.offsetParent !== null);
+  return existe ? pedida : defecto;
+}
+
+window.PuntoXShell = { initPuntoXShell, tabInicial };

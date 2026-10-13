@@ -19,6 +19,7 @@ const PERMISOS = [
   ['ventas', 'ventas.reportes_financieros.ver', 'Ver reportes financieros de ventas (márgenes, utilidad)'],
   ['ventas', 'ventas.comision.ver', 'Ver comisiones propias'],
   ['ventas', 'ventas.factura.imprimir', 'Imprimir factura o tique de venta'],
+  ['ventas', 'ventas.delivery.gestionar', 'Despachar y entregar pedidos de delivery'],
   ['ventas', 'ventas.cuenta_abierta.gestionar', 'Abrir cuentas abiertas y agregarles productos'],
   ['ventas', 'ventas.cuenta_abierta.anular', 'Quitar productos de una cuenta abierta o anularla'],
   ['ventas', 'ventas.promocion.gestionar', 'Crear, editar y desactivar promociones programadas'],
@@ -95,7 +96,7 @@ const ROLES = [
     permisos: [
       'ventas.factura.crear', 'ventas.cotizacion.crear', 'ventas.pedido.crear',
       'ventas.conduce.crear', 'ventas.devolucion.crear', 'ventas.descuento.aplicar',
-      'ventas.comision.ver', 'ventas.factura.imprimir', 'ventas.cuenta_abierta.gestionar', 'ventas.ecf.ver', 'inventario.ver', 'caja.apertura', 'caja.cierre',
+      'ventas.comision.ver', 'ventas.factura.imprimir', 'ventas.delivery.gestionar', 'ventas.cuenta_abierta.gestionar', 'ventas.ecf.ver', 'inventario.ver', 'caja.apertura', 'caja.cierre',
       'caja.movimiento.crear', 'caja.tique.imprimir', 'cxc.recibo.crear',
     ],
   },

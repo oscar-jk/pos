@@ -46,7 +46,7 @@
       return {
         version: 'web-demo', sucursal: db.sucursales[0].nombre, sucursalId: db.idsPrincipales.sucursalId,
         almacenId: db.idsPrincipales.almacenId, cajaId: db.idsPrincipales.cajaId, monedaId: db.idsPrincipales.monedaId,
-        negocio: { nombre: db.parametrosNegocio.negocio_nombre, iniciales: db.parametrosNegocio.negocio_iniciales },
+        negocio: { nombre: db.parametrosNegocio.negocio_nombre, iniciales: db.parametrosNegocio.negocio_iniciales, logo: db.parametrosNegocio.negocio_logo || undefined },
         usuario,
       };
     },

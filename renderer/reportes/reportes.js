@@ -209,7 +209,10 @@ async function renderFiltros(filtros) {
       return `<div class="form-field"><label>${esc(f.label)}</label><input type="month" class="input-normal" id="filtro-${esc(f.clave)}" value="${esc(f.valorDefault || '')}" /></div>`;
     }
     if (f.tipo === 'select') {
-      return `<div class="form-field"><label>${esc(f.label)}</label><select class="input-normal" id="filtro-${esc(f.clave)}">${f.opciones.map((o) => `<option value="${esc(o.value)}" ${o.value === f.valorDefault ? 'selected' : ''}>${esc(o.label)}</option>`).join('')}</select></div>`;
+      // Las opciones pueden venir de la base (vendedores, sucursales, proveedores...).
+      let opciones = f.opciones;
+      if (typeof opciones === 'function') { try { opciones = await opciones(); } catch (e) { opciones = [{ value: '', label: 'Todos' }]; } }
+      return `<div class="form-field"><label>${esc(f.label)}</label><select class="input-normal" id="filtro-${esc(f.clave)}">${opciones.map((o) => `<option value="${esc(o.value)}" ${o.value === f.valorDefault ? 'selected' : ''}>${esc(o.label)}</option>`).join('')}</select></div>`;
     }
     if (f.tipo === 'producto') {
       const productos = await window.puntoXInventario.listarProductos({ limite: 500 });
@@ -236,6 +239,56 @@ function leerFiltros(filtros) {
     }
   });
   return valores;
+}
+
+// Opciones de filtros que salen de la base.
+async function opcionesVendedores() {
+  const usuarios = window.puntoXDelivery ? await window.puntoXDelivery.repartidores() : [];
+  return [{ value: '', label: 'Todos' }, ...usuarios.map((u) => ({ value: u.id, label: u.nombre_completo }))];
+}
+async function opcionesSucursales() {
+  const sucursales = window.puntoXConfig && window.puntoXConfig.listarSucursales ? await window.puntoXConfig.listarSucursales() : [];
+  return [{ value: '', label: 'Todas' }, ...sucursales.map((s) => ({ value: s.id, label: s.nombre }))];
+}
+async function opcionesCategoriasCliente() {
+  const categorias = window.puntoXCxc.listarCategorias ? await window.puntoXCxc.listarCategorias() : [];
+  return [{ value: '', label: 'Todas' }, ...categorias.map((c) => ({ value: c.id, label: c.nombre }))];
+}
+async function opcionesProveedores() {
+  const proveedores = await window.puntoXCompras.listarProveedores({ limite: 500 });
+  return [{ value: '', label: 'Todos' }, ...proveedores.map((p) => ({ value: p.id, label: p.nombre }))];
+}
+
+// Exportar lo que muestra el reporte (todas sus tablas) a un CSV que abre Excel.
+function csvDeTablas(contenedor, titulo) {
+  const celda = (v) => { const t = String(v).replace(/\s+/g, ' ').trim(); return /[",;\n]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t; };
+  const lineas = [[titulo]];
+  contenedor.querySelectorAll('table.data-table').forEach((tabla) => {
+    const seccion = tabla.previousElementSibling && tabla.previousElementSibling.querySelector('h3');
+    lineas.push([]);
+    if (seccion) lineas.push([seccion.textContent]);
+    tabla.querySelectorAll('tr').forEach((tr) => lineas.push([...tr.children].map((c) => c.textContent)));
+  });
+  return `\uFEFF${lineas.map((l) => l.map(celda).join(',')).join('\r\n')}\r\n`;
+}
+
+function agregarExportacion(contenedor, reporte) {
+  if (!contenedor.querySelector('table.data-table')) return;
+  const barra = document.createElement('div');
+  barra.className = 'reporte-exportar';
+  barra.innerHTML = '<button type="button" class="btn btn-secundario btn-chico">Exportar a Excel</button>';
+  barra.querySelector('button').addEventListener('click', () => {
+    const blob = new Blob([csvDeTablas(contenedor, reporte.etiqueta)], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${reporte.etiqueta.replace(/[^\p{L}\p{N}]+/gu, '_')}_${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  });
+  contenedor.prepend(barra);
 }
 
 // --- Catálogo de reportes ---
@@ -339,6 +392,25 @@ const CATALOGO = [
           { label: 'Fecha', key: 'fecha', formato: 'fecha' }, { label: 'Total', key: 'total', formato: 'moneda', alinear: 'right' },
           { label: 'Estado', key: 'estado' }, { label: 'Motivo anulación', key: 'motivo_anulacion' }, { label: 'Anuló', key: 'usuario_anulo_nombre' },
         ],
+      },
+      {
+        clave: 'delivery-tiempos', etiqueta: 'Tiempo de Entrega (Delivery)',
+        disponible: () => Boolean(window.puntoXDelivery),
+        filtros: [{ tipo: 'fecha', clave: 'desde', label: 'Desde' }, { tipo: 'fecha', clave: 'hasta', label: 'Hasta' }],
+        personalizado: true,
+        cargar: (v) => window.puntoXDelivery.reporteTiempos({ desde: v.desde, hasta: v.hasta }),
+        render: (r) => {
+          const aTiempo = (x) => (x.pctATiempo === null ? '—' : `${x.pctATiempo}%`);
+          const grupo = (etiqueta) => [{ label: etiqueta, key: 'nombre' }, { label: 'Entregas', key: 'entregas', alinear: 'right' }, { label: 'Promedio (min)', key: 'promedioMin', alinear: 'right' }, { label: 'A tiempo', key: aTiempo, alinear: 'right' }];
+          return `
+            ${renderTarjetas([{ label: 'Entregas', valor: r.entregas }, { label: 'Promedio (min)', valor: r.promedioMin }])}
+            <div class="reportes-panel__header"><h3 style="font-size:14px; margin:0;">Por repartidor</h3></div>
+            ${renderTabla(grupo('Repartidor'), r.porRepartidor)}
+            <div class="reportes-panel__header" style="margin-top:16px;"><h3 style="font-size:14px; margin:0;">Por zona</h3></div>
+            ${renderTabla(grupo('Zona'), r.porZona)}
+            <div class="reportes-panel__header" style="margin-top:16px;"><h3 style="font-size:14px; margin:0;">Detalle</h3></div>
+            ${renderTabla([{ label: 'Factura', key: 'numero' }, { label: 'Fecha', key: 'fecha', formato: 'fecha' }, { label: 'Repartidor', key: 'repartidor_nombre' }, { label: 'Zona', key: (x) => x.zona_entrega || '—' }, { label: 'Minutos', key: 'minutos', alinear: 'right' }, { label: 'Estimado', key: (x) => x.tiempo_estimado_min || '—', alinear: 'right' }], r.filas)}`;
+        },
       },
       {
         clave: 'ventas-607', etiqueta: 'Ventas 607 (DGII)',
@@ -477,11 +549,17 @@ const CATALOGO = [
     reportes: [
       {
         clave: 'historial-compras', etiqueta: 'Historial de Compras',
-        filtros: [],
-        cargar: () => window.puntoXCompras.listarFacturas({ limite: 200 }),
+        filtros: [
+          { tipo: 'select', clave: 'proveedorId', label: 'Proveedor', valorDefault: '', opciones: opcionesProveedores },
+          { tipo: 'fecha', clave: 'desde', label: 'Desde' }, { tipo: 'fecha', clave: 'hasta', label: 'Hasta' },
+          { tipo: 'select', clave: 'estadoPago', label: 'Estado de pago', valorDefault: '', opciones: [{ value: '', label: 'Todos' }, { value: 'pagada', label: 'Pagada' }, { value: 'parcial', label: 'Parcial' }, { value: 'pendiente', label: 'Pendiente' }, { value: 'anulada', label: 'Anulada' }] },
+        ],
+        cargar: (v) => (window.puntoXCompras.historialCompras ? window.puntoXCompras.historialCompras(v) : window.puntoXCompras.listarFacturas({ limite: 200 })),
         columnas: [
           { label: 'Número', key: 'numero' }, { label: 'Proveedor', key: 'proveedor_nombre' }, { label: 'Fecha', key: 'fecha', formato: 'fecha' },
-          { label: 'Condición', key: 'condicion_pago' }, { label: 'Total', key: 'total', formato: 'moneda', alinear: 'right' }, { label: 'Estado', key: 'estado' },
+          { label: 'NCF', key: 'ncf_proveedor' }, { label: 'Condición', key: 'condicion_pago' },
+          { label: 'Total', key: 'total', formato: 'moneda', alinear: 'right' }, { label: 'Pendiente', key: 'pendiente', formato: 'moneda', alinear: 'right' },
+          { label: 'Estado de pago', key: (x) => ({ pagada: 'Pagada', parcial: 'Parcial', pendiente: 'Pendiente', anulada: 'Anulada' }[x.estado_pago] || x.estado) },
         ],
       },
       {
@@ -552,12 +630,21 @@ const CATALOGO = [
       },
       {
         clave: 'cxc-listado', etiqueta: 'Listado de CxC',
-        filtros: [],
-        cargar: () => window.puntoXCxc.listarClientes({ limite: 200 }),
+        filtros: [
+          { tipo: 'select', clave: 'vendedorId', label: 'Vendedor', valorDefault: '', opciones: opcionesVendedores },
+          { tipo: 'select', clave: 'sucursalId', label: 'Sucursal', valorDefault: '', opciones: opcionesSucursales },
+          { tipo: 'select', clave: 'categoriaId', label: 'Categoría', valorDefault: '', opciones: opcionesCategoriasCliente },
+          { tipo: 'select', clave: 'soloConSaldo', label: 'Mostrar', valorDefault: '1', opciones: [{ value: '1', label: 'Solo con saldo' }, { value: '', label: 'Todos los clientes' }] },
+        ],
+        cargar: (v) => (window.puntoXCxc.listadoCxc
+          ? window.puntoXCxc.listadoCxc({ ...v, soloConSaldo: v.soloConSaldo === '1' })
+          : window.puntoXCxc.listarClientes({ limite: 200 })),
         columnas: [
           { label: 'Cliente', key: 'nombre' }, { label: 'Categoría', key: 'categoria_nombre' },
           { label: 'Límite de crédito', key: 'limite_credito', formato: 'moneda', alinear: 'right' },
           { label: 'Saldo pendiente', key: 'saldo_pendiente', formato: 'moneda', alinear: 'right' },
+          { label: 'Vencido', key: 'saldo_vencido', formato: 'moneda', alinear: 'right' },
+          { label: 'Crédito disponible', key: 'credito_disponible', formato: 'moneda', alinear: 'right' },
         ],
       },
       {
@@ -660,11 +747,19 @@ const CATALOGO = [
       },
       {
         clave: 'cxp-listado', etiqueta: 'Listado de CxP',
-        filtros: [],
-        cargar: () => window.puntoXCompras.listarProveedores({ limite: 200 }),
+        filtros: [
+          { tipo: 'select', clave: 'orden', label: 'Ordenar por', valorDefault: 'urgencia', opciones: [{ value: 'urgencia', label: 'Urgencia (más atrasado primero)' }, { value: 'saldo', label: 'Mayor saldo' }] },
+          { tipo: 'select', clave: 'soloVencidos', label: 'Mostrar', valorDefault: '', opciones: [{ value: '', label: 'Todos con saldo' }, { value: '1', label: 'Solo con saldo vencido' }] },
+        ],
+        cargar: (v) => (window.puntoXCompras.listadoCxp
+          ? window.puntoXCompras.listadoCxp({ orden: v.orden, soloVencidos: v.soloVencidos === '1' })
+          : window.puntoXCompras.listarProveedores({ limite: 200 })),
         columnas: [
-          { label: 'Proveedor', key: 'nombre' }, { label: 'RNC', key: 'rnc' }, { label: 'Días de crédito', key: 'dias_credito', alinear: 'right' },
+          { label: 'Proveedor', key: 'nombre' }, { label: 'RNC', key: 'rnc' },
           { label: 'Saldo pendiente', key: 'saldo_pendiente', formato: 'moneda', alinear: 'right' },
+          { label: 'Vencido', key: 'saldo_vencido', formato: 'moneda', alinear: 'right' },
+          { label: 'Días de mora', key: 'dias_mora_max', alinear: 'right' },
+          { label: 'Próximo vencimiento', key: 'proximo_vencimiento', formato: 'fecha' },
         ],
       },
       {
@@ -884,6 +979,7 @@ async function ejecutarReporte(reporte) {
     const datos = await reporte.cargar(filtros);
     contenedor.innerHTML = reporte.personalizado ? reporte.render(datos) : renderTabla(reporte.columnas, datos);
     if (reporte.alRenderizar) reporte.alRenderizar(datos, contenedor, filtros);
+    agregarExportacion(contenedor, reporte);
   } catch (err) {
     contenedor.innerHTML = '';
     mostrarError(err.message);

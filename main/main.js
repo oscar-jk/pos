@@ -19,6 +19,7 @@ const reportesInvIpc = require('./ipc/reportes-inventario');
 const proyeccionesIpc = require('./ipc/proyecciones');
 const formatosVentasIpc = require('./ipc/formatos-ventas');
 const onboardingIpc = require('./ipc/onboarding');
+const deliveryIpc = require('./ipc/delivery');
 const colaEcf = require('./ecf/cola');
 const ecfEmision = require('./ecf/emision');
 
@@ -31,7 +32,8 @@ function registerCoreIpc() {
 
     const sucursal = db.prepare('SELECT id, nombre FROM sucursales WHERE es_principal = 1').get();
     const almacen = db.prepare('SELECT id, nombre FROM almacenes WHERE deleted_at IS NULL LIMIT 1').get();
-    const cajaPrincipal = db.prepare('SELECT id, nombre FROM cajas WHERE deleted_at IS NULL LIMIT 1').get();
+    const sesionActual = session.obtenerSesion();
+    const cajaPrincipal = cajaIpc.cajaDelUsuario(db, sesionActual ? sesionActual.usuarioId : null);
     const monedaLocal = db.prepare('SELECT id, codigo FROM monedas WHERE es_local = 1').get();
 
     const parametros = db
@@ -85,6 +87,7 @@ function registerCoreIpc() {
   proyeccionesIpc.register(ipcSeguro, getDb);
   formatosVentasIpc.register(ipcSeguro, getDb);
   onboardingIpc.register(ipcSeguro, getDb);
+  deliveryIpc.register(ipcSeguro, getDb);
 }
 
 function createMainWindow() {

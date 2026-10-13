@@ -42,15 +42,22 @@
       </div>
 
       <div id="tab-cajachica" class="tab-panel" style="display:none;">
-        <div class="resumen-turno" style="grid-template-columns: repeat(2, minmax(0,1fr)); margin-bottom:14px;">
+        <div class="resumen-turno" style="grid-template-columns: repeat(3, minmax(0,1fr)); margin-bottom:14px;">
           <div class="resumen-turno__item"><div class="resumen-turno__label">Fondo asignado</div><div class="resumen-turno__valor" id="cc-fondo">RD$ 0.00</div></div>
           <div class="resumen-turno__item"><div class="resumen-turno__label">Gastado en el periodo</div><div class="resumen-turno__valor" id="cc-gastado">RD$ 0.00</div></div>
+          <div class="resumen-turno__item"><div class="resumen-turno__label">Disponible</div><div class="resumen-turno__valor" id="cc-disponible">RD$ 0.00</div></div>
+        </div>
+        <div id="cc-acciones" style="display:none; gap:8px; margin-bottom:14px; flex-wrap:wrap;">
+          <button type="button" class="btn btn-secundario btn-chico" id="btn-cc-reponer" data-permiso="caja.cierre">Reponer fondo</button>
+          <button type="button" class="btn btn-secundario btn-chico" id="btn-cc-fondo" data-permiso="caja.cierre">Cambiar fondo</button>
+          <span id="cc-periodo" style="font-size:12px; color:var(--color-text-muted); align-self:center;"></span>
         </div>
         <table class="data-table">
           <thead><tr><th>Concepto</th><th>Categoría</th><th>Monto</th><th>Comprobante</th><th>Fecha</th><th>Usuario</th></tr></thead>
           <tbody id="cajachica-tbody"></tbody>
         </table>
         <div id="cajachica-vacio" class="empty-state" style="display:none;">Aún no hay gastos de caja chica registrados.</div>
+        <div id="cc-reposiciones"></div>
       </div>
 
       <div id="tab-banco" class="tab-panel" style="display:none;">

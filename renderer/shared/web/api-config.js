@@ -27,7 +27,23 @@
       return {
         negocio_nombre: p.negocio_nombre, negocio_iniciales: p.negocio_iniciales, negocio_color_acento: p.negocio_color_acento || '#146356',
         negocio_rnc: p.negocio_rnc || '', negocio_direccion: p.negocio_direccion || '', negocio_telefono: p.negocio_telefono || '',
+        negocio_razon_social: p.negocio_razon_social || '', negocio_logo: p.negocio_logo || '',
       };
+    },
+    // Logo del negocio en la demo: misma validación de forma que la app (PNG, JPG o WebP, hasta 300 KB).
+    guardarLogoNegocio: async ({ dataUrl, usuarioId }) => {
+      if (!/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(dataUrl || '')) throw new Error('El logo debe ser una imagen PNG, JPG o WebP');
+      if (dataUrl.length > 410000) throw new Error('El logo pesa más de 300 KB. Usa una imagen más pequeña');
+      const db = store.cargar();
+      db.parametrosNegocio.negocio_logo = dataUrl;
+      bitacora(db, { usuarioId, modulo: 'configuracion', entidad: 'parametros_negocio', entidadId: 'negocio_logo', accion: 'editar' });
+      store.guardar(db);
+    },
+    quitarLogoNegocio: async ({ usuarioId }) => {
+      const db = store.cargar();
+      db.parametrosNegocio.negocio_logo = '';
+      bitacora(db, { usuarioId, modulo: 'configuracion', entidad: 'parametros_negocio', entidadId: 'negocio_logo', accion: 'editar' });
+      store.guardar(db);
     },
     actualizarDatosNegocio: async ({ payload, usuarioId }) => {
       const db = store.cargar();
@@ -37,6 +53,7 @@
       db.parametrosNegocio.negocio_rnc = payload.rnc || '';
       db.parametrosNegocio.negocio_direccion = payload.direccion || '';
       db.parametrosNegocio.negocio_telefono = payload.telefono || '';
+      if (payload.razonSocial !== undefined) db.parametrosNegocio.negocio_razon_social = payload.razonSocial || '';
       bitacora(db, { usuarioId, modulo: 'configuracion', entidad: 'parametros_negocio', entidadId: 'negocio', accion: 'editar' });
       store.guardar();
       return window.puntoXConfig.obtenerDatosNegocio();

@@ -139,6 +139,12 @@ function htmlFactura(db, documentoId, formato) {
   return formato === 'tique' && factura.tipo === 'factura' ? plantillaTique(factura, negocio) : plantillaFactura(factura, negocio);
 }
 
+function htmlEstadoCuenta(db, clienteId) {
+  const cliente = db.prepare('SELECT * FROM clientes WHERE id = ? AND deleted_at IS NULL').get(clienteId);
+  if (!cliente) throw new Error('Cliente no encontrado');
+  return require('./plantillas').plantillaEstadoCuenta(cliente, require('../ipc/cxc').estadoCuenta(db, clienteId), datosNegocio(db), new Date().toISOString());
+}
+
 function htmlArqueo(db, turnoId) {
   const turno = db
     .prepare(
@@ -219,6 +225,12 @@ function register(ipcMain, getDb) {
     return imprimirHtml(htmlEtiquetas(db, payload), impresoraPorTipo(db, 'etiqueta'));
   });
 
+  ipcMain.handle('impresion:imprimirEstadoCuenta', async (event, { clienteId }) => {
+    session.requerirAlgunPermiso('cxc.reportes.ver', 'cxc.recibo.crear');
+    const db = getDb();
+    return imprimirHtml(htmlEstadoCuenta(db, clienteId), impresoraPorTipo(db, 'factura'));
+  });
+
   ipcMain.handle('impresion:imprimirArqueo', async (event, { turnoId }) => {
     session.requerirPermiso('caja.tique.imprimir');
     const db = getDb();
@@ -226,4 +238,4 @@ function register(ipcMain, getDb) {
   });
 }
 
-module.exports = { register, listarImpresoras, guardarImpresora, eliminarImpresora, htmlFactura, htmlArqueo, htmlPrecuenta, htmlEtiquetas, representacionFiscal };
+module.exports = { register, listarImpresoras, guardarImpresora, eliminarImpresora, htmlFactura, htmlArqueo, htmlPrecuenta, htmlEtiquetas, htmlEstadoCuenta, representacionFiscal };

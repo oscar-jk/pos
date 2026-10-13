@@ -353,7 +353,54 @@ function plantillaArqueoTurno(turno, movimientos, negocio) {
   </body></html>`;
 }
 
-module.exports = { plantillaFactura, plantillaTique, plantillaArqueoTurno, plantillaPrecuenta };
+const TIPO_MOVIMIENTO_CXC = { factura: 'Factura', nota_debito: 'Nota de débito', nota_credito: 'Nota de crédito', recibo: 'Recibo de cobro' };
+
+// Estado de cuenta del cliente (carta): cargos (facturas a crédito y notas de débito) y abonos
+// (recibos y notas de crédito) en orden, con el saldo acumulado.
+function plantillaEstadoCuenta(cliente, movimientos, negocio, fechaCorte) {
+  const saldo = movimientos.length ? movimientos[movimientos.length - 1].saldo_acumulado : 0;
+  const esCargo = (m) => m.tipo === 'factura' || m.tipo === 'nota_debito';
+  return `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8" />
+    <title>Estado de cuenta ${escapar(cliente.nombre)}</title>
+    <style>
+      ${ESTILO_BASE}
+      @page { size: letter; margin: 14mm; }
+      body { font-size: 13px; }
+      .doc-header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #111; padding-bottom: 10px; margin-bottom: 14px; }
+      .doc-header__meta { text-align: right; }
+      th, td { padding: 6px 8px; text-align: left; border-bottom: 1px solid #ddd; font-size: 12px; }
+      th { background: #f2f2f2; text-transform: uppercase; font-size: 10px; letter-spacing: 0.03em; }
+      td.num, th.num { text-align: right; }
+      .saldo { margin-top: 14px; text-align: right; font-size: 15px; font-weight: 800; }
+      .pie { margin-top: 30px; font-size: 10px; color: #666; text-align: center; }
+    </style>
+  </head><body>
+    <div class="doc-header">
+      ${encabezadoNegocio(negocio)}
+      <div class="doc-header__meta">
+        <div style="font-size:18px; font-weight:800;">ESTADO DE CUENTA</div>
+        <div>Corte: ${escapar(fmtFecha(fechaCorte))}</div>
+      </div>
+    </div>
+    <div style="margin-bottom:14px;">
+      <div><strong>Cliente:</strong> ${escapar(cliente.nombre)}</div>
+      ${cliente.rnc_cedula ? `<div><strong>RNC/Cédula:</strong> ${escapar(cliente.rnc_cedula)}</div>` : ''}
+      ${cliente.limite_credito ? `<div><strong>Límite de crédito:</strong> RD$ ${fmtMoneda(cliente.limite_credito)} · ${escapar(cliente.dias_credito)} días</div>` : ''}
+    </div>
+    <table>
+      <thead><tr><th>Fecha</th><th>Documento</th><th>Número</th><th class="num">Cargo</th><th class="num">Abono</th><th class="num">Saldo</th></tr></thead>
+      <tbody>
+        ${movimientos.length === 0 ? '<tr><td colspan="6" style="text-align:center;">Sin movimientos</td></tr>' : movimientos.map((m) => `
+          <tr><td>${escapar(fmtFecha(m.fecha))}</td><td>${escapar(TIPO_MOVIMIENTO_CXC[m.tipo] || m.tipo)}</td><td>${escapar(m.numero)}</td>
+            <td class="num">${esCargo(m) ? fmtMoneda(m.total) : ''}</td><td class="num">${esCargo(m) ? '' : fmtMoneda(m.total)}</td><td class="num">${fmtMoneda(m.saldo_acumulado)}</td></tr>`).join('')}
+      </tbody>
+    </table>
+    <div class="saldo">Saldo pendiente: RD$ ${fmtMoneda(saldo)}</div>
+    <div class="pie">Documento generado por Nodo</div>
+  </body></html>`;
+}
+
+module.exports = { plantillaFactura, plantillaTique, plantillaArqueoTurno, plantillaPrecuenta, plantillaEstadoCuenta, TIPO_MOVIMIENTO_CXC };
 
 // Etiquetas de código de barras y precio. formato 'anaquel': hoja carta con 3 columnas; 'caja':
 // una etiqueta de 50 × 30 mm por página (rollo). items: [{ descripcion, codigo, precio, svg, copias }].

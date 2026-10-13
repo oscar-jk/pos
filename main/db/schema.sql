@@ -587,6 +587,8 @@ CREATE TABLE documentos_venta (
   tiempo_estimado_min     INTEGER,
   estado_delivery         TEXT, -- pendiente | en_ruta | entregado
   fecha_entrega_real      TEXT,
+  zona_entrega            TEXT, -- sector o zona, para medir tiempos de entrega por zona
+  fecha_en_ruta           TEXT,
   usuario_id              TEXT NOT NULL REFERENCES usuarios(id), -- quien creó el documento
   created_at              TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
   updated_at              TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
@@ -935,6 +937,20 @@ CREATE TABLE caja_chica (
   deleted_at      TEXT
 );
 
+-- Reposición del fondo fijo: cierra el periodo de gastos de la caja chica.
+CREATE TABLE reposiciones_caja_chica (
+  id              TEXT PRIMARY KEY,
+  caja_chica_id   TEXT NOT NULL REFERENCES caja_chica(id),
+  monto           REAL NOT NULL,
+  gastos          INTEGER NOT NULL DEFAULT 0,
+  fecha           TEXT NOT NULL,
+  usuario_id      TEXT NOT NULL REFERENCES usuarios(id),
+  created_at      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  updated_at      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  deleted_at      TEXT
+);
+CREATE INDEX idx_reposiciones_caja_chica ON reposiciones_caja_chica(caja_chica_id, fecha);
+
 CREATE TABLE gastos_caja_chica (
   id              TEXT PRIMARY KEY,
   caja_chica_id   TEXT NOT NULL REFERENCES caja_chica(id),
@@ -948,6 +964,7 @@ CREATE TABLE gastos_caja_chica (
   tipo_bienes_servicios TEXT, -- 01..11 según la DGII
   itbis_facturado REAL NOT NULL DEFAULT 0, -- incluido en monto
   clase_monto     TEXT NOT NULL DEFAULT 'bienes', -- bienes | servicios
+  reposicion_id   TEXT REFERENCES reposiciones_caja_chica(id), -- reposición que lo cubrió; NULL = periodo abierto
   fecha           TEXT NOT NULL,
   estado          TEXT NOT NULL DEFAULT 'confirmado', -- confirmado | anulado
   motivo_anulacion TEXT,

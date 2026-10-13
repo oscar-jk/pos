@@ -233,12 +233,13 @@ function crearFactura(db, payload) {
   const {
     modoVenta, sucursalId, almacenId, cajaId, clienteId, vendedorId, usuarioId,
     tipoNcfCodigo, nivelPrecio, monedaId, tasaCambio,
-    lineas, descuentoGlobalPct, pagos, esDelivery, direccionEntrega, repartidorId,
+    lineas, descuentoGlobalPct, pagos,
     cuentaAbiertaId, cotizacionId, conduceIds, pedidoId,
   } = payload;
 
   if (!lineas || lineas.length === 0) throw new Error('La factura debe tener al menos una línea');
   validarPagos(pagos);
+  const entrega = require('./delivery').datosEntrega(db, payload);
   if ([cuentaAbiertaId, cotizacionId, conduceIds && conduceIds.length, pedidoId].filter(Boolean).length > 1) {
     throw new Error('Una factura se genera desde una sola fuente: cuenta abierta, cotización, pedido o conduces');
   }
@@ -315,13 +316,14 @@ function crearFactura(db, payload) {
        (id, tipo, numero, ncf, tipo_ncf_id, sucursal_id, almacen_id, cliente_id, vendedor_id,
         modo_venta, condicion_pago, moneda_id, tasa_cambio, fecha, subtotal, descuento_total,
         itbis_total, retencion_isr, retencion_itbis, total, estado, es_delivery, repartidor_id,
-        direccion_entrega, estado_delivery, usuario_id)
-     VALUES (?, 'factura', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'facturado', ?, ?, ?, ?, ?)`
+        direccion_entrega, estado_delivery, zona_entrega, tiempo_estimado_min, usuario_id)
+     VALUES (?, 'factura', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'facturado', ?, ?, ?, ?, ?, ?, ?)`
   ).run(
     documentoId, numero, ncf, tipoNcfId, sucursalId, almacenId, clienteId || null, vendedorId || null,
     modoVenta, condicionReal, monedaFactura, tasaFactura, fechaIso, subtotal, descuentoGlobalMonto,
     itbisTotal, retencionIsr, retencionItbis, total,
-    esDelivery ? 1 : 0, repartidorId || null, direccionEntrega || null, esDelivery ? 'pendiente' : null, usuarioId
+    entrega.esDelivery ? 1 : 0, entrega.esDelivery ? entrega.repartidorId : null, entrega.esDelivery ? entrega.direccion : null,
+    entrega.esDelivery ? 'pendiente' : null, entrega.esDelivery ? entrega.zona : null, entrega.esDelivery ? entrega.minutos : null, usuarioId
   );
 
   const insertDetalle = db.prepare(

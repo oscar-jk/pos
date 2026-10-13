@@ -783,7 +783,7 @@ function kardexPorProducto(db, { productoId, almacenId, desde, hasta, limite = 2
     .all(...params);
 }
 
-function existenciasConsolidadas(db, { almacenId, soloBajoMinimo = false } = {}) {
+function existenciasConsolidadas(db, { almacenId, soloBajoMinimo = false, soloSobreMaximo = false } = {}) {
   const condiciones = ['p.deleted_at IS NULL', 'p.activo = 1', 'p.es_kit = 0'];
   const params = [];
   let joinAlmacen = 'LEFT JOIN existencias e ON e.producto_id = p.id';
@@ -797,6 +797,7 @@ function existenciasConsolidadas(db, { almacenId, soloBajoMinimo = false } = {})
     WHERE ${condiciones.join(' AND ')}
     GROUP BY p.id
     ${soloBajoMinimo ? 'HAVING existencia_total <= p.stock_minimo' : ''}
+    ${!soloBajoMinimo && soloSobreMaximo ? 'HAVING p.stock_maximo IS NOT NULL AND p.stock_maximo > 0 AND existencia_total > p.stock_maximo' : ''}
     ORDER BY p.descripcion`;
   return db.prepare(sql).all(...params);
 }
