@@ -175,6 +175,80 @@ document.addEventListener('click', (e) => {
   }
 });
 
+// --- Cuadrícula táctil de productos frecuentes ---
+
+const rapidos = { categoria: '', productos: [] };
+
+function cantidadEnCarrito(productoId) {
+  const linea = state.carrito.find((l) => l.producto.id === productoId);
+  return linea ? linea.cantidad : 0;
+}
+
+function pintarTiles() {
+  const grid = document.getElementById('rapidos-grid');
+  if (!grid) return;
+  if (rapidos.productos.length === 0) {
+    grid.innerHTML = '<div class="empty-state" style="grid-column: 1 / -1; padding:12px;">No hay productos en esta categoría.</div>';
+    return;
+  }
+  grid.innerHTML = rapidos.productos.map((p, i) => {
+    const enCarrito = cantidadEnCarrito(p.id);
+    const sinControl = p.es_servicio || p.es_kit || p.permite_venta_negativo;
+    const disponible = p.cantidad_disponible - (p.cantidad_comprometida || 0);
+    const agotado = !sinControl && disponible <= 0;
+    const bajo = !sinControl && !agotado && p.stock_minimo > 0 && disponible <= p.stock_minimo;
+    const precio = (precioDeLista(p) || { precio: precioPorNivel(p, state.nivelPrecio) }).precio;
+    return `
+      <button type="button" class="tile" data-tile="${i}" aria-pressed="${enCarrito > 0}" ${agotado || state.origen ? 'disabled' : ''} title="${esc(p.codigo_interno)}">
+        ${enCarrito > 0 ? `<span class="tile__contador" aria-label="${esc(enCarrito)} en el carrito">${esc(enCarrito)}</span>` : ''}
+        <span class="tile__nombre">${esc(p.descripcion)}</span>
+        <span class="tile__pie">
+          <span class="tile__precio">${fmtV(precio)}</span>
+          ${agotado ? '<span class="tile__stock tile__stock--agotado">Agotado</span>' : bajo ? `<span class="tile__stock tile__stock--bajo">Quedan ${esc(disponible)}</span>` : ''}
+        </span>
+      </button>`;
+  }).join('');
+  grid.querySelectorAll('[data-tile]').forEach((b) => b.addEventListener('click', () => agregarAlCarrito(rapidos.productos[Number(b.dataset.tile)])));
+}
+
+async function cargarTiles() {
+  if (!window.puntoXInventario.productosRapidos) return;
+  try {
+    rapidos.productos = await window.puntoXInventario.productosRapidos({ almacenId: state.info.almacenId, categoriaId: rapidos.categoria || null, limite: 24 });
+  } catch (err) { rapidos.productos = []; }
+  pintarTiles();
+}
+
+async function iniciarTiles() {
+  const seccion = document.getElementById('rapidos');
+  if (!seccion || !window.puntoXInventario.productosRapidos) return;
+  let categorias = [];
+  try { categorias = await window.puntoXInventario.listarCategorias(); } catch (e) { categorias = []; }
+  const chips = document.getElementById('rapidos-chips');
+  const pintarChips = () => {
+    chips.innerHTML = [{ id: '', nombre: 'Más vendidos' }, ...categorias].map((c) => `<button type="button" class="rapidos__chip" role="tab" aria-selected="${rapidos.categoria === c.id}" data-categoria="${esc(c.id)}">${esc(c.nombre)}</button>`).join('');
+    chips.querySelectorAll('[data-categoria]').forEach((b) => b.addEventListener('click', () => { rapidos.categoria = b.dataset.categoria; pintarChips(); cargarTiles(); }));
+  };
+  pintarChips();
+  // Plegar la cuadrícula se recuerda en este equipo.
+  const plegar = document.getElementById('rapidos-plegar');
+  const aplicarPlegado = (plegado) => {
+    seccion.classList.toggle('rapidos--plegado', plegado);
+    plegar.textContent = plegado ? 'Mostrar productos' : 'Ocultar productos';
+    plegar.setAttribute('aria-expanded', String(!plegado));
+  };
+  let plegado = false;
+  try { plegado = localStorage.getItem('puntox_rapidos_plegado') === '1'; } catch (e) { plegado = false; }
+  aplicarPlegado(plegado);
+  plegar.addEventListener('click', () => {
+    plegado = !seccion.classList.contains('rapidos--plegado');
+    aplicarPlegado(plegado);
+    try { localStorage.setItem('puntox_rapidos_plegado', plegado ? '1' : '0'); } catch (e) { /* sin almacenamiento */ }
+  });
+  seccion.hidden = false;
+  await cargarTiles();
+}
+
 function agregarAlCarrito(producto) {
   const existente = state.carrito.find((l) => l.producto.id === producto.id);
   if (existente) {
@@ -192,6 +266,7 @@ function listaDeLinea(linea) {
 }
 
 function renderCarrito() {
+  pintarTiles(); // contadores de la cuadrícula al día con el carrito
   const tbody = document.getElementById('carrito-tbody');
   const vacio = document.getElementById('carrito-vacio');
   vacio.style.display = state.carrito.length === 0 ? 'block' : 'none';
@@ -557,6 +632,7 @@ document.getElementById('btn-cobrar').addEventListener('click', async () => {
     limpiarDelivery();
     renderCarrito();
     cargarHistorial();
+    cargarTiles(); // la existencia cambió
   } catch (err) {
     mostrarError(err.message.replace(/^Error invoking remote method '.*?': Error: /, ''));
     btn.disabled = state.carrito.length === 0;
@@ -1109,6 +1185,7 @@ async function init() {
   renderCarrito();
   cargarHistorial();
   cargarNotas();
+  iniciarTiles();
   const params = new URLSearchParams(window.location.search);
   try {
     if (params.get('cuenta') && window.puntoXCuentas) await cargarCuentaParaCobro(params.get('cuenta'));

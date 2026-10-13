@@ -7,36 +7,36 @@ const MODULOS = [
   },
   {
     clave: 'ventas', etiqueta: 'Ventas y Facturación', ruta: '../ventas/index.html',
-    icono: 'caja-registradora',
+    icono: 'caja-registradora', acceso: ['ventas.'],
   },
   {
     // Módulo opcional: solo aparece si está activado en Configuración → Módulos.
     clave: 'cuentas_abiertas', etiqueta: 'Cuentas abiertas', ruta: '../ventas/cuentas-abiertas.html', moduloOpcional: 'cuentas_abiertas',
-    icono: 'mesa',
+    icono: 'mesa', acceso: ['ventas.cuenta_abierta.gestionar'],
   },
   {
     clave: 'inventario', etiqueta: 'Inventario', ruta: '../inventario/index.html',
-    icono: 'inventario',
+    icono: 'inventario', acceso: ['inventario.'],
   },
   {
     clave: 'compras', etiqueta: 'Compras y Proveedores', ruta: '../compras/index.html',
-    icono: 'compras',
+    icono: 'compras', acceso: ['compras.'],
   },
   {
     clave: 'cxc', etiqueta: 'Cuentas por Cobrar', ruta: '../cuentas-por-cobrar/index.html',
-    icono: 'clientes',
+    icono: 'clientes', acceso: ['cxc.'],
   },
   {
     clave: 'cxp', etiqueta: 'Cuentas por Pagar', ruta: '../cuentas-por-pagar/index.html',
-    icono: 'proveedor',
+    icono: 'proveedor', acceso: ['cxp.', 'compras.pago.aprobar'],
   },
   {
     clave: 'caja', etiqueta: 'Caja y Tesorería', ruta: '../caja/index.html',
-    icono: 'efectivo',
+    icono: 'efectivo', acceso: ['caja.'],
   },
   {
     clave: 'contabilidad', etiqueta: 'Contabilidad', ruta: '../contabilidad/index.html',
-    icono: 'factura',
+    icono: 'factura', acceso: ['contabilidad.'],
   },
   {
     clave: 'reportes', etiqueta: 'Reportes', ruta: '../reportes/index.html',
@@ -45,7 +45,7 @@ const MODULOS = [
 ];
 
 const CONFIGURACION = {
-  clave: 'configuracion', etiqueta: 'Configuración', ruta: '../configuracion/index.html',
+  clave: 'configuracion', etiqueta: 'Configuración', ruta: '../configuracion/index.html', acceso: ['configuracion.'],
   icono: 'ajustes',
 };
 
@@ -59,8 +59,15 @@ function navItem({ clave, etiqueta, ruta, icono }, activo) {
   `;
 }
 
-function modulosVisibles(modulosActivos) {
-  return MODULOS.filter((m) => !m.moduloOpcional || (modulosActivos && modulosActivos[m.moduloOpcional]));
+// Un módulo se ve si está activo (los opcionales) y el usuario tiene algún permiso suyo.
+function tieneAcceso(m, permisos) {
+  if (!m.acceso || !permisos) return true;
+  const lista = Array.isArray(permisos) ? permisos : [...permisos];
+  return lista.includes('*') || lista.some((p) => m.acceso.some((pre) => p.startsWith(pre)));
+}
+
+function modulosVisibles(modulosActivos, permisos) {
+  return MODULOS.filter((m) => (!m.moduloOpcional || (modulosActivos && modulosActivos[m.moduloOpcional])) && tieneAcceso(m, permisos));
 }
 
 // El distintivo muestra el logo del negocio (si lo cargó en Configuración) o sus iniciales.
@@ -69,11 +76,11 @@ function distintivo(negocio, iniciales) {
   return `<div class="sidebar__badge">${esc(iniciales)}</div>`;
 }
 
-function renderSidebar(moduloActivo, negocio, modulosActivos) {
+function renderSidebar(moduloActivo, negocio, modulosActivos, permisos) {
   const nombre = (negocio && negocio.nombre) || 'Mi Negocio';
   const iniciales = (negocio && negocio.iniciales) || 'MN';
 
-  const items = modulosVisibles(modulosActivos).map((m) => navItem(m, moduloActivo)).join('');
+  const items = modulosVisibles(modulosActivos, permisos).map((m) => navItem(m, moduloActivo)).join('');
 
   return `
     <nav class="sidebar" aria-label="Módulos">
@@ -88,7 +95,7 @@ function renderSidebar(moduloActivo, negocio, modulosActivos) {
       <div class="sidebar__nav">${items}</div>
 
       <div class="sidebar__footer">
-        ${navItem(CONFIGURACION, moduloActivo)}
+        ${tieneAcceso(CONFIGURACION, permisos) ? navItem(CONFIGURACION, moduloActivo) : ''}
         <div class="sidebar__footer-text">
           <img class="marca-nodo marca-nodo--claro" src="../../assets/marca/nodo-logo-horizontal.svg" alt="Nodo" height="22" />
           <img class="marca-nodo marca-nodo--oscuro" src="../../assets/marca/nodo-logo-horizontal-blanco.svg" alt="Nodo" height="22" />
@@ -99,4 +106,4 @@ function renderSidebar(moduloActivo, negocio, modulosActivos) {
   `;
 }
 
-window.PuntoXSidebar = { renderSidebar, modulosVisibles, MODULOS, CONFIGURACION };
+window.PuntoXSidebar = { renderSidebar, modulosVisibles, tieneAcceso, MODULOS, CONFIGURACION };

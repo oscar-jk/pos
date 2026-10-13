@@ -169,7 +169,7 @@ async function anularSecuencias() {
   if (!secuencias.length) { mostrarError('No hay secuencias e-NCF con números disponibles.'); return; }
   window.PuntoXModal.abrirModal('Anular secuencias no usadas', `
     <p style="font-size:13px; color:var(--color-text-muted); margin-top:0;">
-      Se anulan ante la DGII desde el próximo número disponible hasta el que indique (por ejemplo, el resto de un rango que venció).
+      Se anulan ante la DGII desde el próximo número disponible hasta el que indiques (por ejemplo, el resto de un rango que venció).
       Esos números ya no se podrán usar. Para anular una factura use la anulación de la factura.
     </p>
     <div class="form-grid">

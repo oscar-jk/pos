@@ -18,8 +18,14 @@ async function initPuntoXShell(moduloActivo) {
   }
 
   info.modulos = info.modulos || {};
+  // Una pantalla de un módulo sin acceso vuelve al dashboard (el proceso principal también la rechaza).
+  const modulo = [...window.PuntoXSidebar.MODULOS, window.PuntoXSidebar.CONFIGURACION].find((m) => m.clave === moduloActivo);
+  if (modulo && !window.PuntoXSidebar.tieneAcceso(modulo, info.usuario.permisos)) {
+    window.location.href = '../dashboard/index.html';
+    return null;
+  }
   document.getElementById('sidebar-container').innerHTML =
-    window.PuntoXSidebar.renderSidebar(moduloActivo, info.negocio, info.modulos);
+    window.PuntoXSidebar.renderSidebar(moduloActivo, info.negocio, info.modulos, info.usuario.permisos);
   document.getElementById('topbar-container').innerHTML =
     window.PuntoXTopbar.renderTopbar(info.usuario);
 
