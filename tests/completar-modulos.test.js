@@ -252,3 +252,15 @@ test('caja chica: el gasto no supera lo disponible, la reposición abre un perio
   h.loginUsuario(db, h.usuarioDeRol(db, 'Cobrador'));
   assert.throws(() => h.tx(db, () => caja().reponerCajaChica(db, { cajaChicaId: cc.id, usuarioId: ctx.usuarioId })), /permiso/i);
 });
+
+test('tique de Nodo: guías de puntos por línea, ITBIS aparte y logo en tinta única', () => {
+  const { db, ctx, p } = baseVentas();
+  const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/q842iQAAAABJRU5ErkJggg==';
+  h.tx(db, () => config().guardarLogoNegocio(db, { dataUrl: PNG }, ctx.usuarioId));
+  const f = id(h.facturar(db, ctx, [{ productoId: p, cantidad: 2 }], [{ formaPago: 'efectivo', monto: 236 }]));
+  const html = require('../main/printing').htmlFactura(db, f, 'tique');
+  assert.match(html, /<div class="fila"><span>2 x 118\.00<\/span><span class="guia"><\/span><span class="imp">236\.00<\/span><\/div>/);
+  assert.match(html, /ITBIS \(18%\)/);
+  assert.match(html, /<img class="logo" src="data:image\/png;base64,/);
+  assert.doesNotMatch(html, /¡/, 'sin signos de exclamación');
+});
