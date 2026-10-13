@@ -1,4 +1,4 @@
-const { verifyPassword } = require('../auth/password');
+const { verifyPassword, hashPassword } = require('../auth/password');
 const session = require('../auth/session');
 const configuracion = require('./configuracion');
 
@@ -17,6 +17,7 @@ function sesionPublica(sesion) {
   return {
     usuarioId: sesion.usuarioId, nombreCompleto: sesion.nombreCompleto, usuario: sesion.usuario,
     rolId: sesion.rolId, rolNombre: sesion.rolNombre, permisos: Array.from(sesion.permisos),
+    debeCambiarPassword: Boolean(sesion.debeCambiarPassword),
   };
 }
 
@@ -56,9 +57,29 @@ function login(db, { usuario, password }) {
   session.iniciarSesion({
     usuarioId: fila.id, nombreCompleto: fila.nombre_completo, usuario: fila.usuario,
     rolId: fila.rol_id, rolNombre: fila.rol_nombre, permisos: new Set(codigosPermisos),
+    debeCambiarPassword: Boolean(fila.debe_cambiar_password),
   });
 
   configuracion.registrarAuditoria(db, { usuarioId: fila.id, modulo: 'configuracion', entidad: 'usuarios', entidadId: fila.id, accion: 'iniciar_sesion' });
+  return sesionPublica(session.obtenerSesion());
+}
+
+const LARGO_MINIMO = 8;
+
+// Cambio de contraseña del usuario de la sesión. Es lo único que se permite mientras la marca
+// debe_cambiar_password está activa (contraseña de fábrica o puesta por el administrador).
+function cambiarPassword(db, { actual, nueva }) {
+  const sesion = session.obtenerSesion();
+  if (!sesion) throw new Error('No hay una sesión activa. Inicie sesión de nuevo.');
+  const fila = db.prepare('SELECT * FROM usuarios WHERE id = ? AND deleted_at IS NULL').get(sesion.usuarioId);
+  if (!fila) throw new Error('Usuario no encontrado');
+  if (!actual || !verifyPassword(actual, fila.password_hash)) throw new Error('La contraseña actual no es correcta');
+  if (!nueva || nueva.length < LARGO_MINIMO) throw new Error(`La nueva contraseña debe tener al menos ${LARGO_MINIMO} caracteres`);
+  if (nueva === actual) throw new Error('La nueva contraseña debe ser distinta de la actual');
+  db.prepare("UPDATE usuarios SET password_hash = ?, debe_cambiar_password = 0, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?")
+    .run(hashPassword(nueva), fila.id);
+  session.marcarPasswordCambiada();
+  configuracion.registrarAuditoria(db, { usuarioId: fila.id, modulo: 'configuracion', entidad: 'usuarios', entidadId: fila.id, accion: 'cambiar_password' });
   return sesionPublica(session.obtenerSesion());
 }
 
@@ -81,6 +102,10 @@ function register(ipcMain, getDb) {
     return true;
   });
   ipcMain.handle('auth:sesionActual', () => sesionPublica(session.obtenerSesion()));
+  ipcMain.handle('auth:cambiarPassword', (event, payload) => {
+    const db = getDb();
+    return db.transaction(() => cambiarPassword(db, payload || {}))();
+  });
 }
 
-module.exports = { register, login };
+module.exports = { register, login, cambiarPassword, LARGO_MINIMO };

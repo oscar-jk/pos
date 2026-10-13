@@ -72,9 +72,9 @@ function renderSidebar(moduloActivo, negocio, modulosActivos) {
   return `
     <nav class="sidebar">
       <div class="sidebar__brand">
-        <div class="sidebar__badge">${iniciales}</div>
+        <div class="sidebar__badge">${esc(iniciales)}</div>
         <div>
-          <div class="sidebar__brand-name">${nombre}</div>
+          <div class="sidebar__brand-name">${esc(nombre)}</div>
           <div class="sidebar__brand-subtitle">Punto de venta</div>
         </div>
       </div>

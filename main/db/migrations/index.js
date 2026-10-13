@@ -11,6 +11,7 @@ const MIGRACIONES = [
   require('./007_retenciones_cobro'),
   require('./008_multimoneda'),
   require('./009_conversion_listas'),
+  require('./010_cambio_password'),
 ];
 
 function columnasDe(db, tabla) {

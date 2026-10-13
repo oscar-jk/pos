@@ -39,7 +39,10 @@ function registerCoreIpc() {
 
     const sesion = session.obtenerSesion();
     const usuario = sesion
-      ? { id: sesion.usuarioId, nombreCompleto: sesion.nombreCompleto, rolId: sesion.rolId, rol: sesion.rolNombre, permisos: Array.from(sesion.permisos) }
+      ? {
+        id: sesion.usuarioId, nombreCompleto: sesion.nombreCompleto, rolId: sesion.rolId, rol: sesion.rolNombre,
+        permisos: Array.from(sesion.permisos), debeCambiarPassword: Boolean(sesion.debeCambiarPassword),
+      }
       : null;
 
     return {

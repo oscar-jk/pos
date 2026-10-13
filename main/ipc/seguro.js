@@ -21,7 +21,12 @@ function protegerIpc(ipcMain) {
   envuelto.handle = function handle(canal, fn) {
       // auth:login no lleva usuario de sesión (todavía no hay).
       if (canal.startsWith('auth:')) return ipcMain.handle(canal, fn);
-    return ipcMain.handle(canal, (event, payload, ...resto) => fn(event, sanear(payload), ...resto));
+    return ipcMain.handle(canal, (event, payload, ...resto) => {
+      // Con la contraseña pendiente de cambio, solo se atienden los canales auth:*.
+      const sesion = session.obtenerSesion();
+      if (sesion && sesion.debeCambiarPassword) throw new Error('Debe cambiar su contraseña antes de continuar.');
+      return fn(event, sanear(payload), ...resto);
+    });
   };
   return envuelto;
 }

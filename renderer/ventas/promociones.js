@@ -3,9 +3,6 @@ const state = { info: null, categorias: [], promociones: [] };
 function fmt(n) {
   return `RD$ ${(n || 0).toLocaleString('es-DO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
-function esc(texto) {
-  return String(texto ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-}
 function fechaSimple(aaaammdd) {
   return aaaammdd ? aaaammdd.split('-').reverse().join('/') : '—';
 }
@@ -50,7 +47,7 @@ async function cargarPromociones() {
         <td>${fechaSimple(p.fecha_inicio)}</td><td>${fechaSimple(p.fecha_fin)}</td>
         <td><span class="pill-estado" style="background:${color};">${etiqueta}</span></td>
         <td style="white-space:nowrap;">
-          ${p.activo ? `<span class="enlace-accion" data-editar="${p.id}">Editar</span> · <span class="enlace-accion" data-desactivar="${p.id}" style="color:var(--color-danger);">Desactivar</span>` : ''}
+          ${p.activo ? `<span class="enlace-accion" data-editar="${esc(p.id)}">Editar</span> · <span class="enlace-accion" data-desactivar="${esc(p.id)}" style="color:var(--color-danger);">Desactivar</span>` : ''}
         </td>
       </tr>`;
   }).join('');
@@ -80,7 +77,7 @@ function abrirFormulario(promo) {
         <div id="pr-producto-sel" style="margin-top:6px; font-size:13px; font-weight:600;"></div>
       </div>
       <select id="pr-categoria" class="input-normal" style="display:none;">
-        ${state.categorias.map((c) => `<option value="${c.id}" ${promo && promo.categoria_id === c.id ? 'selected' : ''}>${esc(c.nombre)}</option>`).join('')}
+        ${state.categorias.map((c) => `<option value="${esc(c.id)}" ${promo && promo.categoria_id === c.id ? 'selected' : ''}>${esc(c.nombre)}</option>`).join('')}
       </select>
     </div>
     <div class="form-grid" style="margin-top:10px;">
@@ -90,9 +87,9 @@ function abrirFormulario(promo) {
           <option value="monto" ${promo && promo.tipo_descuento === 'monto' ? 'selected' : ''}>Monto por unidad (RD$)</option>
         </select>
       </div>
-      <div class="form-field"><label>Descuento *</label><input id="pr-valor" type="number" min="0" step="0.01" value="${promo ? promo.valor : ''}" /></div>
+      <div class="form-field"><label>Descuento *</label><input id="pr-valor" type="number" min="0" step="0.01" value="${esc(promo ? promo.valor : '')}" /></div>
       <div class="form-field"><label>Desde *</label><input id="pr-desde" type="date" value="${promo ? promo.fecha_inicio : hoy}" /></div>
-      <div class="form-field"><label>Hasta *</label><input id="pr-hasta" type="date" value="${promo ? promo.fecha_fin : ''}" /></div>
+      <div class="form-field"><label>Hasta *</label><input id="pr-hasta" type="date" value="${esc(promo ? promo.fecha_fin : '')}" /></div>
     </div>
     <div style="font-size:12px; color:var(--color-text-muted); margin-top:8px;">Si el cajero pone un descuento mayor en la línea, se usa el mayor; no se suman.</div>
     <div class="form-seccion" style="display:flex; justify-content:flex-end; gap:8px;">

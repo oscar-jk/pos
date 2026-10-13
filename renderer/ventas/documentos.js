@@ -3,9 +3,6 @@ const state = { info: null, tab: 'cotizaciones', conduces: [], seleccionados: ne
 function fmt(n) {
   return `RD$ ${(n || 0).toLocaleString('es-DO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
-function esc(texto) {
-  return String(texto ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-}
 function fechaCorta(iso) {
   return iso ? new Date(iso).toLocaleDateString('es-DO', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '—';
 }
@@ -56,12 +53,12 @@ async function cargarCotizaciones() {
     const vigente = c.estado === 'abierto' && !c.vencida;
     return `
       <tr>
-        <td>${c.numero}</td><td>${esc(c.cliente_nombre)}</td><td>${fechaCorta(c.fecha)}</td><td>${fechaPura(c.valida_hasta)}</td>
+        <td>${esc(c.numero)}</td><td>${esc(c.cliente_nombre)}</td><td>${fechaCorta(c.fecha)}</td><td>${fechaPura(c.valida_hasta)}</td>
         <td style="text-align:right;">${fmt(c.total)}</td><td>${estadoCotizacion(c)}</td>
         <td style="white-space:nowrap;">
-          ${window.puntoXImpresion ? `<span class="enlace-accion" data-imprimir="${c.id}">Imprimir</span>` : ''}
+          ${window.puntoXImpresion ? `<span class="enlace-accion" data-imprimir="${esc(c.id)}">Imprimir</span>` : ''}
           ${vigente ? ` · <a class="enlace-accion" data-permiso="ventas.factura.crear" href="./index.html?cotizacion=${encodeURIComponent(c.id)}">Facturar</a>` : ''}
-          ${c.estado === 'abierto' ? ` · <span class="enlace-accion" data-permiso="ventas.cotizacion.crear" data-anular-cotizacion="${c.id}" style="color:var(--color-danger);">Anular</span>` : ''}
+          ${c.estado === 'abierto' ? ` · <span class="enlace-accion" data-permiso="ventas.cotizacion.crear" data-anular-cotizacion="${esc(c.id)}" style="color:var(--color-danger);">Anular</span>` : ''}
         </td>
       </tr>`;
   }).join('');
@@ -88,12 +85,12 @@ async function cargarPedidos() {
   document.getElementById('pedidos-vacio').style.display = lista.length === 0 ? 'block' : 'none';
   document.getElementById('pedidos-tbody').innerHTML = lista.map((p) => `
     <tr>
-      <td>${p.numero}</td><td>${esc(p.cliente_nombre)}</td><td>${fechaCorta(p.fecha)}</td><td>${esc(p.concepto) || '—'}</td>
+      <td>${esc(p.numero)}</td><td>${esc(p.cliente_nombre)}</td><td>${fechaCorta(p.fecha)}</td><td>${esc(p.concepto) || '—'}</td>
       <td style="text-align:right;">${fmt(p.total)}</td><td>${estadoPedido(p)}</td>
       <td style="white-space:nowrap;">
-        ${window.puntoXImpresion ? `<span class="enlace-accion" data-imprimir="${p.id}">Imprimir</span>` : ''}
+        ${window.puntoXImpresion ? `<span class="enlace-accion" data-imprimir="${esc(p.id)}">Imprimir</span>` : ''}
         ${p.estado === 'abierto' ? ` · <a class="enlace-accion" data-permiso="ventas.factura.crear" href="./index.html?pedido=${encodeURIComponent(p.id)}">Facturar</a>` : ''}
-        ${p.estado === 'abierto' ? ` · <span class="enlace-accion" data-permiso="ventas.pedido.crear" data-anular-pedido="${p.id}" style="color:var(--color-danger);">Anular</span>` : ''}
+        ${p.estado === 'abierto' ? ` · <span class="enlace-accion" data-permiso="ventas.pedido.crear" data-anular-pedido="${esc(p.id)}" style="color:var(--color-danger);">Anular</span>` : ''}
       </td>
     </tr>`).join('');
   document.querySelectorAll('#pedidos-tbody [data-imprimir]').forEach((el) => el.addEventListener('click', () => imprimir(el.dataset.imprimir)));
@@ -121,12 +118,12 @@ async function cargarConduces() {
   document.getElementById('conduces-vacio').style.display = lista.length === 0 ? 'block' : 'none';
   document.getElementById('conduces-tbody').innerHTML = lista.map((c) => `
     <tr>
-      <td>${c.estado === 'entregado' ? `<input type="checkbox" data-seleccionar="${c.id}" ${state.seleccionados.has(c.id) ? 'checked' : ''} />` : ''}</td>
-      <td>${c.numero}</td><td>${esc(c.cliente_nombre)}</td><td>${fechaCorta(c.fecha)}</td><td>${esc(c.concepto) || '—'}</td>
+      <td>${c.estado === 'entregado' ? `<input type="checkbox" data-seleccionar="${esc(c.id)}" ${state.seleccionados.has(c.id) ? 'checked' : ''} />` : ''}</td>
+      <td>${esc(c.numero)}</td><td>${esc(c.cliente_nombre)}</td><td>${fechaCorta(c.fecha)}</td><td>${esc(c.concepto) || '—'}</td>
       <td style="text-align:right;">${fmt(c.total)}</td><td>${estadoConduce(c)}</td>
       <td style="white-space:nowrap;">
-        ${window.puntoXImpresion ? `<span class="enlace-accion" data-imprimir="${c.id}">Imprimir</span>` : ''}
-        ${c.estado === 'entregado' ? ` · <span class="enlace-accion" data-permiso="ventas.factura.anular" data-anular-conduce="${c.id}" style="color:var(--color-danger);">Anular</span>` : ''}
+        ${window.puntoXImpresion ? `<span class="enlace-accion" data-imprimir="${esc(c.id)}">Imprimir</span>` : ''}
+        ${c.estado === 'entregado' ? ` · <span class="enlace-accion" data-permiso="ventas.factura.anular" data-anular-conduce="${esc(c.id)}" style="color:var(--color-danger);">Anular</span>` : ''}
       </td>
     </tr>`).join('');
   document.querySelectorAll('#conduces-tbody [data-imprimir]').forEach((el) => el.addEventListener('click', () => imprimir(el.dataset.imprimir)));

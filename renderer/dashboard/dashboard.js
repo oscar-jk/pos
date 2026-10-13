@@ -70,9 +70,9 @@ async function cargarAlertas() {
   } else {
     contenedor.innerHTML = `<div class="alert-list">${alertas.slice(0, 8).map((a) => `
       <div class="alert-item">
-        <span class="alert-item__bar" style="background:${a.color};"></span>
-        <span class="alert-item__tag" style="color:${a.color};">${a.tag}</span>
-        <span class="alert-item__text">${a.texto}</span>
+        <span class="alert-item__bar" style="background:${esc(a.color)};"></span>
+        <span class="alert-item__tag" style="color:${esc(a.color)};">${esc(a.tag)}</span>
+        <span class="alert-item__text">${esc(a.texto)}</span>
       </div>
     `).join('')}</div>`;
   }
@@ -128,8 +128,8 @@ async function cargarVentasYCaja() {
         <tbody>
           ${recientes.map((f) => `
             <tr>
-              <td>${f.cliente_nombre}</td><td style="font-weight:700;">${fmt(f.total)}</td>
-              <td><span class="status-pill" style="background:${f.estado === 'anulado' ? 'var(--color-danger)' : 'var(--color-success)'};">${f.estado}</span></td>
+              <td>${esc(f.cliente_nombre)}</td><td style="font-weight:700;">${fmt(f.total)}</td>
+              <td><span class="status-pill" style="background:${f.estado === 'anulado' ? 'var(--color-danger)' : 'var(--color-success)'};">${esc(f.estado)}</span></td>
               <td>${new Date(f.fecha).toLocaleString('es-DO', { dateStyle: 'short', timeStyle: 'short' })}</td>
             </tr>
           `).join('')}
@@ -141,6 +141,7 @@ async function cargarVentasYCaja() {
 
 async function init() {
   const info = await window.PuntoXShell.initPuntoXShell('dashboard');
+  if (!info) return; // sin sesión o con la contraseña pendiente: el shell ya redirigió al login
 
   const nombre = primerNombre(info.usuario && info.usuario.nombreCompleto);
   document.getElementById('saludo').textContent = nombre ? `${saludoPorHora()}, ${nombre}` : saludoPorHora();

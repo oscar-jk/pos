@@ -69,6 +69,7 @@ CREATE TABLE usuarios (
   sucursal_id     TEXT REFERENCES sucursales(id),
   pct_comision    REAL NOT NULL DEFAULT 0, -- % de comisión de vendedor, aplica solo a roles que venden
   activo          INTEGER NOT NULL DEFAULT 1,
+  debe_cambiar_password INTEGER NOT NULL DEFAULT 0, -- 1 = solo puede cambiar su contraseña al entrar
   created_at      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
   updated_at      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
   deleted_at      TEXT

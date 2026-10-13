@@ -9,7 +9,10 @@
   "scripts": {
     "start": "electron .",
     "dist": "electron-builder",
-    "test": "node --test tests/*.test.js"
+    "test": "node scripts/test.js",
+    "test:node": "node --test tests/",
+    "rebuild:node": "npm rebuild better-sqlite3",
+    "rebuild:electron": "electron-rebuild -f -w better-sqlite3"
   },
   "dependencies": {
     "better-sqlite3": "^11.10.0"
@@ -17,7 +20,8 @@
   "devDependencies": {
     "@electron/rebuild": "^4.2.0",
     "electron": "^32.0.0",
-    "electron-builder": "^25.0.0"
+    "electron-builder": "^25.0.0",
+    "typescript": "^5.9.3"
   },
   "build": {
     "appId": "com.odteamx.puntox",

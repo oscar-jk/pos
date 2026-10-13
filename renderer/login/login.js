@@ -23,10 +23,14 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
   boton.textContent = 'Ingresando...';
 
   try {
-    await window.puntoXAuth.login({
+    const sesion = await window.puntoXAuth.login({
       usuario: document.getElementById('login-usuario').value.trim(),
       password: document.getElementById('login-password').value,
     });
+    if (sesion && sesion.debeCambiarPassword) {
+      mostrarCambio(document.getElementById('login-password').value);
+      return;
+    }
     window.location.href = '../dashboard/index.html';
   } catch (err) {
     mostrarError(err.message);
@@ -35,4 +39,44 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
   }
 });
 
+// --- Cambio obligatorio de contraseña (contraseña de fábrica o puesta por el administrador) ---
+
+function mostrarCambio(actual) {
+  document.getElementById('login-form').style.display = 'none';
+  document.getElementById('cambio-form').style.display = 'block';
+  document.querySelector('.login-card__subtitulo').textContent = 'Cambia tu contraseña';
+  const campoActual = document.getElementById('cambio-actual');
+  campoActual.value = actual || '';
+  (actual ? document.getElementById('cambio-nueva') : campoActual).focus();
+}
+
+document.getElementById('cambio-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  mostrarError(null);
+  const nueva = document.getElementById('cambio-nueva').value;
+  if (nueva !== document.getElementById('cambio-repetir').value) { mostrarError('Las dos contraseñas nuevas no coinciden'); return; }
+  const boton = document.getElementById('cambio-btn');
+  boton.disabled = true;
+  try {
+    await window.puntoXAuth.cambiarPassword({ actual: document.getElementById('cambio-actual').value, nueva });
+    window.location.href = '../dashboard/index.html';
+  } catch (err) {
+    mostrarError(err.message);
+    boton.disabled = false;
+  }
+});
+
+document.getElementById('cambio-salir').addEventListener('click', async () => {
+  await window.puntoXAuth.logout();
+  window.location.hash = '';
+  window.location.reload();
+});
+
+async function revisarCambioPendiente() {
+  if (!window.puntoXAuth.sesionActual) return;
+  const sesion = await window.puntoXAuth.sesionActual();
+  if (sesion && sesion.debeCambiarPassword) mostrarCambio('');
+}
+
 cargarMarca();
+revisarCambioPendiente();

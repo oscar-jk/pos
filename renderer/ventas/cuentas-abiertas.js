@@ -4,10 +4,6 @@ function fmt(n) {
   return `RD$ ${(n || 0).toLocaleString('es-DO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-function esc(texto) {
-  return String(texto ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-}
-
 function hora(iso) {
   return new Date(iso).toLocaleTimeString('es-DO', { hour: '2-digit', minute: '2-digit' });
 }
@@ -49,9 +45,9 @@ function render() {
         ${state.cuentas.length === 0
           ? '<div class="empty-state empty-state--panel">No hay cuentas abiertas. Abre una con "+ Abrir cuenta".</div>'
           : `<div class="cuentas-grid">${state.cuentas.map((c) => `
-            <button type="button" class="cuenta-card ${c.id === state.seleccionadaId ? 'is-active' : ''}" data-cuenta="${c.id}">
+            <button type="button" class="cuenta-card ${c.id === state.seleccionadaId ? 'is-active' : ''}" data-cuenta="${esc(c.id)}">
               <div class="cuenta-card__nombre">${esc(c.nombre)}</div>
-              <div class="cuenta-card__meta">${c.cantidad_productos} producto(s) · ${tiempoAbierta(c.created_at)}</div>
+              <div class="cuenta-card__meta">${esc(c.cantidad_productos)} producto(s) · ${tiempoAbierta(c.created_at)}</div>
               <div class="cuenta-card__total">${fmt(c.total)}</div>
             </button>`).join('')}</div>`}
       </div>
@@ -77,7 +73,7 @@ function renderDetalle() {
       <div class="cuenta-detalle__encabezado">
         <div>
           <div class="cuenta-detalle__titulo">${esc(c.nombre)}</div>
-          <div class="cuenta-detalle__sub">Cuenta ${c.numero} · abierta a las ${hora(c.created_at)} por ${esc(c.usuario_nombre)} · ${tiempoAbierta(c.created_at)}</div>
+          <div class="cuenta-detalle__sub">Cuenta ${esc(c.numero)} · abierta a las ${hora(c.created_at)} por ${esc(c.usuario_nombre)} · ${tiempoAbierta(c.created_at)}</div>
         </div>
       </div>
 
@@ -97,11 +93,11 @@ function renderDetalle() {
           ${c.lineas.map((l) => `
             <tr>
               <td>${esc(l.producto.descripcion)}${l.nota ? `<div style="font-size:11px; color:var(--color-text-muted);">${esc(l.nota)}</div>` : ''}</td>
-              <td style="text-align:center;">${l.cantidad}</td>
+              <td style="text-align:center;">${esc(l.cantidad)}</td>
               <td style="text-align:right;">${fmt(l.precio_unitario)}</td>
               <td style="text-align:right; font-weight:700;">${fmt(l.subtotal)}</td>
               <td style="font-size:11px; color:var(--color-text-muted);">${hora(l.created_at)} · ${esc(l.usuario_nombre)}</td>
-              <td class="carrito-quitar" data-permiso="ventas.cuenta_abierta.anular" data-quitar="${l.id}" title="Quitar">✕</td>
+              <td class="carrito-quitar" data-permiso="ventas.cuenta_abierta.anular" data-quitar="${esc(l.id)}" title="Quitar">✕</td>
             </tr>`).join('')}
         </tbody>
       </table>`}
@@ -148,7 +144,7 @@ function enlazarBuscador(cuenta) {
       const encontrados = await window.puntoXInventario.buscarProductos({ texto, almacenId: cuenta.almacen_id, limite: 12 });
       resultados.innerHTML = encontrados.map((p, i) => `
         <div class="buscador-resultados__item" data-i="${i}">
-          <div><div class="buscador-resultados__nombre">${esc(p.descripcion)}</div><div class="buscador-resultados__meta">${esc(p.codigo_interno)} · Disp: ${p.cantidad_disponible}</div></div>
+          <div><div class="buscador-resultados__nombre">${esc(p.descripcion)}</div><div class="buscador-resultados__meta">${esc(p.codigo_interno)} · Disp: ${esc(p.cantidad_disponible)}</div></div>
           <div class="buscador-resultados__precio">${fmt(p.precio_detalle)}</div>
         </div>`).join('') || '<div class="buscador-resultados__vacio">Sin resultados</div>';
       resultados.querySelectorAll('[data-i]').forEach((el) => el.addEventListener('click', async () => {

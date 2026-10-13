@@ -184,14 +184,15 @@ function listarUsuarios(db) {
 function crearUsuario(db, { nombreCompleto, usuario, password, rolId, sucursalId, pctComision }, usuarioCreadorId) {
   session.requerirPermiso('configuracion.gestionar');
   if (!nombreCompleto || !usuario || !password || !rolId) throw new Error('Nombre, usuario, contraseña y rol son obligatorios');
-  if (password.length < 6) throw new Error('La contraseña debe tener al menos 6 caracteres');
+  if (password.length < 8) throw new Error('La contraseña debe tener al menos 8 caracteres');
   const existe = db.prepare('SELECT 1 FROM usuarios WHERE usuario = ? AND deleted_at IS NULL').get(usuario);
   if (existe) throw new Error(`Ya existe un usuario con el nombre de acceso "${usuario}"`);
 
   const id = crypto.randomUUID();
   db.prepare(
-    `INSERT INTO usuarios (id, nombre_completo, usuario, password_hash, rol_id, sucursal_id, pct_comision, activo)
-     VALUES (?, ?, ?, ?, ?, ?, ?, 1)`
+    // La contraseña la pone el administrador: el usuario debe cambiarla al entrar.
+    `INSERT INTO usuarios (id, nombre_completo, usuario, password_hash, rol_id, sucursal_id, pct_comision, activo, debe_cambiar_password)
+     VALUES (?, ?, ?, ?, ?, ?, ?, 1, 1)`
   ).run(id, nombreCompleto, usuario, hashPassword(password), rolId, sucursalId || null, pctComision || 0);
   registrarAuditoria(db, { usuarioId: usuarioCreadorId, modulo: 'configuracion', entidad: 'usuarios', entidadId: id, accion: 'crear', detalle: { usuario, rolId } });
   return id;
@@ -204,10 +205,11 @@ function actualizarUsuario(db, usuarioId, { nombreCompleto, rolId, sucursalId, p
        updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?`
   ).run(nombreCompleto, rolId, sucursalId || null, pctComision || 0, activo === false ? 0 : 1, usuarioId);
   if (password) {
-    if (password.length < 6) throw new Error('La contraseña debe tener al menos 6 caracteres');
-    db.prepare("UPDATE usuarios SET password_hash = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?").run(hashPassword(password), usuarioId);
+    if (password.length < 8) throw new Error('La contraseña debe tener al menos 8 caracteres');
+    db.prepare("UPDATE usuarios SET password_hash = ?, debe_cambiar_password = 1, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?").run(hashPassword(password), usuarioId);
   }
   registrarAuditoria(db, { usuarioId: usuarioEditorId, modulo: 'configuracion', entidad: 'usuarios', entidadId: usuarioId, accion: 'editar', detalle: { rolId, activo } });
+  refrescarSesion(db);
 }
 
 // =========================================================================
@@ -238,9 +240,35 @@ function permisosDeRol(db, rolId) {
 // permiso_id), así que un permiso que se quita y luego se vuelve a asignar no puede
 // re-insertarse (la fila borrada lógicamente sigue ocupando esa combinación) — hay que
 // restaurarla en vez de insertar una duplicada, coherente con "nunca borrar físicamente".
+// Permisos activos de un rol, en códigos.
+function codigosPermisosRol(db, rolId) {
+  return db
+    .prepare(
+      `SELECT p.codigo FROM roles_permisos rp JOIN permisos p ON p.id = rp.permiso_id
+       WHERE rp.rol_id = ? AND rp.deleted_at IS NULL AND p.deleted_at IS NULL`
+    )
+    .all(rolId)
+    .map((r) => r.codigo);
+}
+
+// La sesión activa guarda sus permisos al iniciar; si se cambia su rol o los permisos de su
+// rol, se recargan en el momento (sin esperar a que cierre sesión).
+function refrescarSesion(db) {
+  const sesion = session.obtenerSesion();
+  if (!sesion) return;
+  const usuario = db.prepare('SELECT u.rol_id, r.nombre AS rol_nombre FROM usuarios u JOIN roles r ON r.id = u.rol_id WHERE u.id = ?').get(sesion.usuarioId);
+  if (!usuario) return;
+  session.actualizarRol({ rolId: usuario.rol_id, rolNombre: usuario.rol_nombre, permisos: new Set(codigosPermisosRol(db, usuario.rol_id)) });
+}
+
 function actualizarPermisosRol(db, rolId, permisoIds, usuarioId) {
   session.requerirPermiso('configuracion.gestionar');
   const nuevoSet = new Set(permisoIds);
+  const sesion = session.obtenerSesion();
+  const gestionar = db.prepare("SELECT id FROM permisos WHERE codigo = 'configuracion.gestionar'").get();
+  if (sesion && sesion.rolId === rolId && gestionar && !nuevoSet.has(gestionar.id)) {
+    throw new Error('No puede quitarle a su propio rol el permiso de configuración: se quedaría sin acceso. Hágalo desde otro usuario administrador.');
+  }
   const filasExistentes = db.prepare('SELECT id, permiso_id, deleted_at FROM roles_permisos WHERE rol_id = ?').all(rolId);
   const filaPorPermiso = new Map(filasExistentes.map((f) => [f.permiso_id, f]));
 
@@ -258,6 +286,7 @@ function actualizarPermisosRol(db, rolId, permisoIds, usuarioId) {
   }
 
   registrarAuditoria(db, { usuarioId, modulo: 'configuracion', entidad: 'roles', entidadId: rolId, accion: 'editar_permisos', detalle: { totalPermisos: permisoIds.length } });
+  refrescarSesion(db);
 }
 
 function actualizarLimiteDescuentoRol(db, rolId, limitePct, usuarioId) {
