@@ -83,6 +83,7 @@ function createMainWindow() {
     minWidth: 1100,
     minHeight: 700,
     backgroundColor: '#0F3D34',
+    icon: path.join(__dirname, '..', 'assets', 'icon.ico'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
