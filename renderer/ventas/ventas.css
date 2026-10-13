@@ -179,6 +179,8 @@
   font-weight: 800;
   color: var(--color-text);
   margin-top: 4px;
+  padding-bottom: 6px;
+  border-bottom: 3px solid var(--accent); /* el único énfasis ámbar de la pantalla */
 }
 
 .pagos-grid {
@@ -213,8 +215,10 @@
   z-index: 1;
   box-shadow: 0 10px 0 10px var(--color-surface);
   padding: 13px;
-  border-radius: var(--radius-sm);
+  min-height: 56px; /* touch-pos */
+  border-radius: var(--radius-md);
   border: none;
+  transition: transform 160ms var(--ease-out);
   background: var(--color-accent);
   color: var(--color-on-solid);
   font-family: inherit;
@@ -223,8 +227,11 @@
   cursor: pointer;
 }
 
+.btn-cobrar:active:not(:disabled) { transform: scale(0.97); }
+
 .btn-cobrar:disabled {
-  background: var(--color-border-input);
+  background: var(--color-surface-sunken);
+  border: 1px solid var(--color-border);
   color: var(--color-text-faint);
   cursor: not-allowed;
 }

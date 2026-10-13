@@ -922,3 +922,10 @@ select.input-normal, input.input-normal {
 }
 :root[data-theme="dark"] .marca-nodo--claro { display: none; }
 :root[data-theme="dark"] .marca-nodo--oscuro { display: block; }
+
+/* Cifras de dinero y cantidades en JetBrains Mono (tabulares). */
+.kpi-card__value, .totales__fila span:last-child, .buscador-resultados__precio, .resumen-turno__valor, .price {
+  font-family: var(--font-mono);
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
