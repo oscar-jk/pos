@@ -61,8 +61,11 @@ function filasImpuestos(itbisPorTasa, formato) {
 }
 
 function encabezadoNegocio(negocio, ri) {
+  const logo = negocio.logo && /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(negocio.logo)
+    ? `<img src="${negocio.logo}" alt="" style="max-height:64px; max-width:200px; display:block; margin-bottom:8px;" />` : '';
   return `
     <div style="margin-bottom:12px;">
+      ${logo}
       <div style="font-size:20px; font-weight:800;">${escapar(negocio.nombre || 'Mi Negocio')}</div>
       ${ri && ri.razonSocial && ri.razonSocial !== negocio.nombre ? `<div>${escapar(ri.razonSocial)}</div>` : ''}
       ${negocio.rnc ? `<div>RNC: ${escapar(negocio.rnc)}</div>` : ''}

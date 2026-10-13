@@ -66,7 +66,7 @@ function impresoraPorTipo(db, tipo) {
 
 function datosNegocio(db) {
   const d = configuracion.obtenerDatosNegocio(db);
-  return { nombre: d.negocio_nombre, rnc: d.negocio_rnc, direccion: d.negocio_direccion, telefono: d.negocio_telefono };
+  return { nombre: d.negocio_nombre, rnc: d.negocio_rnc, direccion: d.negocio_direccion, telefono: d.negocio_telefono, logo: d.negocio_logo || null };
 }
 
 // =========================================================================

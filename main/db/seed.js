@@ -310,7 +310,7 @@ function seed(db) {
     // --- Identidad del negocio (editable desde Configuración) ---
     insertParametro.run('negocio_nombre', 'Mi Negocio', 'Nombre del negocio mostrado en el sidebar', timestamp);
     insertParametro.run('negocio_iniciales', 'MN', 'Iniciales del negocio para el distintivo del sidebar', timestamp);
-    insertParametro.run('negocio_color_acento', '#146356', 'Color de acento de la interfaz', timestamp);
+    insertParametro.run('negocio_color_acento', '#0A6B68', 'Color de marca de la interfaz', timestamp);
     insertParametro.run('negocio_rnc', '', 'RNC del negocio, impreso en el encabezado de factura', timestamp);
     insertParametro.run('negocio_direccion', '', 'Dirección del negocio, impresa en el encabezado de factura', timestamp);
     insertParametro.run('negocio_telefono', '', 'Teléfono del negocio, impreso en el encabezado de factura', timestamp);

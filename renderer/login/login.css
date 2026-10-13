@@ -3,7 +3,7 @@ html, body {
 }
 
 body {
-  background: var(--color-sidebar-bg);
+  background: var(--color-bg);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -11,10 +11,11 @@ body {
 
 .login-card {
   width: 360px;
+  border: 1px solid var(--color-border);
   background: var(--color-surface);
   border-radius: var(--radius-lg);
   padding: 32px 28px;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.25);
+  box-shadow: var(--shadow-md);
 }
 
 .login-card__badge {
@@ -22,7 +23,7 @@ body {
   height: 48px;
   border-radius: var(--radius-sm);
   background: var(--color-accent);
-  color: var(--color-sidebar-bg);
+  color: var(--color-on-solid);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -30,7 +31,10 @@ body {
   font-weight: 800;
   font-size: 18px;
   margin: 0 auto 16px;
+  overflow: hidden;
 }
+.login-card__badge--logo { background: transparent; border: 1px solid var(--color-border); }
+.login-card__badge img { width: 100%; height: 100%; object-fit: contain; }
 
 .login-card__titulo {
   font-family: var(--font-heading);
@@ -57,7 +61,7 @@ body {
   border-radius: var(--radius-sm);
   border: none;
   background: var(--color-accent);
-  color: #fff;
+  color: var(--color-on-solid);
   font-family: inherit;
   font-weight: 700;
   font-size: 14px;
@@ -72,7 +76,7 @@ body {
 }
 
 .login-error {
-  background: #fdecea;
+  background: var(--color-danger-tint);
   color: var(--color-danger);
   border-radius: var(--radius-sm);
   padding: 10px 12px;
@@ -84,10 +88,11 @@ body {
 
 .login-footer {
   text-align: center;
-  font-size: 10px;
-  color: rgba(255, 255, 255, 0.5);
+  font-size: 12px;
+  color: var(--color-text-muted);
   margin-top: 18px;
 }
+.login-footer .marca-nodo { margin: 0 auto 8px; }
 
 .login-aviso {
   font-size: 13px;

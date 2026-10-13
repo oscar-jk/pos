@@ -6,11 +6,11 @@
 }
 
 .pill-estado {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   padding: 3px 9px;
   border-radius: 20px;
-  color: #fff;
+  color: var(--color-on-solid);
 }
 
 .form-seccion {

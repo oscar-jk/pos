@@ -27,7 +27,7 @@
 .cuenta-card.is-active { border-color: var(--color-accent); box-shadow: 0 0 0 2px var(--color-accent-soft); }
 
 .cuenta-card__nombre { font-family: var(--font-heading); font-size: 16px; font-weight: 800; }
-.cuenta-card__meta { font-size: 11px; color: var(--color-text-muted); margin-top: 2px; }
+.cuenta-card__meta { font-size: 12px; color: var(--color-text-muted); margin-top: 2px; }
 .cuenta-card__total { font-size: 15px; font-weight: 800; color: var(--color-accent); margin-top: 10px; }
 
 .cuenta-detalle {

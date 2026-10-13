@@ -41,6 +41,7 @@ function registerCoreIpc() {
       if (clave === 'negocio_nombre') negocio.nombre = valor;
       if (clave === 'negocio_iniciales') negocio.iniciales = valor;
       if (clave === 'negocio_color_acento') negocio.colorAcento = valor;
+      if (clave === 'negocio_logo' && valor) negocio.logo = valor;
     }
 
     const sesion = session.obtenerSesion();

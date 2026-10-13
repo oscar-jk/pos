@@ -16,6 +16,9 @@ async function initPuntoXShell(moduloActivo) {
   document.getElementById('topbar-container').innerHTML =
     window.PuntoXTopbar.renderTopbar(info.usuario);
 
+  if (window.PuntoXTema) window.PuntoXTema.aplicarColorMarca(info.negocio && info.negocio.colorAcento);
+  window.PuntoXTopbar.enlazarTema();
+
   const permisos = new Set(info.usuario.permisos || []);
   // '*' = todo permitido (lo usa la versión web de prueba, que no tiene matriz de roles).
   info.tienePermiso = (codigo) => permisos.has('*') || permisos.has(codigo);

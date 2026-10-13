@@ -502,7 +502,7 @@ async function renderDetalleConciliacion() {
     <div class="conc-resumen">
       <div class="resumen-turno__item"><div class="resumen-turno__label">Saldo estado de cuenta</div>
         <div class="resumen-turno__valor">${fmt(r.saldoEstadoCuenta)}</div>
-        ${editable ? '<span class="enlace-accion" id="conc-editar-saldo" style="font-size:11px;">Cambiar</span>' : ''}</div>
+        ${editable ? '<span class="enlace-accion" id="conc-editar-saldo" style="font-size: 12px;">Cambiar</span>' : ''}</div>
       <div class="resumen-turno__item"><div class="resumen-turno__label">+ Depósitos en tránsito</div><div class="resumen-turno__valor">${fmt(r.depositosEnTransito)}</div></div>
       <div class="resumen-turno__item"><div class="resumen-turno__label">− Cheques en tránsito</div><div class="resumen-turno__valor">${fmt(r.chequesEnTransito)}</div></div>
       <div class="resumen-turno__item"><div class="resumen-turno__label">Saldo en libros (Bancos)</div><div class="resumen-turno__valor">${fmt(r.saldoLibros)}</div></div>

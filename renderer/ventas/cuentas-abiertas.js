@@ -92,11 +92,11 @@ function renderDetalle() {
         <tbody>
           ${c.lineas.map((l) => `
             <tr>
-              <td>${esc(l.producto.descripcion)}${l.nota ? `<div style="font-size:11px; color:var(--color-text-muted);">${esc(l.nota)}</div>` : ''}</td>
+              <td>${esc(l.producto.descripcion)}${l.nota ? `<div style="font-size: 12px; color:var(--color-text-muted);">${esc(l.nota)}</div>` : ''}</td>
               <td style="text-align:center;">${esc(l.cantidad)}</td>
               <td style="text-align:right;">${fmt(l.precio_unitario)}</td>
               <td style="text-align:right; font-weight:700;">${fmt(l.subtotal)}</td>
-              <td style="font-size:11px; color:var(--color-text-muted);">${hora(l.created_at)} · ${esc(l.usuario_nombre)}</td>
+              <td style="font-size: 12px; color:var(--color-text-muted);">${hora(l.created_at)} · ${esc(l.usuario_nombre)}</td>
               <td class="carrito-quitar" data-permiso="ventas.cuenta_abierta.anular" data-quitar="${esc(l.id)}" title="Quitar">✕</td>
             </tr>`).join('')}
         </tbody>

@@ -55,6 +55,41 @@ function actualizarDatosNegocio(db, { nombre, iniciales, colorAcento, rnc, razon
   registrarAuditoria(db, { usuarioId, modulo: 'configuracion', entidad: 'parametros_negocio', entidadId: 'negocio', accion: 'editar', detalle: { nombre, iniciales, colorAcento, rnc, razonSocial, direccion, telefono } });
 }
 
+// Logo del negocio: imagen PNG, JPEG o WebP guardada como data URL en parametros_negocio
+// (negocio_logo). Se valida el tipo real por su firma, no por lo que diga el nombre o el
+// encabezado, y se limita el tamaño: va en cada arranque de la app y en las facturas impresas.
+const LOGO_MAX_BYTES = 300 * 1024;
+const FIRMAS_LOGO = {
+  'image/png': (b) => b.length > 8 && b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47,
+  'image/jpeg': (b) => b.length > 3 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff,
+  'image/webp': (b) => b.length > 12 && b.toString('latin1', 0, 4) === 'RIFF' && b.toString('latin1', 8, 12) === 'WEBP',
+};
+
+function validarLogo(dataUrl) {
+  const m = /^data:(image\/(?:png|jpeg|webp));base64,([A-Za-z0-9+/]+={0,2})$/.exec(typeof dataUrl === 'string' ? dataUrl : '');
+  if (!m) throw new Error('El logo debe ser una imagen PNG, JPG o WebP');
+  const bytes = Buffer.from(m[2], 'base64');
+  if (bytes.length > LOGO_MAX_BYTES) throw new Error('El logo pesa más de 300 KB. Usa una imagen más pequeña');
+  if (!FIRMAS_LOGO[m[1]](bytes)) throw new Error('El archivo no es una imagen válida');
+  return dataUrl;
+}
+
+function guardarLogoNegocio(db, { dataUrl }, usuarioId) {
+  session.requerirPermiso('configuracion.gestionar');
+  const valor = validarLogo(dataUrl);
+  db.prepare(
+    `INSERT INTO parametros_negocio (clave, valor, descripcion, updated_at) VALUES ('negocio_logo', ?, 'Logo del negocio (data URL)', strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+     ON CONFLICT(clave) DO UPDATE SET valor = excluded.valor, updated_at = excluded.updated_at`
+  ).run(valor);
+  registrarAuditoria(db, { usuarioId, modulo: 'configuracion', entidad: 'parametros_negocio', entidadId: 'negocio_logo', accion: 'editar', detalle: { logo: 'actualizado', bytes: valor.length } });
+}
+
+function quitarLogoNegocio(db, usuarioId) {
+  session.requerirPermiso('configuracion.gestionar');
+  db.prepare("UPDATE parametros_negocio SET valor = '', updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE clave = 'negocio_logo'").run();
+  registrarAuditoria(db, { usuarioId, modulo: 'configuracion', entidad: 'parametros_negocio', entidadId: 'negocio_logo', accion: 'editar', detalle: { logo: 'quitado' } });
+}
+
 // =========================================================================
 // Parámetros de negocio (días de crédito, ventana de vencimiento, mora, etc.)
 // =========================================================================
@@ -383,6 +418,16 @@ function crearSucursal(db, { nombre, direccion, telefono }, usuarioId) {
 
 function register(ipcMain, getDb) {
   ipcMain.handle('config:datosNegocio', () => obtenerDatosNegocio(getDb()));
+  ipcMain.handle('config:guardarLogoNegocio', (event, { dataUrl, usuarioId }) => {
+    const db = getDb();
+    db.transaction(() => guardarLogoNegocio(db, { dataUrl }, usuarioId))();
+    return obtenerDatosNegocio(db);
+  });
+  ipcMain.handle('config:quitarLogoNegocio', (event, { usuarioId }) => {
+    const db = getDb();
+    db.transaction(() => quitarLogoNegocio(db, usuarioId))();
+    return obtenerDatosNegocio(db);
+  });
   ipcMain.handle('config:actualizarDatosNegocio', (event, { payload, usuarioId }) => {
     const db = getDb();
     db.transaction(() => actualizarDatosNegocio(db, payload, usuarioId))();
@@ -463,7 +508,7 @@ function register(ipcMain, getDb) {
 }
 
 module.exports = {
-  register, registrarAuditoria, listarBitacora, obtenerDatosNegocio, actualizarDatosNegocio,
+  register, registrarAuditoria, listarBitacora, obtenerDatosNegocio, actualizarDatosNegocio, guardarLogoNegocio, quitarLogoNegocio, validarLogo,
   listarParametrosNegocio, actualizarParametroNegocio, listarUsuarios, crearUsuario, actualizarUsuario,
   listarRoles, listarPermisos, permisosDeRol, actualizarPermisosRol, actualizarLimiteDescuentoRol,
   listarTasasItbis, crearTasaItbis, actualizarTasaItbis, listarTiposNcf, crearTipoNcf, ampliarRangoNcf,

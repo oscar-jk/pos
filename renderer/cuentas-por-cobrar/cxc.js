@@ -284,7 +284,7 @@ async function cargarRecibos() {
   const recibos = await window.puntoXCxc.listarRecibos({});
   document.getElementById('recibos-tbody').innerHTML = recibos.map((r) => `
     <tr>
-      <td>${esc(r.numero)}</td><td>${esc(r.cliente_nombre)}</td><td>${esc(r.forma_pago)}</td><td>${fmt(r.monto_total)}${(r.retencion_isr || 0) + (r.retencion_itbis || 0) > 0 ? `<div style="font-size:11px; color:var(--color-text-muted);">+ retenido ${fmt((r.retencion_isr || 0) + (r.retencion_itbis || 0))}</div>` : ''}</td><td>${fechaCorta(r.fecha)}</td>
+      <td>${esc(r.numero)}</td><td>${esc(r.cliente_nombre)}</td><td>${esc(r.forma_pago)}</td><td>${fmt(r.monto_total)}${(r.retencion_isr || 0) + (r.retencion_itbis || 0) > 0 ? `<div style="font-size: 12px; color:var(--color-text-muted);">+ retenido ${fmt((r.retencion_isr || 0) + (r.retencion_itbis || 0))}</div>` : ''}</td><td>${fechaCorta(r.fecha)}</td>
       <td><span class="pill-estado" style="background:${r.estado === 'anulado' ? 'var(--color-danger)' : 'var(--color-success)'};">${esc(r.estado)}</span></td>
       <td>${r.estado !== 'anulado' ? `<span class="enlace-accion" data-permiso="cxc.recibo.anular" data-anular="${esc(r.id)}">Anular</span>` : ''}</td>
     </tr>
