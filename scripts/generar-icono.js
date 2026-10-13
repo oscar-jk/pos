@@ -1,5 +1,5 @@
 // Genera assets/icon.png (512×512) y assets/icon.ico (16–256 px, PNG incrustado) con Electron
-// fuera de pantalla: verde de la marca (#0F3D34 / #146356) y una "X". Uso:
+// fuera de pantalla: la N de Nodo. Uso:
 //   node_modules/electron/dist/electron.exe scripts/generar-icono.js
 const { app, BrowserWindow } = require('electron');
 const fs = require('node:fs');
@@ -9,18 +9,9 @@ const path = require('node:path');
 const DESTINO = path.join(__dirname, '..', 'assets');
 const TAMANOS = [16, 24, 32, 48, 64, 128, 256];
 
-const HTML = (tam) => `<!doctype html><meta charset="utf-8"><body style="margin:0;background:transparent;overflow:hidden">
-<canvas id="c" style="display:block" width="${tam}" height="${tam}"></canvas>
-<script>
-const c = document.getElementById('c'); const g = c.getContext('2d'); const t = ${tam};
-const r = t * 0.22;
-g.beginPath(); g.moveTo(r, 0); g.arcTo(t, 0, t, t, r); g.arcTo(t, t, 0, t, r); g.arcTo(0, t, 0, 0, r); g.arcTo(0, 0, t, 0, r); g.closePath();
-const fondo = g.createLinearGradient(0, 0, t, t); fondo.addColorStop(0, '#146356'); fondo.addColorStop(1, '#0F3D34');
-g.fillStyle = fondo; g.fill();
-g.strokeStyle = '#ffffff'; g.lineCap = 'round'; g.lineWidth = t * 0.13;
-const a = t * 0.30, b = t * 0.70;
-g.beginPath(); g.moveTo(a, a); g.lineTo(b, b); g.moveTo(b, a); g.lineTo(a, b); g.stroke();
-</script>`;
+// El icono es el de la marca Nodo (assets/marca/nodo-app-icon.svg), escalado al lienzo.
+const SVG = fs.readFileSync(path.join(DESTINO, 'marca', 'nodo-app-icon.svg'), 'utf8').replace(/ width="\d+" height="\d+"/, ' width="100%" height="100%"');
+const HTML = (tam) => `<!doctype html><meta charset="utf-8"><body style="margin:0;background:transparent;overflow:hidden"><div style="width:${tam}px;height:${tam}px">${SVG}</div>`;
 
 // Se dibuja una sola vez a 512 px (las ventanas muy pequeñas no cargan) y se reduce con calidad máxima.
 async function dibujar() {

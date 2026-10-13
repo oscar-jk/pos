@@ -201,7 +201,7 @@ function plantillaFactura(factura, negocio) {
 
     ${bloqueFiscal(ri)}
 
-    <div class="pie">Documento generado por Punto X</div>
+    <div class="pie">Documento generado por Nodo</div>
   </body></html>`;
 }
 
@@ -261,7 +261,7 @@ function plantillaTique(factura, negocio) {
     <hr />
     <div>${(factura.pagos || []).map((p) => `${FORMAS_PAGO_LABEL[p.forma_pago] || p.forma_pago}: ${mon.n(p.monto)}`).join('<br/>') || '—'}</div>
     ${bloqueFiscal(ri, { centrado: true })}
-    <div class="pie">¡Gracias por su compra!<br/>Generado por Punto X</div>
+    <div class="pie">¡Gracias por su compra!<br/>Generado por Nodo</div>
   </body></html>`;
 }
 
@@ -349,7 +349,7 @@ function plantillaArqueoTurno(turno, movimientos, negocio) {
         <tr><td>${TIPO_MOVIMIENTO_LABEL[m.tipo] || m.tipo}</td><td class="num">${m.monto > 0 ? '+' : ''}${fmtMoneda(m.monto)}</td></tr>
       `).join('')}
     </table>
-    <div class="pie">Generado por Punto X</div>
+    <div class="pie">Generado por Nodo</div>
   </body></html>`;
 }
 
