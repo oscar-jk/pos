@@ -162,7 +162,7 @@ function htmlArqueo(db, turnoId) {
 // Etiquetas: precio de detalle (ITBIS incluido) y código de barras del producto (el primero
 // registrado; si no tiene, el código interno).
 function htmlEtiquetas(db, { items, formato }) {
-  if (!Array.isArray(items) || items.length === 0) throw new Error('Elija al menos un producto');
+  if (!Array.isArray(items) || items.length === 0) throw new Error('Elige al menos un producto');
   const total = items.reduce((a, i) => a + Math.max(1, Math.min(500, parseInt(i.copias, 10) || 1)), 0);
   if (total > 2000) throw new Error('Son demasiadas etiquetas de una vez (máximo 2000)');
   const filas = items.map((i) => {

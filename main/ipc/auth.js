@@ -31,7 +31,7 @@ function login(db, { usuario, password }) {
   const registro = intentos.get(usuario);
   if (registro && registro.hasta > Date.now()) {
     const minutos = Math.ceil((registro.hasta - Date.now()) / 60000);
-    throw new Error(`Demasiados intentos fallidos. Intente de nuevo en ${minutos} min.`);
+    throw new Error(`Demasiados intentos fallidos. Intenta de nuevo en ${minutos} min.`);
   }
   const fila = db
     .prepare(
@@ -51,7 +51,7 @@ function login(db, { usuario, password }) {
     throw new Error('Usuario o contraseña incorrectos');
   }
   intentos.delete(usuario);
-  if (!fila.activo) throw new Error('Este usuario está desactivado. Contacte al administrador.');
+  if (!fila.activo) throw new Error('Este usuario está desactivado. Habla con el administrador.');
 
   const codigosPermisos = permisosDeRol(db, fila.rol_id);
   session.iniciarSesion({
@@ -70,7 +70,7 @@ const LARGO_MINIMO = 8;
 // debe_cambiar_password está activa (contraseña de fábrica o puesta por el administrador).
 function cambiarPassword(db, { actual, nueva }) {
   const sesion = session.obtenerSesion();
-  if (!sesion) throw new Error('No hay una sesión activa. Inicie sesión de nuevo.');
+  if (!sesion) throw new Error('No hay una sesión activa. Inicia sesión de nuevo.');
   const fila = db.prepare('SELECT * FROM usuarios WHERE id = ? AND deleted_at IS NULL').get(sesion.usuarioId);
   if (!fila) throw new Error('Usuario no encontrado');
   if (!actual || !verifyPassword(actual, fila.password_hash)) throw new Error('La contraseña actual no es correcta');

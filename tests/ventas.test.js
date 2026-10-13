@@ -95,7 +95,7 @@ test('anular en un turno ya cerrado no debe tocar el arqueo cerrado', () => {
   const caja = h.m('caja');
   const turno = caja.obtenerTurnoAbierto(db, ctx.cajaId);
   h.tx(db, () => caja.cerrarTurno(db, { turnoId: turno.id, efectivoContado: 1118 }));
-  assert.throws(() => h.tx(db, () => h.m('ventas').anularFactura(db, { documentoId: f, motivo: 'x', usuarioId: ctx.usuarioId })), /Abra un turno/);
+  assert.throws(() => h.tx(db, () => h.m('ventas').anularFactura(db, { documentoId: f, motivo: 'x', usuarioId: ctx.usuarioId })), /Abre un turno/);
   h.abrirTurno(db, ctx, 500);
   h.tx(db, () => h.m('ventas').anularFactura(db, { documentoId: f, motivo: 'x', usuarioId: ctx.usuarioId }));
   const movsCerrado = db.prepare("SELECT COUNT(*) n FROM movimientos_caja WHERE turno_caja_id=? AND documento_origen_tipo='documentos_venta_anulacion'").get(turno.id).n;

@@ -28,7 +28,7 @@
         <tr><td>${esc(l.descripcion)} <small style="color:var(--color-text-muted);">${esc(l.codigo)}</small></td><td>${esc(fmt(l.precio))}</td>
         <td><input type="number" min="1" max="500" step="1" value="${esc(l.copias)}" data-i="${i}" class="et-copias" style="width:70px;" /></td>
         <td><span class="enlace-accion" data-quitar="${i}" style="color:var(--color-danger);">Quitar</span></td></tr>`).join('');
-      document.getElementById('et-total').textContent = lineas.length ? `${lineas.reduce((a, l) => a + (l.copias || 1), 0)} etiquetas` : 'Agregue productos con el buscador.';
+      document.getElementById('et-total').textContent = lineas.length ? `${lineas.reduce((a, l) => a + (l.copias || 1), 0)} etiquetas` : 'Agrega productos con el buscador.';
       document.querySelectorAll('.et-copias').forEach((el) => el.addEventListener('input', () => {
         lineas[Number(el.dataset.i)].copias = Math.max(1, Math.min(500, parseInt(el.value, 10) || 1));
         document.getElementById('et-total').textContent = `${lineas.reduce((a, l) => a + l.copias, 0)} etiquetas`;
@@ -60,7 +60,7 @@
 
     document.getElementById('et-cancelar').addEventListener('click', window.PuntoXModal.cerrarModal);
     document.getElementById('et-imprimir').addEventListener('click', async () => {
-      if (lineas.length === 0) { mostrarError('Agregue al menos un producto.'); return; }
+      if (lineas.length === 0) { mostrarError('Agrega al menos un producto.'); return; }
       const formato = document.getElementById('et-formato').value;
       try {
         await window.puntoXImpresion.imprimirEtiquetas({ formato, items: lineas.map((l) => ({ productoId: l.productoId, copias: l.copias })) });

@@ -67,6 +67,7 @@ const PERMISOS = [
   // Contabilidad
   ['contabilidad', 'contabilidad.ver', 'Ver libro diario, libro mayor y estados financieros'],
   ['contabilidad', 'contabilidad.asiento_manual.crear', 'Registrar asiento contable manual'],
+  ['contabilidad', 'contabilidad.catalogo.gestionar', 'Crear y editar cuentas del catálogo contable'],
   ['contabilidad', 'contabilidad.periodo.cerrar', 'Cerrar periodo contable'],
   ['contabilidad', 'contabilidad.periodo.reabrir', 'Reabrir periodo contable cerrado'],
   // Configuración
@@ -127,7 +128,7 @@ const ROLES = [
     permisos: [
       'ventas.costos.ver', 'ventas.reportes_financieros.ver', 'inventario.ver', 'inventario.costos.ver',
       'compras.costos.ver', 'compras.reportes.ver', 'cxc.reportes.ver', 'cxp.reportes.ver',
-      'contabilidad.ver', 'contabilidad.asiento_manual.crear', 'contabilidad.periodo.cerrar',
+      'contabilidad.ver', 'contabilidad.asiento_manual.crear', 'contabilidad.catalogo.gestionar', 'contabilidad.periodo.cerrar',
       'contabilidad.periodo.reabrir', 'configuracion.auditoria.ver', 'ventas.ecf.ver',
     ],
   },

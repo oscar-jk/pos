@@ -23,6 +23,7 @@ contextBridge.exposeInMainWorld('puntoXInventario', {
   listarAlmacenes: invoke('almacenes:listar'),
   crearAlmacen: invoke('almacenes:crear'),
   listarCategorias: invoke('inventario:categorias'),
+  productosRapidos: invoke('inventario:productosRapidos'),
   crearCategoria: invoke('inventario:crearCategoria'),
   listarUnidadesMedida: invoke('inventario:unidadesMedida'),
   listarTasasItbis: invoke('inventario:tasasItbis'),
@@ -275,6 +276,7 @@ contextBridge.exposeInMainWorld('puntoXVentas', {
   listarNotas: invoke('ventas:listarNotas'),
 
   ventasPorPeriodo: invoke('ventas:reportes:ventasPorPeriodo'),
+  ventasPorSucursal: invoke('ventas:reportes:ventasPorSucursal'),
   ventasPorVendedor: invoke('ventas:reportes:ventasPorVendedor'),
   ventasPorArticulo: invoke('ventas:reportes:ventasPorArticulo'),
   comisionesPorVendedor: invoke('ventas:reportes:comisionesPorVendedor'),

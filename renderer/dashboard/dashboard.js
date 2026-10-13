@@ -21,7 +21,7 @@ const MODULOS_CONSTRUIDOS = new Set(['ventas', 'cuentas_abiertas', 'inventario',
 
 function renderModuleGrid(modulosActivos) {
   const contenedor = document.getElementById('module-grid');
-  const modulos = window.PuntoXSidebar.modulosVisibles(modulosActivos).filter((m) => m.clave !== 'dashboard');
+  const modulos = window.PuntoXSidebar.modulosVisibles(modulosActivos, state.permisos).filter((m) => m.clave !== 'dashboard');
 
   contenedor.innerHTML = modulos.map(({ clave, etiqueta, ruta, icono }) => `
     <a class="module-card" href="${ruta}">
@@ -45,14 +45,22 @@ async function alertasEcf() {
   }
 }
 
+// Cada fuente se pide solo si el usuario tiene acceso a su módulo; si una falla, las demás se
+// muestran igual.
+const state = { permisos: [] };
+const puede = (prefijos) => state.permisos.some((p) => p === '*' || prefijos.some((pre) => p.startsWith(pre)));
+const seguro = (condicion, fn) => (condicion ? Promise.resolve().then(fn).catch(() => []) : Promise.resolve([]));
+
 async function cargarAlertas() {
+  const inv = puede(['inventario.']);
+  const cxc = puede(['cxc.']);
   const [stockBajo, sobreMaximo, vencimientos, facturasVencidas, empleadosDeuda, facturasPorPagar, avisosEcf] = await Promise.all([
-    window.puntoXInventario.existencias({ soloBajoMinimo: true }),
-    window.puntoXInventario.existencias({ soloSobreMaximo: true }).then((l) => l.filter((p) => p.stock_maximo > 0 && p.existencia_total > p.stock_maximo)),
-    window.puntoXInventario.vencimientos(),
-    window.puntoXCxc.facturasVencidas(),
-    window.puntoXCxc.listarCxcEmpleados({}),
-    window.puntoXCxp.facturasProximasAVencer(),
+    seguro(inv, () => window.puntoXInventario.existencias({ soloBajoMinimo: true })),
+    seguro(inv, () => window.puntoXInventario.existencias({ soloSobreMaximo: true }).then((l) => l.filter((p) => p.stock_maximo > 0 && p.existencia_total > p.stock_maximo))),
+    seguro(inv, () => window.puntoXInventario.vencimientos()),
+    seguro(cxc, () => window.puntoXCxc.facturasVencidas()),
+    seguro(cxc, () => window.puntoXCxc.listarCxcEmpleados({})),
+    seguro(puede(['cxp.', 'compras.pago.aprobar']), () => window.puntoXCxp.facturasProximasAVencer()),
     alertasEcf(),
   ]);
   const empleadosConSaldo = empleadosDeuda.filter((e) => e.saldo_pendiente > 0);
@@ -105,6 +113,11 @@ async function cargarAlertas() {
   document.getElementById('resumen-clientes-atrasados').textContent = facturasVencidas.length;
   document.getElementById('resumen-facturas-pagar').textContent = facturasPorPagarUrgentes.length;
   document.getElementById('resumen-empleados-deuda').textContent = empleadosConSaldo.length;
+  // Filas del resumen de módulos que el usuario no ve.
+  const ocultarFila = (id) => { const f = document.getElementById(id).closest('.panel-dark__row'); if (f) f.style.display = 'none'; };
+  if (!puede(['inventario.'])) { ocultarFila('resumen-vencer'); ocultarFila('resumen-stock-bajo'); }
+  if (!puede(['cxc.'])) { ocultarFila('resumen-clientes-atrasados'); ocultarFila('resumen-empleados-deuda'); }
+  if (!puede(['cxp.', 'compras.pago.aprobar'])) ocultarFila('resumen-facturas-pagar');
 }
 
 function fmt(n) {
@@ -133,15 +146,21 @@ async function cargarVentasYCaja() {
     }
   }
 
-  const aging = await window.puntoXCxc.antiguedadSaldos();
-  const totalCxc = aging.reduce((acc, f) => acc + f.total, 0);
-  document.getElementById('kpi-cxc-pendiente').textContent = fmt(totalCxc);
-  document.getElementById('kpi-cxc-pendiente-sub').textContent = `${aging.length} cliente${aging.length === 1 ? '' : 's'} con saldo`;
+  // Los saldos de clientes y proveedores solo los ve quien tiene acceso a esos módulos.
+  const ocultarTarjeta = (id) => { const t = document.getElementById(id).closest('.kpi-card'); if (t) t.style.display = 'none'; };
+  if (puede(['cxc.'])) {
+    const aging = await window.puntoXCxc.antiguedadSaldos().catch(() => []);
+    const totalCxc = aging.reduce((acc, f) => acc + f.total, 0);
+    document.getElementById('kpi-cxc-pendiente').textContent = fmt(totalCxc);
+    document.getElementById('kpi-cxc-pendiente-sub').textContent = `${aging.length} cliente${aging.length === 1 ? '' : 's'} con saldo`;
+  } else ocultarTarjeta('kpi-cxc-pendiente');
 
-  const agingCxp = await window.puntoXCxp.antiguedadSaldos();
-  const totalCxp = agingCxp.reduce((acc, f) => acc + f.total, 0);
-  document.getElementById('kpi-cxp-pendiente').textContent = fmt(totalCxp);
-  document.getElementById('kpi-cxp-pendiente-sub').textContent = `${agingCxp.length} proveedor${agingCxp.length === 1 ? '' : 'es'} con saldo`;
+  if (puede(['cxp.', 'compras.pago.aprobar'])) {
+    const agingCxp = await window.puntoXCxp.antiguedadSaldos().catch(() => []);
+    const totalCxp = agingCxp.reduce((acc, f) => acc + f.total, 0);
+    document.getElementById('kpi-cxp-pendiente').textContent = fmt(totalCxp);
+    document.getElementById('kpi-cxp-pendiente-sub').textContent = `${agingCxp.length} proveedor${agingCxp.length === 1 ? '' : 'es'} con saldo`;
+  } else ocultarTarjeta('kpi-cxp-pendiente');
 
   const recientes = await window.puntoXVentas.listarFacturas({ limite: 5 });
   if (recientes.length > 0) {
@@ -165,6 +184,7 @@ async function cargarVentasYCaja() {
 async function init() {
   const info = await window.PuntoXShell.initPuntoXShell('dashboard');
   if (!info) return; // sin sesión o con la contraseña pendiente: el shell ya redirigió al login
+  state.permisos = info.usuario.permisos || [];
 
   const nombre = primerNombre(info.usuario && info.usuario.nombreCompleto);
   document.getElementById('saludo').textContent = nombre ? `${saludoPorHora()}, ${nombre}` : saludoPorHora();

@@ -33,6 +33,7 @@ function crearCategoria(db, { nombre }) {
   if (existente) return existente;
   const id = crypto.randomUUID();
   db.prepare('INSERT INTO categorias_producto (id, nombre) VALUES (?, ?)').run(id, limpio);
+  auditoria().registrarAuditoria(db, { usuarioId: session.usuarioActualId(), modulo: 'inventario', entidad: 'categorias_producto', entidadId: id, accion: 'crear', detalle: { nombre: limpio } });
   return { id, nombre: limpio };
 }
 
@@ -53,6 +54,7 @@ function crearAlmacen(db, { sucursalId, nombre }) {
   if (!nombre || !nombre.trim()) throw new Error('El nombre del almacén es obligatorio');
   const id = crypto.randomUUID();
   db.prepare('INSERT INTO almacenes (id, sucursal_id, nombre, activo) VALUES (?, ?, ?, 1)').run(id, sucursalId, nombre.trim());
+  auditoria().registrarAuditoria(db, { usuarioId: session.usuarioActualId(), modulo: 'inventario', entidad: 'almacenes', entidadId: id, accion: 'crear', detalle: { nombre: nombre.trim() } });
   return { id, sucursal_id: sucursalId, nombre: nombre.trim() };
 }
 
@@ -107,10 +109,38 @@ function buscarProductos(db, { texto, almacenId, limite = 20 }) {
     .map((p) => ocultarCostoSinPermiso(conPromocion(db, p)));
 }
 
+// Productos para la cuadrícula táctil del mostrador: los más vendidos de los últimos 30 días
+// primero (luego por nombre), opcionalmente de una categoría.
+function productosRapidos(db, { almacenId, categoriaId, limite = 24 } = {}) {
+  const desde = new Date(Date.now() - 30 * 86400000).toISOString();
+  const filtroCategoria = categoriaId ? 'AND p.categoria_id = ?' : '';
+  const params = [desde, almacenId || null, ...(categoriaId ? [categoriaId] : []), Math.min(Number(limite) || 24, 60)];
+  return db
+    .prepare(
+      `SELECT p.id, p.codigo_interno, p.descripcion, p.categoria_id, p.precio_detalle, p.precio_mayorista,
+              p.precio_distribuidor, p.costo_promedio, p.permite_venta_negativo, p.es_kit, p.es_servicio,
+              p.controla_lote, p.tasa_itbis_id, p.stock_minimo, t.porcentaje AS tasa_itbis_pct,
+              COALESCE(e.cantidad_disponible, 0) AS cantidad_disponible,
+              COALESCE(e.cantidad_comprometida, 0) AS cantidad_comprometida,
+              COALESCE(v.vendido, 0) AS vendido_30d
+       FROM productos p
+       JOIN tasas_itbis t ON t.id = p.tasa_itbis_id
+       LEFT JOIN (SELECT dvd.producto_id, SUM(dvd.cantidad) AS vendido FROM documentos_venta_detalle dvd
+                  JOIN documentos_venta dv ON dv.id = dvd.documento_id
+                  WHERE dv.tipo = 'factura' AND dv.estado != 'anulado' AND dv.fecha >= ? GROUP BY dvd.producto_id) v ON v.producto_id = p.id
+       LEFT JOIN existencias e ON e.producto_id = p.id AND e.almacen_id = ?
+       WHERE p.deleted_at IS NULL AND p.activo = 1 ${filtroCategoria}
+       ORDER BY vendido_30d DESC, p.descripcion
+       LIMIT ?`
+    )
+    .all(...params)
+    .map((p) => ocultarCostoSinPermiso(conPromocion(db, p)));
+}
+
 // Consulta rápida de precio y existencia (mostrador): los tres precios, la promoción vigente y
 // la existencia de cada almacén, disponible real = existencia − comprometida en pedidos.
 function consultarPrecio(db, { texto, limite = 8 }) {
-  if (!session.obtenerSesion()) throw new Error('Inicie sesión para consultar precios');
+  if (!session.obtenerSesion()) throw new Error('Inicia sesión para consultar precios');
   if (!texto || !texto.trim()) return [];
   const existencias = db.prepare(
     `SELECT a.nombre AS almacen_nombre, COALESCE(e.cantidad_disponible, 0) AS existencia, COALESCE(e.cantidad_comprometida, 0) AS comprometida
@@ -303,6 +333,7 @@ function guardarProducto(db, payload, productoIdExistente) {
     }
   }
 
+  auditoria().registrarAuditoria(db, { usuarioId: session.usuarioActualId(), modulo: 'inventario', entidad: 'productos', entidadId: productoId, accion: productoIdExistente ? 'editar' : 'crear', detalle: { codigoInterno, descripcion } });
   return productoId;
 }
 
@@ -827,7 +858,7 @@ function siguienteNumeroDocumento(db, tabla) {
 function loteDeEntrada(producto, linea) {
   if (!producto.controla_lote) return null;
   const numeroLote = String(linea.numeroLote || '').trim();
-  if (!numeroLote) throw new Error(`Indique el número de lote de "${producto.descripcion}"`);
+  if (!numeroLote) throw new Error(`Indica el número de lote de "${producto.descripcion}"`);
   const fechaVencimiento = linea.fechaVencimiento ? String(linea.fechaVencimiento).slice(0, 10) : null;
   if (fechaVencimiento && !/^\d{4}-\d{2}-\d{2}$/.test(fechaVencimiento)) {
     throw new Error(`La fecha de vencimiento del lote de "${producto.descripcion}" no es válida`);
@@ -914,7 +945,7 @@ function crearMerma(db, { almacenId, productoId, loteId, cantidad, costoUnitario
   if (!motivo) throw new Error('El motivo de la merma es obligatorio');
   const producto = obtenerProducto(db, productoId, almacenId);
   if (!producto) throw new Error('Producto no encontrado');
-  if (producto.es_kit) throw new Error(`"${producto.descripcion}" es un kit: registre la merma de sus componentes`);
+  if (producto.es_kit) throw new Error(`"${producto.descripcion}" es un kit: registra la merma de sus componentes`);
   const disponible = existenciaDisponible(db, productoId, almacenId);
   if (disponible < cantidad) throw new Error(`Existencia insuficiente de "${producto.descripcion}" para registrar la merma`);
 
@@ -1208,7 +1239,7 @@ function anularConversion(db, { conversionId, motivo, usuarioId }) {
       .filter((l) => l.almacen_id === conv.almacen_id).reduce((a, l) => a + l.cantidad, 0)
     : existenciaLibre(db, destino.id, conv.almacen_id);
   if (disponible < conv.cantidad_destino - EPS) {
-    throw new Error(`Ya no están completas las ${conv.cantidad_destino} unidades de "${destino.descripcion}" de esta conversión (quedan ${redondearCantidad(disponible)}). Registre una conversión inversa.`);
+    throw new Error(`Ya no están completas las ${conv.cantidad_destino} unidades de "${destino.descripcion}" de esta conversión (quedan ${redondearCantidad(disponible)}). Registra una conversión inversa.`);
   }
   db.prepare("UPDATE conversiones_producto SET estado = 'anulada', motivo_anulacion = ?, usuario_anulo_id = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?")
     .run(motivo.trim(), usuarioId, conversionId);
@@ -1254,6 +1285,7 @@ function register(ipcMain, getDb) {
   });
 
   ipcMain.handle('inventario:categorias', () => listarCategorias(getDb()));
+  ipcMain.handle('inventario:productosRapidos', (event, filtros) => productosRapidos(getDb(), filtros || {}));
   ipcMain.handle('inventario:crearCategoria', (event, payload) => crearCategoria(getDb(), payload || {}));
   ipcMain.handle('inventario:unidadesMedida', () => listarUnidadesMedida(getDb()));
   ipcMain.handle('inventario:tasasItbis', () => listarTasasItbis(getDb()));
@@ -1298,7 +1330,7 @@ module.exports = {
   moverInventarioPorVenta, kardexPorProducto, existenciasConsolidadas, productosPorVencer,
   metodoValoracion, usaCapas, loteDeEntrada, reingresarSalidas, reingresarDocumento, reingresarVenta, retirarEntradas,
   lotesCreadosPor, actualizarCostoCapa, refrescarCostoPeps, listarLotes, promocionVigente, consultarPrecio, hoyLocal,
-  listarCategorias, crearCategoria, listarUnidadesMedida, listarTasasItbis, listarAlmacenes, crearAlmacen,
+  listarCategorias, crearCategoria, productosRapidos, listarUnidadesMedida, listarTasasItbis, listarAlmacenes, crearAlmacen,
   crearConversion, anularConversion, listarConversiones,
   listarListasPrecio, obtenerListaPrecio, guardarListaPrecio, desactivarListaPrecio, listasParaVenta, precioSegunListas,
   crearAjuste, listarAjustes, crearMerma, listarMermas, crearTransferencia, listarTransferencias,

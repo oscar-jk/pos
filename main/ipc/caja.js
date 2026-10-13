@@ -33,14 +33,33 @@ function crearCaja(db, { sucursalId, nombre, usuarioId }) {
   return { id, sucursal_id: sucursalId, nombre: nombre.trim() };
 }
 
-// Caja con la que trabaja el usuario: la de su turno abierto (si tiene uno) o, si no, la primera.
-// Con varias cajas, cada cajero abre turno en la suya y ventas y cobros van a esa caja.
+// Sucursal en la que trabaja el usuario: la de su ficha o, si no tiene, la principal.
+function sucursalDelUsuario(db, usuarioId) {
+  const propia = usuarioId && db.prepare(
+    `SELECT s.id, s.nombre FROM usuarios u JOIN sucursales s ON s.id = u.sucursal_id
+     WHERE u.id = ? AND s.deleted_at IS NULL AND s.activo = 1`
+  ).get(usuarioId);
+  return propia || db.prepare('SELECT id, nombre FROM sucursales WHERE es_principal = 1 AND deleted_at IS NULL').get()
+    || db.prepare('SELECT id, nombre FROM sucursales WHERE deleted_at IS NULL ORDER BY created_at LIMIT 1').get();
+}
+
+// Almacén de donde vende la sucursal: el primero que se creó en ella.
+function almacenDeSucursal(db, sucursalId) {
+  return db.prepare('SELECT id, nombre, sucursal_id FROM almacenes WHERE sucursal_id = ? AND deleted_at IS NULL AND activo = 1 ORDER BY created_at LIMIT 1').get(sucursalId)
+    || db.prepare('SELECT id, nombre, sucursal_id FROM almacenes WHERE deleted_at IS NULL AND activo = 1 ORDER BY created_at LIMIT 1').get();
+}
+
+// Caja con la que trabaja el usuario: la de su turno abierto (si tiene uno) o, si no, la primera
+// de su sucursal. Con varias cajas, cada cajero abre turno en la suya y sus ventas van a esa caja.
 function cajaDelUsuario(db, usuarioId) {
   const conTurno = usuarioId && db.prepare(
     `SELECT c.id, c.sucursal_id, c.nombre FROM turnos_caja t JOIN cajas c ON c.id = t.caja_id
      WHERE t.usuario_id = ? AND t.estado = 'abierto' AND c.deleted_at IS NULL ORDER BY t.fecha_apertura DESC LIMIT 1`
   ).get(usuarioId);
-  return conTurno || db.prepare('SELECT id, sucursal_id, nombre FROM cajas WHERE deleted_at IS NULL AND activo = 1 ORDER BY created_at LIMIT 1').get();
+  if (conTurno) return conTurno;
+  const sucursal = sucursalDelUsuario(db, usuarioId);
+  return (sucursal && db.prepare('SELECT id, sucursal_id, nombre FROM cajas WHERE sucursal_id = ? AND deleted_at IS NULL AND activo = 1 ORDER BY created_at LIMIT 1').get(sucursal.id))
+    || db.prepare('SELECT id, sucursal_id, nombre FROM cajas WHERE deleted_at IS NULL AND activo = 1 ORDER BY created_at LIMIT 1').get();
 }
 
 function obtenerTurnoAbierto(db, cajaId) {
@@ -255,7 +274,7 @@ function crearGastoCajaChica(db, {
   const rnc = limpiarRnc(rncSuplidor);
   const ncfLimpio = (ncf || '').trim().toUpperCase();
   if (rnc && rnc.length !== 9 && rnc.length !== 11) throw new Error('El RNC debe tener 9 dígitos (o 11 si es cédula)');
-  if (ncfLimpio && !rnc) throw new Error('Si el gasto tiene NCF, indique también el RNC o cédula del suplidor');
+  if (ncfLimpio && !rnc) throw new Error('Si el gasto tiene NCF, indica también el RNC o cédula del suplidor');
   const tipo = tipoBienesServicios || '02';
   if (!TIPOS_BIENES_SERVICIOS_606.includes(tipo)) throw new Error('Tipo de bienes y servicios inválido');
   const cajaChica = db.prepare('SELECT * FROM caja_chica WHERE id = ? AND deleted_at IS NULL').get(cajaChicaId);
@@ -336,6 +355,7 @@ function crearCuentaBancaria(db, { nombre, banco, numeroCuenta, monedaId }) {
   const id = crypto.randomUUID();
   db.prepare('INSERT INTO cuentas_bancarias (id, nombre, banco, numero_cuenta, moneda_id, activo) VALUES (?, ?, ?, ?, ?, 1)')
     .run(id, nombre, banco, numeroCuenta || null, monedaId || db.prepare('SELECT id FROM monedas WHERE es_local = 1').get().id);
+  configuracion.registrarAuditoria(db, { usuarioId: session.usuarioActualId(), modulo: 'caja', entidad: 'cuentas_bancarias', entidadId: id, accion: 'crear', detalle: { nombre, banco } });
   return db.prepare('SELECT * FROM cuentas_bancarias WHERE id = ?').get(id);
 }
 
@@ -590,11 +610,11 @@ function listarConciliaciones(db, { cuentaBancariaId, desde, hasta } = {}) {
 
 function crearConciliacion(db, { cuentaBancariaId, periodoDesde, periodoHasta, saldoEstadoCuenta, usuarioId }) {
   session.requerirPermiso('caja.conciliacion.gestionar');
-  if (!cuentaBancariaId) throw new Error('Seleccione la cuenta bancaria');
-  if (!periodoDesde || !periodoHasta) throw new Error('Indique el periodo del estado de cuenta');
+  if (!cuentaBancariaId) throw new Error('Elige la cuenta bancaria');
+  if (!periodoDesde || !periodoHasta) throw new Error('Indica el periodo del estado de cuenta');
   if (periodoDesde > periodoHasta) throw new Error('La fecha inicial del periodo no puede ser posterior a la final');
   if (saldoEstadoCuenta === undefined || saldoEstadoCuenta === null || Number.isNaN(Number(saldoEstadoCuenta))) {
-    throw new Error('Indique el saldo final que muestra el estado de cuenta');
+    throw new Error('Indica el saldo final que muestra el estado de cuenta');
   }
   const abierta = db
     .prepare("SELECT id FROM conciliaciones_bancarias WHERE cuenta_bancaria_id = ? AND estado = 'en_proceso' AND deleted_at IS NULL")
@@ -813,7 +833,7 @@ function cerrarConciliacion(db, { conciliacionId, usuarioId }) {
     throw new Error(`Quedan ${resumen.partidasPendientes} partida(s) del banco sin conciliar. Concílielas con un movimiento del sistema o regístrelas en contabilidad.`);
   }
   if (Math.abs(resumen.diferencia) >= 0.01) {
-    throw new Error(`La conciliación no cuadra: diferencia de RD$ ${resumen.diferencia.toFixed(2)}. Revise el saldo del estado de cuenta y las partidas.`);
+    throw new Error(`La conciliación no cuadra: diferencia de RD$ ${resumen.diferencia.toFixed(2)}. Revisa el saldo del estado de cuenta y las partidas.`);
   }
   db.prepare(
     `UPDATE conciliaciones_bancarias SET estado = 'conciliada', saldo_sistema = ?, fecha_conciliada = strftime('%Y-%m-%dT%H:%M:%fZ','now'),
@@ -927,7 +947,7 @@ module.exports = {
   register, obtenerTurnoAbierto, registrarMovimiento, efectivoEsperado, abrirTurno, cerrarTurno,
   listarTurnos, historialSobrantesFaltantes, movimientosDeTurno, registrarMovimientoManual, obtenerOCrearCajaChica, resumenCajaChica, reponerCajaChica, actualizarFondoCajaChica, gastoCajaChicaTotalDelPeriodo,
   crearGastoCajaChica, listarGastosCajaChica, listarCuentasBancarias, crearCuentaBancaria,
-  crearTransferenciaCajaBanco, listarTransferenciasCajaBanco, listarCajas, crearCaja, cajaDelUsuario,
+  crearTransferenciaCajaBanco, listarTransferenciasCajaBanco, listarCajas, crearCaja, cajaDelUsuario, sucursalDelUsuario, almacenDeSucursal,
   listarConciliaciones, obtenerConciliacion, crearConciliacion, actualizarSaldoEstadoCuenta, agregarPartidas,
   eliminarPartida, conciliarPareja, conciliarAutomaticamente, registrarPartidaEnContabilidad,
   deshacerConciliacionPartida, cerrarConciliacion, reabrirConciliacion, saldoLibroBancos, saldoSinCuentaAsignada, asignarCuentaMovimiento,

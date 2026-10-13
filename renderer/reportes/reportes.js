@@ -299,7 +299,7 @@ const CATALOGO = [
     reportes: [
       {
         clave: 'ventas-periodo', etiqueta: 'Ventas por Período',
-        filtros: [
+        filtros: [{ tipo: 'select', clave: 'sucursalId', label: 'Sucursal', valorDefault: '', opciones: opcionesSucursales }, 
           { tipo: 'select', clave: 'agrupacion', label: 'Agrupar por', valorDefault: 'dia', opciones: [{ value: 'dia', label: 'Día' }, { value: 'semana', label: 'Semana' }, { value: 'mes', label: 'Mes' }] },
           { tipo: 'fecha', clave: 'desde', label: 'Desde' },
           { tipo: 'fecha', clave: 'hasta', label: 'Hasta' },
@@ -314,8 +314,20 @@ const CATALOGO = [
         ],
       },
       {
-        clave: 'ventas-vendedor', etiqueta: 'Ventas por Vendedor',
+        clave: 'ventas-sucursal', etiqueta: 'Ventas por Sucursal (consolidado)',
+        disponible: () => Boolean(window.puntoXVentas.ventasPorSucursal),
         filtros: [{ tipo: 'fecha', clave: 'desde', label: 'Desde' }, { tipo: 'fecha', clave: 'hasta', label: 'Hasta' }],
+        cargar: (v) => window.puntoXVentas.ventasPorSucursal(v),
+        columnas: [
+          { label: 'Sucursal', key: 'sucursal_nombre' }, { label: 'Facturas', key: 'num_facturas', alinear: 'right' },
+          { label: 'Subtotal', key: 'subtotal', formato: 'moneda', alinear: 'right' }, { label: 'Descuento', key: 'descuento', formato: 'moneda', alinear: 'right' },
+          { label: 'ITBIS', key: 'itbis', formato: 'moneda', alinear: 'right' }, { label: 'Total', key: 'total', formato: 'moneda', alinear: 'right' },
+          { label: 'Participación', key: (x) => `${x.participacion_pct}%`, alinear: 'right' },
+        ],
+      },
+      {
+        clave: 'ventas-vendedor', etiqueta: 'Ventas por Vendedor',
+        filtros: [{ tipo: 'select', clave: 'sucursalId', label: 'Sucursal', valorDefault: '', opciones: opcionesSucursales }, { tipo: 'fecha', clave: 'desde', label: 'Desde' }, { tipo: 'fecha', clave: 'hasta', label: 'Hasta' }],
         cargar: (v) => window.puntoXVentas.ventasPorVendedor(v),
         columnas: [
           { label: 'Vendedor', key: 'vendedor_nombre' }, { label: 'Facturas', key: 'num_facturas', alinear: 'right' },
@@ -324,7 +336,7 @@ const CATALOGO = [
       },
       {
         clave: 'ventas-articulo', etiqueta: 'Ventas / Productos Más y Menos Vendidos',
-        filtros: [
+        filtros: [{ tipo: 'select', clave: 'sucursalId', label: 'Sucursal', valorDefault: '', opciones: opcionesSucursales }, 
           { tipo: 'select', clave: 'orden', label: 'Ordenar por', valorDefault: 'cantidad_desc', opciones: [
             { value: 'cantidad_desc', label: 'Más vendidos (cantidad)' }, { value: 'cantidad_asc', label: 'Menos vendidos (cantidad)' },
             { value: 'ingreso_desc', label: 'Mayor ingreso' }, { value: 'ingreso_asc', label: 'Menor ingreso' },
@@ -341,7 +353,7 @@ const CATALOGO = [
       },
       {
         clave: 'comisiones', etiqueta: 'Comisiones por Vendedor',
-        filtros: [{ tipo: 'fecha', clave: 'desde', label: 'Desde' }, { tipo: 'fecha', clave: 'hasta', label: 'Hasta' }],
+        filtros: [{ tipo: 'select', clave: 'sucursalId', label: 'Sucursal', valorDefault: '', opciones: opcionesSucursales }, { tipo: 'fecha', clave: 'desde', label: 'Desde' }, { tipo: 'fecha', clave: 'hasta', label: 'Hasta' }],
         cargar: (v) => window.puntoXVentas.comisionesPorVendedor(v),
         columnas: [
           { label: 'Vendedor', key: 'vendedor_nombre' }, { label: 'Ventas', key: 'num_ventas', alinear: 'right' },
@@ -352,7 +364,7 @@ const CATALOGO = [
       },
       {
         clave: 'margen', etiqueta: 'Margen de Beneficio por Factura',
-        filtros: [{ tipo: 'fecha', clave: 'desde', label: 'Desde' }, { tipo: 'fecha', clave: 'hasta', label: 'Hasta' }],
+        filtros: [{ tipo: 'select', clave: 'sucursalId', label: 'Sucursal', valorDefault: '', opciones: opcionesSucursales }, { tipo: 'fecha', clave: 'desde', label: 'Desde' }, { tipo: 'fecha', clave: 'hasta', label: 'Hasta' }],
         cargar: (v) => window.puntoXVentas.margenPorFactura(v),
         columnas: [
           { label: 'Factura', key: 'numero' }, { label: 'Fecha', key: 'fecha', formato: 'fecha' }, { label: 'Cliente', key: 'cliente_nombre' },
@@ -362,7 +374,7 @@ const CATALOGO = [
       },
       {
         clave: 'cobros-dia', etiqueta: 'Resumen de Cobros del Día',
-        filtros: [{ tipo: 'fecha', clave: 'fecha', label: 'Fecha', valorDefault: hoyISO() }],
+        filtros: [{ tipo: 'select', clave: 'sucursalId', label: 'Sucursal', valorDefault: '', opciones: opcionesSucursales }, { tipo: 'fecha', clave: 'fecha', label: 'Fecha', valorDefault: hoyISO() }],
         personalizado: true,
         cargar: (v) => window.puntoXVentas.resumenCobrosDelDia(v),
         render: (r) => renderTarjetas([
@@ -376,7 +388,7 @@ const CATALOGO = [
       },
       {
         clave: 'itbis-ventas', etiqueta: 'ITBIS Generado en Ventas',
-        filtros: [{ tipo: 'fecha', clave: 'desde', label: 'Desde' }, { tipo: 'fecha', clave: 'hasta', label: 'Hasta' }],
+        filtros: [{ tipo: 'select', clave: 'sucursalId', label: 'Sucursal', valorDefault: '', opciones: opcionesSucursales }, { tipo: 'fecha', clave: 'desde', label: 'Desde' }, { tipo: 'fecha', clave: 'hasta', label: 'Hasta' }],
         cargar: (v) => window.puntoXVentas.itbisGeneradoVentas(v),
         columnas: [
           { label: 'Tasa', key: (f) => `${(f.tasa_itbis * 100).toFixed(0)}%` }, { label: 'Base imponible', key: 'base_total', formato: 'moneda', alinear: 'right' },
@@ -941,9 +953,20 @@ function reporteBusca(clave) {
   return null;
 }
 
+// Grupo de reportes visible si el usuario tiene algún permiso de ese módulo.
+const ACCESO_GRUPO = {
+  ventas: ['ventas.'], inventario: ['inventario.'], compras: ['compras.'], cxc: ['cxc.'], cxp: ['cxp.', 'compras.pago.aprobar'],
+  caja: ['caja.'], contabilidad: ['contabilidad.'], configuracion: ['configuracion.'],
+};
+function grupoVisible(g) {
+  const permisos = (state.info && state.info.usuario && state.info.usuario.permisos) || [];
+  const prefijos = ACCESO_GRUPO[g.modulo];
+  return !prefijos || permisos.includes('*') || permisos.some((p) => prefijos.some((pre) => p.startsWith(pre)));
+}
+
 function renderNav() {
   const nav = document.getElementById('reportes-nav');
-  nav.innerHTML = CATALOGO.map((g) => `
+  nav.innerHTML = CATALOGO.filter(grupoVisible).map((g) => `
     <div class="reportes-nav__grupo">
       <div class="reportes-nav__titulo">${esc(g.grupo)}</div>
       ${g.reportes.filter((r) => !r.disponible || r.disponible()).map((r) => `<button class="reportes-nav__item" data-clave="${esc(r.clave)}">${esc(r.etiqueta)}</button>`).join('')}

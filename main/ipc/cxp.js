@@ -60,7 +60,7 @@ function crearPago(db, { proveedorId, fecha, formaPago, numeroCheque, bancoChequ
   let turno = null;
   if (formaPago === 'efectivo') {
     turno = caja.obtenerTurnoAbierto(db, cajaId);
-    if (!turno) throw new Error('Debe abrir un turno de caja antes de pagar a un proveedor en efectivo');
+    if (!turno) throw new Error('Abre un turno de caja antes de pagar a un proveedor en efectivo');
   }
   if (formaPago === 'cheque' && !numeroCheque) throw new Error('El número de cheque es obligatorio');
   const aplicaSaldoAFavor = formaPago === 'saldo_a_favor';
@@ -175,7 +175,7 @@ function registrarReembolso(db, { proveedorId, monto, formaPago, cajaId, usuario
   let turno = null;
   if (formaPago === 'efectivo') {
     turno = caja.obtenerTurnoAbierto(db, cajaId);
-    if (!turno) throw new Error('Debe abrir un turno de caja antes de recibir un reembolso en efectivo');
+    if (!turno) throw new Error('Abre un turno de caja antes de recibir un reembolso en efectivo');
   }
 
   const pagoId = crypto.randomUUID();
