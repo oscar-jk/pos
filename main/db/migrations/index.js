@@ -12,6 +12,7 @@ const MIGRACIONES = [
   require('./008_multimoneda'),
   require('./009_conversion_listas'),
   require('./010_cambio_password'),
+  require('./011_columnas_sync'),
 ];
 
 function columnasDe(db, tabla) {
@@ -21,7 +22,9 @@ function columnasDe(db, tabla) {
 function aplicarMigraciones(db) {
   db.exec(`CREATE TABLE IF NOT EXISTS migraciones_aplicadas (
     id         TEXT PRIMARY KEY,
-    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+    updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+    deleted_at TEXT
   )`);
   const aplicadas = new Set(db.prepare('SELECT id FROM migraciones_aplicadas').all().map((m) => m.id));
   for (const migracion of MIGRACIONES) {

@@ -463,6 +463,11 @@ function lineasParaNota(db, facturaId) {
     });
 }
 
+// El costo promedio se guarda con 6 decimales (igual que en inventario.registrarMovimientoInventario).
+function redondearCosto(n) {
+  return Math.round((n + Number.EPSILON) * 1e6) / 1e6;
+}
+
 function actualizarCostoPromedio(db, productoId, costo) {
   db.prepare("UPDATE productos SET costo_promedio = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?").run(costo, productoId);
 }
@@ -490,7 +495,7 @@ function aplicarDevolucion(db, { lineaFactura, cantidad, factura, documentoId, u
   const existenciaAntes = existenciaTotalProducto(db, lineaFactura.producto_id);
   const promedio = producto.costo_promedio || 0;
   const existenciaDespues = redondear(existenciaAntes - cantidad);
-  const nuevoPromedio = existenciaDespues > 0 ? Math.max(0, redondear((existenciaAntes * promedio - base) / existenciaDespues)) : promedio;
+  const nuevoPromedio = existenciaDespues > 0 ? Math.max(0, redondearCosto((existenciaAntes * promedio - base) / existenciaDespues)) : promedio;
   const valorSalida = redondear(existenciaAntes * promedio - Math.max(0, existenciaDespues) * nuevoPromedio);
 
   salida(lineaFactura.costo_unitario);
@@ -542,7 +547,7 @@ function aplicarAjusteCosto(db, { lineaFactura, base, signo, factura, documentoI
   let montoInventario = redondear(base * proporcion);
   let nuevoPromedio = promedio;
   if (existencia > 0 && montoInventario > 0) {
-    nuevoPromedio = redondear((existencia * promedio + signo * montoInventario) / existencia);
+    nuevoPromedio = redondearCosto((existencia * promedio + signo * montoInventario) / existencia);
     if (nuevoPromedio < 0) {
       nuevoPromedio = 0;
       montoInventario = redondear(existencia * promedio);
@@ -719,7 +724,7 @@ function anularNotaCompra(db, { documentoId, motivo, usuarioId }) {
       const existencia = existenciaTotalProducto(db, l.producto_id);
       if (existencia > 0) {
         const promedio = db.prepare('SELECT costo_promedio FROM productos WHERE id = ?').get(l.producto_id).costo_promedio || 0;
-        const nuevoPromedio = Math.max(0, redondear((existencia * promedio - signo * l.monto_inventario) / existencia));
+        const nuevoPromedio = Math.max(0, redondearCosto((existencia * promedio - signo * l.monto_inventario) / existencia));
         actualizarCostoPromedio(db, l.producto_id, nuevoPromedio);
         inventario.registrarMovimientoInventario(db, {
           productoId: l.producto_id, almacenId: nota.almacen_id, tipoMovimiento: 'ajuste_costo_compra', cantidad: 0,

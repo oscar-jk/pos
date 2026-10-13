@@ -85,7 +85,9 @@ CREATE TABLE bitacora_auditoria (
   entidad_id    TEXT NOT NULL,
   accion        TEXT NOT NULL,     -- crear, editar, anular, cerrar, reabrir, etc.
   detalle       TEXT,              -- JSON con antes/después o notas
-  created_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+  created_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  deleted_at TEXT
 );
 CREATE INDEX idx_bitacora_entidad ON bitacora_auditoria(entidad, entidad_id);
 CREATE INDEX idx_bitacora_usuario ON bitacora_auditoria(usuario_id);
@@ -100,7 +102,9 @@ CREATE TABLE parametros_negocio (
   clave       TEXT PRIMARY KEY,
   valor       TEXT NOT NULL,
   descripcion TEXT,
-  updated_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+  updated_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  deleted_at TEXT
 );
 
 CREATE TABLE tasas_itbis (
@@ -181,7 +185,10 @@ CREATE TABLE categorias_producto (
 CREATE TABLE unidades_medida (
   id          TEXT PRIMARY KEY,
   nombre      TEXT NOT NULL,
-  abreviatura TEXT NOT NULL
+  abreviatura TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  deleted_at TEXT
 );
 
 CREATE TABLE categorias_cliente (
@@ -292,6 +299,8 @@ CREATE TABLE existencias (
   cantidad_disponible   REAL NOT NULL DEFAULT 0,
   cantidad_comprometida REAL NOT NULL DEFAULT 0, -- reservada en pedidos abiertos
   updated_at            TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  deleted_at TEXT,
   UNIQUE (producto_id, almacen_id)
 );
 
@@ -310,7 +319,9 @@ CREATE TABLE kardex_movimientos (
   saldo_cantidad        REAL NOT NULL, -- saldo del producto/almacén después de este movimiento
   saldo_costo           REAL NOT NULL, -- costo unitario vigente después de este movimiento
   usuario_id            TEXT REFERENCES usuarios(id),
-  created_at            TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+  created_at            TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  deleted_at TEXT
 );
 CREATE INDEX idx_kardex_producto_almacen ON kardex_movimientos(producto_id, almacen_id, created_at);
 CREATE INDEX idx_kardex_origen ON kardex_movimientos(documento_origen_tipo, documento_origen_id);
@@ -335,7 +346,10 @@ CREATE TABLE transferencias_almacen_detalle (
   transferencia_id  TEXT NOT NULL REFERENCES transferencias_almacen(id),
   producto_id       TEXT NOT NULL REFERENCES productos(id),
   lote_id           TEXT REFERENCES lotes(id),
-  cantidad          REAL NOT NULL
+  cantidad          REAL NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  deleted_at TEXT
 );
 CREATE INDEX idx_transf_detalle_transferencia ON transferencias_almacen_detalle(transferencia_id);
 
@@ -364,7 +378,10 @@ CREATE TABLE ajustes_inventario_detalle (
   producto_id     TEXT NOT NULL REFERENCES productos(id),
   lote_id         TEXT REFERENCES lotes(id),
   cantidad        REAL NOT NULL,
-  costo_unitario  REAL NOT NULL
+  costo_unitario  REAL NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  deleted_at TEXT
 );
 CREATE INDEX idx_ajuste_detalle_ajuste ON ajustes_inventario_detalle(ajuste_id);
 
@@ -505,7 +522,9 @@ CREATE TABLE cxc_empleados_pagos (
   fecha           TEXT NOT NULL,
   referencia      TEXT, -- p.ej. referencia a la nómina o recibo de caja
   usuario_id      TEXT NOT NULL REFERENCES usuarios(id),
-  created_at      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+  created_at      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  deleted_at TEXT
 );
 
 -- =========================================================================
@@ -609,7 +628,9 @@ CREATE TABLE pagos_venta (
   forma_pago    TEXT NOT NULL, -- efectivo | tarjeta | transferencia | credito
   monto         REAL NOT NULL,
   referencia    TEXT,          -- últimos dígitos de tarjeta, número de transferencia, etc.
-  created_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+  created_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  deleted_at TEXT
 );
 CREATE INDEX idx_pagos_venta_documento ON pagos_venta(documento_id);
 
@@ -687,7 +708,9 @@ CREATE TABLE recibos_ingreso_aplicaciones (
   recibo_id           TEXT NOT NULL REFERENCES recibos_ingreso(id),
   documento_venta_id  TEXT NOT NULL REFERENCES documentos_venta(id),
   monto_aplicado      REAL NOT NULL,
-  created_at          TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+  created_at          TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  deleted_at TEXT
 );
 CREATE INDEX idx_recibo_aplicaciones_recibo ON recibos_ingreso_aplicaciones(recibo_id);
 CREATE INDEX idx_recibo_aplicaciones_documento ON recibos_ingreso_aplicaciones(documento_venta_id);
@@ -790,7 +813,10 @@ CREATE TABLE liquidaciones_importacion_detalle (
   documento_compra_detalle_id TEXT NOT NULL REFERENCES documentos_compra_detalle(id),
   monto_distribuido         REAL NOT NULL,
   costo_unitario_anterior   REAL NOT NULL,
-  costo_unitario_nuevo      REAL NOT NULL
+  costo_unitario_nuevo      REAL NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  deleted_at TEXT
 );
 CREATE INDEX idx_liquidacion_detalle_liquidacion ON liquidaciones_importacion_detalle(liquidacion_id);
 
@@ -840,7 +866,9 @@ CREATE TABLE pagos_proveedor_aplicaciones (
   pago_id               TEXT NOT NULL REFERENCES pagos_proveedor(id),
   documento_compra_id   TEXT NOT NULL REFERENCES documentos_compra(id),
   monto_aplicado        REAL NOT NULL,
-  created_at            TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+  created_at            TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  deleted_at TEXT
 );
 CREATE INDEX idx_pago_prov_aplicaciones_pago ON pagos_proveedor_aplicaciones(pago_id);
 CREATE INDEX idx_pago_prov_aplicaciones_doc ON pagos_proveedor_aplicaciones(documento_compra_id);
@@ -889,7 +917,8 @@ CREATE TABLE movimientos_caja (
   documento_origen_id   TEXT,
   usuario_id            TEXT NOT NULL REFERENCES usuarios(id),
   created_at            TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
-  deleted_at            TEXT
+  deleted_at            TEXT,
+  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 );
 CREATE INDEX idx_movimientos_caja_turno ON movimientos_caja(turno_caja_id);
 CREATE INDEX idx_movimientos_caja_origen ON movimientos_caja(documento_origen_tipo, documento_origen_id);
@@ -1046,6 +1075,9 @@ CREATE TABLE asientos_contables_detalle (
   debe        REAL NOT NULL DEFAULT 0,
   haber       REAL NOT NULL DEFAULT 0,
   descripcion TEXT,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  deleted_at TEXT,
   CHECK ((debe = 0 AND haber >= 0) OR (haber = 0 AND debe >= 0))
 );
 CREATE INDEX idx_asiento_detalle_asiento ON asientos_contables_detalle(asiento_id);

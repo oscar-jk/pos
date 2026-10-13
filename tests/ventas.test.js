@@ -151,3 +151,26 @@ test('nota de crédito parcial reingresa y revierte proporcional', () => {
   assert.equal(h.saldoCuenta(db, '1300'), 350);
   assert.ok(h.balanceCuadrado(db));
 });
+
+// --- B2: pagos válidos desde el inicio ---
+test('B2: un pago en cero, negativo o no numérico se rechaza con su propio mensaje', () => {
+  const { db, ctx, p } = base();
+  const linea = [{ productoId: p, cantidad: 1 }];
+  assert.throws(() => h.facturar(db, ctx, linea, [{ formaPago: 'efectivo', monto: 218 }, { formaPago: 'tarjeta', monto: -100 }]), /tarjeta debe ser mayor que cero/);
+  assert.throws(() => h.facturar(db, ctx, linea, [{ formaPago: 'efectivo', monto: 118 }, { formaPago: 'tarjeta', monto: 0 }]), /mayor que cero/);
+  assert.throws(() => h.facturar(db, ctx, linea, [{ formaPago: 'efectivo', monto: 'abc' }]), /mayor que cero/);
+  assert.throws(() => h.facturar(db, ctx, linea, [{ formaPago: 'bitcoin', monto: 118 }]), /Forma de pago no válida/);
+  assert.equal(h.existencia(db, ctx, p), 10); // nada se movió
+});
+
+// --- B3: la condición de pago la decide el servidor ---
+test('B3: una factura a crédito marcada "contado" desde la pantalla entra al saldo del cliente', () => {
+  const { db, ctx, p } = base();
+  const cl = h.cliente(db, ctx);
+  const f = h.facturar(db, ctx, [{ productoId: p, cantidad: 1 }], [{ formaPago: 'credito', monto: 118 }], { clienteId: cl, condicionPago: 'contado' });
+  assert.equal(db.prepare('SELECT condicion_pago c FROM documentos_venta WHERE id = ?').get(f).c, 'credito');
+  assert.equal(h.m('cxc').saldoPendienteCliente(db, cl), 118);
+  const f2 = h.facturar(db, ctx, [{ productoId: p, cantidad: 2 }], [{ formaPago: 'efectivo', monto: 100 }, { formaPago: 'credito', monto: 136 }], { clienteId: cl, condicionPago: 'contado' });
+  assert.equal(db.prepare('SELECT condicion_pago c FROM documentos_venta WHERE id = ?').get(f2).c, 'mixto');
+  assert.deepEqual(h.invariantes(db), []);
+});

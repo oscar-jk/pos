@@ -15,8 +15,15 @@ const { aplicarMigraciones } = require(path.join(root, 'main/db/migrations'));
 const session = require(path.join(root, 'main/auth/session'));
 const m = (n) => require(path.join(root, 'main/ipc', n));
 
+// Todas las bases que crea una suite: al terminar la suite se les revisan las invariantes.
+const basesCreadas = [];
+
 function nuevaBase() {
   const db = new Database(':memory:');
+  // Para el reporte: la línea de la prueba que creó la base.
+  const linea = new Error().stack.split('\n').filter((l) => /\.test\.js:\d+/.test(l)).pop() || '';
+  db.origen = (linea.match(/[\w-]+\.test\.js:\d+/) || ['?'])[0];
+  basesCreadas.push(db);
   db.pragma('foreign_keys = ON');
   db.exec(fs.readFileSync(path.join(root, 'main/db/schema.sql'), 'utf8'));
   aplicarMigraciones(db);
@@ -112,4 +119,54 @@ function loginUsuario(db, usuarioId) {
   session.iniciarSesion({ usuarioId: u.id, nombreCompleto: u.nombre_completo, usuario: u.usuario, rolId: u.rol_id, rolNombre: u.rn, permisos: new Set(permisos) });
 }
 
-module.exports = { usuarioDeRol, loginUsuario, nuevaBase, contexto, loginComo, m, tx, producto, entrada, abrirTurno, facturar, cliente, saldoCuenta, existencia, balanceCuadrado, session };
+// =========================================================================
+// B3: invariantes contables globales. Se revisan sobre cada base creada en la suite, al final.
+// =========================================================================
+
+const r2 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
+const TOLERANCIA = 0.02;
+
+function valorInventario(db) {
+  const inv = m('inventario');
+  return db.prepare('SELECT * FROM productos WHERE es_kit = 0 AND deleted_at IS NULL').all().reduce((total, p) => {
+    if (inv.metodoValoracion(db, p) === 'peps') {
+      return total + db.prepare('SELECT COALESCE(SUM(cantidad * costo_unitario), 0) v FROM lotes WHERE producto_id = ? AND deleted_at IS NULL AND cantidad > 0').get(p.id).v;
+    }
+    const existencia = db.prepare('SELECT COALESCE(SUM(cantidad_disponible), 0) t FROM existencias WHERE producto_id = ?').get(p.id).t;
+    return total + existencia * (p.costo_promedio || 0);
+  }, 0);
+}
+
+function invariantes(db) {
+  const fallas = [];
+  const sumas = db.prepare(`SELECT COALESCE(SUM(d.debe), 0) d, COALESCE(SUM(d.haber), 0) h FROM asientos_contables_detalle d
+    JOIN asientos_contables a ON a.id = d.asiento_id WHERE a.estado = 'confirmado'`).get();
+  if (Math.abs(sumas.d - sumas.h) > TOLERANCIA) fallas.push(`debe ${r2(sumas.d)} ≠ haber ${r2(sumas.h)}`);
+
+  const inventario = r2(valorInventario(db));
+  if (Math.abs(saldoCuenta(db, '1300') - inventario) > TOLERANCIA) fallas.push(`1300 = ${saldoCuenta(db, '1300')} pero el inventario vale ${inventario}`);
+
+  const cxc = m('cxc');
+  const clientes = r2(db.prepare('SELECT id FROM clientes WHERE deleted_at IS NULL').all().reduce((a, c) => a + cxc.saldoPendienteCliente(db, c.id), 0));
+  if (Math.abs(saldoCuenta(db, '1400') - clientes) > TOLERANCIA) fallas.push(`1400 = ${saldoCuenta(db, '1400')} pero los clientes deben ${clientes}`);
+
+  for (const t of db.prepare('SELECT * FROM turnos_caja').all()) {
+    const movimientos = db.prepare('SELECT COALESCE(SUM(monto), 0) s FROM movimientos_caja WHERE turno_caja_id = ? AND deleted_at IS NULL').get(t.id).s;
+    const esperado = r2(t.fondo_inicial + movimientos);
+    const registrado = t.estado === 'abierto' ? m('caja').efectivoEsperado(db, t) : t.efectivo_esperado;
+    if (Math.abs(registrado - esperado) > TOLERANCIA) fallas.push(`turno ${t.estado} ${t.id.slice(0, 8)}: efectivo ${registrado} ≠ fondo + movimientos ${esperado}`);
+  }
+  return fallas;
+}
+
+// Se registra una vez por suite (cada archivo de prueba corre en su propio proceso).
+const { after } = require('node:test');
+after(() => {
+  const fallas = basesCreadas.flatMap((db, i) => {
+    if (!db.open) return [];
+    try { return invariantes(db).map((f) => `base ${i + 1} (${db.origen}): ${f}`); } catch (e) { return [`base ${i + 1}: no se pudo revisar (${e.message})`]; }
+  });
+  if (fallas.length) throw new Error('Invariantes contables rotas:\n' + fallas.join('\n'));
+});
+
+module.exports = { invariantes, valorInventario, usuarioDeRol, loginUsuario, nuevaBase, contexto, loginComo, m, tx, producto, entrada, abrirTurno, facturar, cliente, saldoCuenta, existencia, balanceCuadrado, session };
