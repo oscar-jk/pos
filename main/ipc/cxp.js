@@ -271,8 +271,16 @@ function chequesPosdatadosPendientes(db) {
     .all();
 }
 
-function marcarChequeCobrado(db, { pagoId }) {
+// Marca un cheque posdatado como cobrado por el banco. Exige permiso y queda en la bitácora:
+// antes cualquier usuario podía hacerlo por IPC y no quedaba rastro.
+function marcarChequeCobrado(db, { pagoId, usuarioId }) {
+  session.requerirPermiso('cxp.pago.crear');
+  const pago = db.prepare('SELECT * FROM pagos_proveedor WHERE id = ?').get(pagoId);
+  if (!pago || pago.forma_pago !== 'cheque') throw new Error('Cheque no encontrado');
+  if (pago.estado === 'anulado') throw new Error('El pago de este cheque está anulado');
+  if (pago.estado_cheque !== 'pendiente') throw new Error('El cheque ya está marcado como cobrado');
   db.prepare("UPDATE pagos_proveedor SET estado_cheque = 'cobrado', updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?").run(pagoId);
+  configuracion.registrarAuditoria(db, { usuarioId, modulo: 'cxp', entidad: 'pagos_proveedor', entidadId: pagoId, accion: 'cheque_cobrado', detalle: { numero: pago.numero, cheque: pago.numero_cheque } });
 }
 
 // =========================================================================
