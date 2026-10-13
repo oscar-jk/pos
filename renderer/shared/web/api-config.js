@@ -16,6 +16,12 @@
     ['configuracion', 'configuracion.gestionar', 'Gestionar configuración del negocio'],
   ].map(([modulo, codigo, descripcion]) => ({ id: codigo, modulo, codigo, descripcion }));
 
+  // Los roles se guardan en el almacenamiento de la demo; la primera vez se crea el de administrador.
+  function rolesDe(db) {
+    if (!Array.isArray(db.roles)) db.roles = [{ ...ROL_UNICO, permisos: [] }];
+    return db;
+  }
+
   function bitacora(db, { usuarioId, modulo, entidad, entidadId, accion, detalle }) {
     db.bitacora.push({ id: store.uuid(), usuario_id: usuarioId || null, modulo, entidad, entidad_id: entidadId, accion, detalle: detalle ? JSON.stringify(detalle) : null, created_at: store.ahora() });
   }
@@ -73,7 +79,7 @@
 
     listarUsuarios: async () => {
       const db = store.cargar();
-      return db.usuarios.map((u) => ({ id: u.id, nombre_completo: u.nombre_completo, usuario: u.usuario, rol_id: ROL_UNICO.id, rol_nombre: u.rol_nombre || ROL_UNICO.nombre, pct_comision: u.pct_comision || 0, activo: u.activo }));
+      return db.usuarios.map((u) => ({ id: u.id, nombre_completo: u.nombre_completo, usuario: u.usuario, rol_id: u.rol_id || ROL_UNICO.id, rol_nombre: ((rolesDe(db).roles.find((r) => r.id === (u.rol_id || ROL_UNICO.id)) || ROL_UNICO).nombre), pct_comision: u.pct_comision || 0, activo: u.activo }));
     },
     crearUsuario: async ({ payload, usuarioCreadorId }) => {
       const db = store.cargar();
@@ -81,7 +87,7 @@
       if (payload.password.length < 6) throw new Error('La contraseña debe tener al menos 6 caracteres');
       if (db.usuarios.some((u) => u.usuario === payload.usuario)) throw new Error(`Ya existe un usuario con el nombre de acceso "${payload.usuario}"`);
       const id = store.uuid();
-      db.usuarios.push({ id, nombre_completo: payload.nombreCompleto, usuario: payload.usuario, password_hash: store.hashSimple(payload.password), rol_nombre: ROL_UNICO.nombre, pct_comision: payload.pctComision || 0, activo: true });
+      db.usuarios.push({ id, nombre_completo: payload.nombreCompleto, usuario: payload.usuario, password_hash: store.hashSimple(payload.password), rol_id: payload.rolId || ROL_UNICO.id, rol_nombre: ((rolesDe(db).roles.find((r) => r.id === payload.rolId) || ROL_UNICO).nombre), pct_comision: payload.pctComision || 0, activo: true });
       bitacora(db, { usuarioId: usuarioCreadorId, modulo: 'configuracion', entidad: 'usuarios', entidadId: id, accion: 'crear' });
       store.guardar();
       return window.puntoXConfig.listarUsuarios();
@@ -90,7 +96,7 @@
       const db = store.cargar();
       const u = db.usuarios.find((x) => x.id === usuarioId);
       if (!u) throw new Error('Usuario no encontrado');
-      u.nombre_completo = payload.nombreCompleto; u.pct_comision = payload.pctComision || 0; u.activo = payload.activo !== false;
+      u.nombre_completo = payload.nombreCompleto; if (payload.rolId) { u.rol_id = payload.rolId; u.rol_nombre = ((rolesDe(db).roles.find((r) => r.id === payload.rolId) || ROL_UNICO).nombre); } u.pct_comision = payload.pctComision || 0; u.activo = payload.activo !== false;
       if (payload.password) {
         if (payload.password.length < 6) throw new Error('La contraseña debe tener al menos 6 caracteres');
         u.password_hash = store.hashSimple(payload.password);
@@ -100,11 +106,64 @@
       return window.puntoXConfig.listarUsuarios();
     },
 
-    listarRoles: async () => [{ ...ROL_UNICO, total_usuarios: store.cargar().usuarios.length }],
+    // Roles en la demo: se crean, editan y eliminan igual que en la app (guardados en este navegador).
+    listarRoles: async () => {
+      const db = rolesDe(store.cargar());
+      return db.roles.filter((r) => !r.deleted_at).map((r) => ({ ...r, total_usuarios: db.usuarios.filter((u) => (u.rol_id || ROL_UNICO.id) === r.id).length }));
+    },
     listarPermisos: async () => PERMISOS_INFORMATIVOS,
-    permisosDeRol: async () => PERMISOS_INFORMATIVOS.map((p) => p.id),
-    actualizarPermisosRol: async () => { /* informativo: no aplica en la versión web */ },
-    actualizarLimiteDescuentoRol: async () => { /* informativo: no aplica en la versión web */ },
+    permisosDeRol: async ({ rolId }) => {
+      const r = rolesDe(store.cargar()).roles.find((x) => x.id === rolId);
+      return r ? (r.id === ROL_UNICO.id ? PERMISOS_INFORMATIVOS.map((p) => p.id) : r.permisos || []) : [];
+    },
+    actualizarPermisosRol: async ({ rolId, permisoIds }) => {
+      const db = rolesDe(store.cargar());
+      const r = db.roles.find((x) => x.id === rolId);
+      if (!r) throw new Error('Rol no encontrado');
+      if (r.id === ROL_UNICO.id) throw new Error('El rol Administrador/Dueño tiene todos los permisos');
+      r.permisos = permisoIds || [];
+      store.guardar();
+    },
+    actualizarLimiteDescuentoRol: async ({ rolId, limitePct }) => {
+      const db = rolesDe(store.cargar());
+      const r = db.roles.find((x) => x.id === rolId);
+      if (r) { r.limite_descuento_pct = Number(limitePct) || 0; store.guardar(); }
+    },
+    crearRol: async ({ payload, usuarioId }) => {
+      const db = rolesDe(store.cargar());
+      const nombre = String(payload.nombre || '').trim().replace(/\s+/g, ' ');
+      if (!nombre) throw new Error('Escribe el nombre del rol');
+      if (db.roles.some((r) => !r.deleted_at && r.nombre.toLowerCase() === nombre.toLowerCase())) throw new Error(`Ya existe un rol llamado "${nombre}"`);
+      const base = payload.copiarDeRolId ? db.roles.find((r) => r.id === payload.copiarDeRolId) : null;
+      const id = store.uuid();
+      const permisos = base ? (base.id === ROL_UNICO.id ? PERMISOS_INFORMATIVOS.map((p) => p.id) : [...(base.permisos || [])]) : [];
+      db.roles.push({ id, nombre, descripcion: (payload.descripcion || '').trim() || null, es_rol_sistema: false, limite_descuento_pct: base ? base.limite_descuento_pct : 0, permisos });
+      bitacora(db, { usuarioId, modulo: 'configuracion', entidad: 'roles', entidadId: id, accion: 'crear' });
+      store.guardar();
+      return id;
+    },
+    editarRol: async ({ rolId, payload, usuarioId }) => {
+      const db = rolesDe(store.cargar());
+      const r = db.roles.find((x) => x.id === rolId && !x.deleted_at);
+      if (!r) throw new Error('Rol no encontrado');
+      const nombre = String(payload.nombre || '').trim();
+      if (!nombre) throw new Error('Escribe el nombre del rol');
+      if (r.es_rol_sistema && nombre !== r.nombre) throw new Error('Los roles del sistema no se pueden renombrar. Crea un rol nuevo a partir de este');
+      r.nombre = nombre; r.descripcion = (payload.descripcion || '').trim() || null;
+      bitacora(db, { usuarioId, modulo: 'configuracion', entidad: 'roles', entidadId: rolId, accion: 'editar' });
+      store.guardar();
+    },
+    eliminarRol: async ({ rolId, usuarioId }) => {
+      const db = rolesDe(store.cargar());
+      const r = db.roles.find((x) => x.id === rolId && !x.deleted_at);
+      if (!r) throw new Error('Rol no encontrado');
+      if (r.es_rol_sistema) throw new Error('Los roles del sistema no se pueden eliminar');
+      const n = db.usuarios.filter((u) => u.rol_id === rolId).length;
+      if (n) throw new Error(`El rol tiene ${n} usuario(s). Asígnales otro rol antes de eliminarlo`);
+      r.deleted_at = store.ahora();
+      bitacora(db, { usuarioId, modulo: 'configuracion', entidad: 'roles', entidadId: rolId, accion: 'eliminar' });
+      store.guardar();
+    },
 
     listarTasasItbis: async () => store.cargar().tasasItbis,
     crearTasaItbis: async ({ payload, usuarioId }) => {
