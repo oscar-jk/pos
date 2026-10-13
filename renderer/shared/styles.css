@@ -929,3 +929,5 @@ select.input-normal, input.input-normal {
   letter-spacing: -0.02em;
   font-variant-numeric: tabular-nums;
 }
+
+input[type="checkbox"], input[type="radio"] { accent-color: var(--color-accent); }

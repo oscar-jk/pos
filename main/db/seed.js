@@ -314,6 +314,9 @@ function seed(db) {
     insertParametro.run('negocio_rnc', '', 'RNC del negocio, impreso en el encabezado de factura', timestamp);
     insertParametro.run('negocio_direccion', '', 'Dirección del negocio, impresa en el encabezado de factura', timestamp);
     insertParametro.run('negocio_telefono', '', 'Teléfono del negocio, impreso en el encabezado de factura', timestamp);
+
+    // Una base nueva arranca con el asistente de configuración inicial pendiente.
+    insertParametro.run('onboarding_completado', '0', 'Asistente de configuración inicial terminado', timestamp);
   });
 
   insertMany();

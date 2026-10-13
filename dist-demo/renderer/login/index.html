@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'" />
+  <title>Nodo — Iniciar sesión</title>
+  <link rel="stylesheet" href="../shared/styles.css" />
+  <link rel="stylesheet" href="./login.css" />
+</head>
+<body>
+  <div>
+    <div class="login-card">
+      <div class="login-card__badge" id="login-badge">PX</div>
+      <div class="login-card__titulo" id="login-nombre-negocio">Nodo</div>
+      <div class="login-card__subtitulo">Inicia sesión para continuar</div>
+
+      <div id="login-error" class="login-error"></div>
+
+      <form class="login-form" id="login-form">
+        <div class="form-field">
+          <label>Usuario</label>
+          <input id="login-usuario" class="input-normal" type="text" autocomplete="username" autofocus />
+        </div>
+        <div class="form-field">
+          <label>Contraseña</label>
+          <input id="login-password" class="input-normal" type="password" autocomplete="current-password" />
+        </div>
+        <button type="submit" class="login-btn" id="login-btn">Iniciar sesión</button>
+      </form>
+
+      <form class="login-form" id="cambio-form" style="display:none;">
+        <div class="login-aviso">Por seguridad, cambia tu contraseña antes de continuar. Usa al menos 8 caracteres.</div>
+        <div class="form-field">
+          <label>Contraseña actual</label>
+          <input id="cambio-actual" class="input-normal" type="password" autocomplete="current-password" />
+        </div>
+        <div class="form-field">
+          <label>Nueva contraseña</label>
+          <input id="cambio-nueva" class="input-normal" type="password" autocomplete="new-password" />
+        </div>
+        <div class="form-field">
+          <label>Repite la nueva contraseña</label>
+          <input id="cambio-repetir" class="input-normal" type="password" autocomplete="new-password" />
+        </div>
+        <button type="submit" class="login-btn" id="cambio-btn">Guardar y entrar</button>
+        <button type="button" class="login-salir" id="cambio-salir">Salir</button>
+      </form>
+    </div>
+    <div class="login-footer">
+      <img class="marca-nodo marca-nodo--claro" src="../../assets/marca/nodo-logo-horizontal.svg" alt="Nodo" height="22" />
+      <img class="marca-nodo marca-nodo--oscuro" src="../../assets/marca/nodo-logo-horizontal-blanco.svg" alt="Nodo" height="22" />
+      Sistema de facturación · ODTeam X
+    </div>
+  </div>
+
+  <script src="../shared/escape.js"></script>
+  <script src="../shared/estados.js"></script>
+  <script src="../shared/tema.js"></script>
+  <script src="../shared/web/store.js"></script>
+  <script src="../shared/web/api-auth-app.js"></script>
+  <script src="./login.js"></script>
+</body>
+</html>

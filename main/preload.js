@@ -312,6 +312,15 @@ contextBridge.exposeInMainWorld('puntoXProyecciones', {
   flujoCaja: invoke('proyecciones:flujoCaja'),
 });
 
+// Asistente de configuración inicial.
+contextBridge.exposeInMainWorld('puntoXOnboarding', {
+  datos: invoke('onboarding:datos'),
+  guardarNegocio: invoke('onboarding:guardarNegocio'),
+  configurarNcf: invoke('onboarding:configurarNcf'),
+  guardarSucursal: invoke('onboarding:guardarSucursal'),
+  finalizar: invoke('onboarding:finalizar'),
+});
+
 // Formatos 607 (ventas) y 608 (comprobantes anulados) de la DGII.
 contextBridge.exposeInMainWorld('puntoXFormatosVentas', {
   reporte607: invoke('formatos:reporte607'),

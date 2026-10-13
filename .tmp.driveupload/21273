@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'" />
+  <title>Nodo — Configuración</title>
+  <link rel="stylesheet" href="../shared/styles.css" />
+  <link rel="stylesheet" href="./configuracion.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <div id="sidebar-container"></div>
+    <div class="main-area">
+      <div id="topbar-container"></div>
+
+      <div class="page-header">
+        <div>
+          <h1>Configuración</h1>
+          <p>Datos del negocio, usuarios y roles, parámetros fiscales, sucursales y auditoría.</p>
+        </div>
+        <div id="acciones-tab"></div>
+      </div>
+
+      <div id="mensaje-error" class="mensaje-error" style="display:none;"></div>
+      <div id="mensaje-exito" class="factura-exito" style="display:none;"></div>
+
+      <div class="tabs">
+        <button class="tab-btn is-active" data-tab="negocio">Negocio</button>
+        <button class="tab-btn" data-tab="usuarios">Usuarios</button>
+        <button class="tab-btn" data-tab="roles">Roles y permisos</button>
+        <button class="tab-btn" data-tab="fiscal">Parámetros fiscales</button>
+        <button class="tab-btn" data-tab="ecf" data-permiso="configuracion.ecf.gestionar">Facturación electrónica</button>
+        <button class="tab-btn" data-tab="parametros">Parámetros de negocio</button>
+        <button class="tab-btn" data-tab="sucursales">Sucursales y almacenes</button>
+        <button class="tab-btn" data-tab="impresoras" data-permiso="configuracion.impresoras.gestionar">Impresoras</button>
+        <button class="tab-btn" data-tab="monedas" data-permiso="configuracion.gestionar">Monedas</button>
+        <button class="tab-btn" data-tab="modulos" data-permiso="configuracion.gestionar">Módulos</button>
+        <button class="tab-btn" data-tab="bitacora" data-permiso="configuracion.gestionar,configuracion.auditoria.ver">Bitácora de auditoría</button>
+      </div>
+
+      <div id="tab-negocio" class="tab-panel">
+        <div class="logo-negocio" id="bloque-logo" style="display:none;">
+          <div class="logo-negocio__vista" id="logo-vista" aria-hidden="true"></div>
+          <div class="logo-negocio__texto">
+            <div class="logo-negocio__titulo">Logo del negocio</div>
+            <p class="logo-negocio__ayuda">Aparece en el menú lateral, en la pantalla de inicio de sesión y en las facturas impresas. PNG, JPG o WebP; se reduce solo a 256 px.</p>
+            <div class="logo-negocio__acciones" data-permiso="configuracion.gestionar">
+              <button type="button" class="btn btn-secundario btn-chico" id="btn-logo-cargar">Cargar logo</button>
+              <button type="button" class="btn btn-peligro btn-chico" id="btn-logo-quitar" style="display:none;">Quitar logo</button>
+              <input type="file" id="logo-archivo" accept="image/png,image/jpeg,image/webp" hidden />
+            </div>
+          </div>
+        </div>
+        <div class="form-grid" style="max-width:600px;">
+          <div class="form-field"><label>Nombre del negocio</label><input id="neg-nombre" class="input-normal" /></div>
+          <div class="form-field"><label>Iniciales (distintivo del sidebar)</label><input id="neg-iniciales" class="input-normal" maxlength="3" /></div>
+          <div class="form-field"><label>Color de marca</label><input id="neg-color" class="input-normal" type="color" /></div>
+          <div class="form-field"><label>RNC del negocio</label><input id="neg-rnc" class="input-normal" placeholder="Se imprime en el encabezado de la factura" /></div>
+          <div class="form-field"><label>Razón social (como aparece en la DGII)</label><input id="neg-razon-social" class="input-normal" maxlength="150" placeholder="Emisor de los comprobantes electrónicos" /></div>
+          <div class="form-field"><label>Teléfono</label><input id="neg-telefono" class="input-normal" /></div>
+          <div class="form-field" style="grid-column: span 2;"><label>Dirección</label><input id="neg-direccion" class="input-normal" /></div>
+        </div>
+        <button class="btn btn-primario" id="btn-guardar-negocio" data-permiso="configuracion.gestionar" style="margin-top:16px;">Guardar cambios</button>
+        <a class="btn btn-secundario" href="../onboarding/index.html" data-permiso="configuracion.gestionar" style="margin-top:16px; margin-left:8px; display:inline-block;">Abrir asistente de configuración</a>
+      </div>
+
+      <div id="tab-usuarios" class="tab-panel" style="display:none;">
+        <table class="data-table">
+          <thead><tr><th>Nombre</th><th>Usuario</th><th>Rol</th><th>Comisión</th><th>Estado</th><th></th></tr></thead>
+          <tbody id="usuarios-tbody"></tbody>
+        </table>
+      </div>
+
+      <div id="tab-roles" class="tab-panel" style="display:none;">
+        <div style="display:flex; gap:20px;">
+          <div style="width:280px; flex-shrink:0;">
+            <div id="roles-lista"></div>
+          </div>
+          <div style="flex-grow:1;" id="rol-detalle">
+            <div class="empty-state">Selecciona un rol para ver y editar sus permisos.</div>
+          </div>
+        </div>
+      </div>
+
+      <div id="tab-fiscal" class="tab-panel" style="display:none;">
+        <div class="card__title" style="margin-bottom:10px;">Tasas de ITBIS</div>
+        <table class="data-table" style="margin-bottom:10px;">
+          <thead><tr><th>Nombre</th><th>Porcentaje</th><th>Por defecto</th><th>Estado</th><th></th></tr></thead>
+          <tbody id="tasas-tbody"></tbody>
+        </table>
+        <button class="btn btn-secundario btn-chico" id="btn-nueva-tasa" data-permiso="configuracion.gestionar">+ Nueva tasa de ITBIS</button>
+
+        <div class="form-seccion">
+          <div class="card__title" style="margin-bottom:10px;">Tipos de NCF / e-CF</div>
+          <table class="data-table">
+            <thead><tr><th>Código</th><th>Nombre</th><th>Aplica a</th><th>Numeración</th><th>Estado</th><th></th></tr></thead>
+            <tbody id="ncf-tbody"></tbody>
+          </table>
+          <button class="btn btn-secundario btn-chico" id="btn-nuevo-ncf" data-permiso="configuracion.gestionar" style="margin-top:10px;">+ Nuevo tipo de NCF</button>
+        </div>
+      </div>
+
+      <div id="tab-parametros" class="tab-panel" style="display:none;">
+        <div id="parametros-lista"></div>
+      </div>
+
+      <div id="tab-sucursales" class="tab-panel" style="display:none;">
+        <div class="card__title" style="margin-bottom:10px;">Sucursales</div>
+        <table class="data-table" style="margin-bottom:10px;">
+          <thead><tr><th>Nombre</th><th>Dirección</th><th>Teléfono</th></tr></thead>
+          <tbody id="sucursales-tbody"></tbody>
+        </table>
+        <button class="btn btn-secundario btn-chico" id="btn-nueva-sucursal" data-permiso="configuracion.gestionar">+ Nueva sucursal</button>
+
+        <div class="form-seccion">
+          <div class="card__title" style="margin-bottom:10px;">Almacenes</div>
+          <table class="data-table">
+            <thead><tr><th>Nombre</th><th>Sucursal</th></tr></thead>
+            <tbody id="almacenes-tbody"></tbody>
+          </table>
+          <button class="btn btn-secundario btn-chico" id="btn-nuevo-almacen" data-permiso="configuracion.gestionar" style="margin-top:10px;">+ Nuevo almacén</button>
+        </div>
+      </div>
+
+      <div id="tab-ecf" class="tab-panel" style="display:none;">
+        <div id="ecf-contenido"></div>
+      </div>
+
+      <div id="tab-impresoras" class="tab-panel" style="display:none;">
+        <p style="font-size:13px; color:var(--color-text-muted); margin:0 0 14px; max-width:640px;">
+          La impresora que configures para cada tipo se preselecciona en el diálogo de impresión de Windows.
+          Siempre puedes cambiarla ahí mismo o elegir "Guardar como PDF".
+        </p>
+        <table class="data-table" style="margin-bottom:10px;">
+          <thead><tr><th>Nombre</th><th>Tipo</th><th>Dispositivo</th><th>Copias</th><th>Estado</th><th></th></tr></thead>
+          <tbody id="impresoras-tbody"></tbody>
+        </table>
+        <div id="impresoras-vacio" class="empty-state" style="display:none;">Aún no hay impresoras configuradas. Se usará la impresora predeterminada de Windows.</div>
+        <button class="btn btn-secundario btn-chico" id="btn-nueva-impresora">+ Nueva impresora</button>
+      </div>
+
+      <div id="tab-monedas" class="tab-panel" style="display:none;">
+        <p style="font-size:13px; color:var(--color-text-muted); margin:0 0 14px; max-width:640px;">
+          Tasa de cambio del día (RD$ por cada unidad de la moneda). Sin la tasa de hoy no se puede facturar en esa moneda.
+          Cada factura guarda la tasa con que se emitió; cambiarla después no la afecta.
+        </p>
+        <div id="monedas-lista"></div>
+      </div>
+
+      <div id="tab-modulos" class="tab-panel" style="display:none;">
+        <p style="font-size:13px; color:var(--color-text-muted); margin:0 0 14px; max-width:640px;">
+          Funciones opcionales que cada negocio decide si usa. Al activar un módulo aparece en el menú lateral;
+          al desactivarlo se oculta, pero su información se conserva.
+        </p>
+        <div id="modulos-lista"></div>
+      </div>
+
+      <div id="tab-bitacora" class="tab-panel" style="display:none;">
+        <select id="bitacora-filtro-modulo" class="input-normal" style="max-width:240px; margin-bottom:14px;">
+          <option value="">Todos los módulos</option>
+        </select>
+        <table class="data-table">
+          <thead><tr><th>Fecha</th><th>Usuario</th><th>Módulo</th><th>Entidad</th><th>Acción</th><th>Detalle</th></tr></thead>
+          <tbody id="bitacora-tbody"></tbody>
+        </table>
+        <div id="bitacora-vacio" class="empty-state" style="display:none;">Aún no hay actividad registrada en la bitácora.</div>
+      </div>
+
+    </div>
+  </div>
+
+  <script src="../shared/escape.js"></script>
+  <script src="../shared/estados.js"></script>
+  <script src="../shared/tema.js"></script>
+  <script src="../shared/logo.js"></script>
+  <script src="../shared/iconos.js"></script>
+  <script src="../shared/web/store.js"></script>
+  <script src="../shared/web/api-auth-app.js"></script>
+  <script src="../shared/web/api-contabilidad.js"></script>
+  <script src="../shared/web/api-inventario.js"></script>
+  <script src="../shared/web/api-caja.js"></script>
+  <script src="../shared/web/api-cxc.js"></script>
+  <script src="../shared/web/api-compras.js"></script>
+  <script src="../shared/web/api-cxp.js"></script>
+  <script src="../shared/web/api-ventas.js"></script>
+  <script src="../shared/web/api-config.js"></script>
+  <script src="../shared/web/web-banner.js"></script>
+  <script src="../shared/sidebar.js"></script>
+  <script src="../shared/topbar.js"></script>
+  <script src="../shared/shell.js"></script>
+  <script src="../shared/modal.js"></script>
+  <script src="./configuracion.js"></script>
+  <script src="./ecf.js"></script>
+</body>
+</html>
