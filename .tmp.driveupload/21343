@@ -1,0 +1,71 @@
+// Bootstrap compartido: exige sesión activa (si no hay, redirige al login), monta
+// sidebar + topbar, y devuelve la info de la app (negocio, usuario, permisos, sucursal)
+// para que cada pantalla la use en su propio contenido.
+async function initPuntoXShell(moduloActivo) {
+  const info = await window.puntoX.getAppInfo();
+
+  // Sin sesión, o con la contraseña pendiente de cambio, solo se puede estar en el login.
+  if (!info.usuario || info.usuario.debeCambiarPassword) {
+    window.location.href = '../login/index.html';
+    return null;
+  }
+
+  // Base nueva: el administrador completa primero el asistente de configuración inicial.
+  const puedeConfigurar = (info.usuario.permisos || []).some((p) => p === '*' || p === 'configuracion.gestionar');
+  if (info.onboarding && info.onboarding.pendiente && puedeConfigurar) {
+    window.location.href = '../onboarding/index.html';
+    return null;
+  }
+
+  info.modulos = info.modulos || {};
+  document.getElementById('sidebar-container').innerHTML =
+    window.PuntoXSidebar.renderSidebar(moduloActivo, info.negocio, info.modulos);
+  document.getElementById('topbar-container').innerHTML =
+    window.PuntoXTopbar.renderTopbar(info.usuario);
+
+  if (window.PuntoXTema) window.PuntoXTema.aplicarColorMarca(info.negocio && info.negocio.colorAcento);
+  window.PuntoXTopbar.enlazarTema();
+
+  const permisos = new Set(info.usuario.permisos || []);
+  // '*' = todo permitido (lo usa la versión web de prueba, que no tiene matriz de roles).
+  info.tienePermiso = (codigo) => permisos.has('*') || permisos.has(codigo);
+  activarControlDePermisos(info);
+  window.PuntoXTopbar.enlazarConsultaPrecio(info);
+
+  const btnSalir = document.getElementById('topbar-btn-salir');
+  if (btnSalir) {
+    btnSalir.addEventListener('click', async () => {
+      await window.puntoXAuth.logout();
+      window.location.href = '../login/index.html';
+    });
+  }
+
+  return info;
+}
+
+// Oculta cualquier elemento con data-permiso="codigo[,codigo2...]" si el usuario no tiene
+// ninguno de esos permisos. El backend ya rechaza la acción sin importar la UI (session.
+// requerirPermiso en cada handler de main/ipc/*.js es la barrera real); esto es solo para no
+// mostrar botones que el usuario no puede usar. Un MutationObserver aplica la regla a
+// cualquier HTML insertado después (tablas recargadas, modales, pestañas), sin que cada
+// módulo tenga que acordarse de llamarlo.
+function activarControlDePermisos(info) {
+  function evaluar(el) {
+    const codigos = el.dataset.permiso.split(',').map((c) => c.trim()).filter(Boolean);
+    const autorizado = codigos.some((c) => info.tienePermiso(c));
+    el.style.display = autorizado ? '' : 'none';
+  }
+  document.querySelectorAll('[data-permiso]').forEach(evaluar);
+  const observer = new MutationObserver((mutaciones) => {
+    for (const m of mutaciones) {
+      for (const nodo of m.addedNodes) {
+        if (nodo.nodeType !== 1) continue;
+        if (nodo.matches && nodo.matches('[data-permiso]')) evaluar(nodo);
+        if (nodo.querySelectorAll) nodo.querySelectorAll('[data-permiso]').forEach(evaluar);
+      }
+    }
+  });
+  observer.observe(document.body, { childList: true, subtree: true });
+}
+
+window.PuntoXShell = { initPuntoXShell };
