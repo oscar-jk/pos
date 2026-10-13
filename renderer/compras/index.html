@@ -31,6 +31,7 @@
         <button class="tab-btn" data-tab="notas">Notas de crédito/débito</button>
         <button class="tab-btn" data-tab="comparacion">Comparación de costos</button>
         <button class="tab-btn" data-tab="porProducto">Compras por producto</button>
+        <button class="tab-btn" data-tab="ecfRecibidos" data-permiso="compras.ecf.recibir">e-CF recibidos</button>
       </div>
 
       <div id="tab-proveedores" class="tab-panel">
@@ -85,6 +86,19 @@
         <div id="comparacion-vacio" class="empty-state">Busca un producto para ver el historial de costos por proveedor.</div>
       </div>
 
+      <div id="tab-ecfRecibidos" class="tab-panel" style="display:none;">
+        <p style="font-size:13px; color:var(--color-text-muted); margin:0 0 14px; max-width:760px;">
+          Comprobantes electrónicos de sus proveedores. Al importar el XML se verifica la firma y que el comprador sea este negocio.
+          La aprobación o el rechazo comercial se firma y se envía a la DGII y al proveedor. La factura de compra se registra aparte con su e-NCF.
+        </p>
+        <input id="buscar-recibidos" class="input-normal" type="text" placeholder="Buscar por e-NCF, RNC o proveedor..." style="max-width:320px; margin-bottom:14px;" />
+        <table class="data-table">
+          <thead><tr><th>e-NCF</th><th>Proveedor</th><th>Emisión</th><th>Total</th><th>ITBIS</th><th>Acuse</th><th>Aprobación comercial</th><th></th></tr></thead>
+          <tbody id="recibidos-tbody"></tbody>
+        </table>
+        <div id="recibidos-vacio" class="empty-state" style="display:none;">Aún no hay e-CF recibidos.</div>
+      </div>
+
       <div id="tab-porProducto" class="tab-panel" style="display:none;">
         <div class="form-grid" style="max-width:420px; margin-bottom:14px;">
           <div class="form-field"><label>Desde</label><input id="pp-desde" type="date" class="input-normal" /></div>
@@ -117,5 +131,6 @@
   <script src="../shared/shell.js"></script>
   <script src="../shared/modal.js"></script>
   <script src="./compras.js"></script>
+  <script src="./ecf-recibidos.js"></script>
 </body>
 </html>

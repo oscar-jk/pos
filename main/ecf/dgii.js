@@ -1,0 +1,154 @@
+// Cliente de los servicios web de facturación electrónica de la DGII (Descripción Técnica
+// Servicios DGII). Solo lo usa el proceso principal. Sin conexión, la venta no se detiene: el
+// e-CF ya está firmado y queda en cola (cola.js) para enviarse cuando vuelva la conexión.
+const { SEGMENTO_AMBIENTE } = require('./timbre');
+
+const TIEMPO_ESPERA_MS = 30000;
+
+class ErrorConexionDgii extends Error {}
+
+function urlsDe(ambiente) {
+  const seg = SEGMENTO_AMBIENTE[ambiente];
+  if (!seg) throw new Error(`Ambiente de la DGII desconocido: ${ambiente}`);
+  const ecf = `https://ecf.dgii.gov.do/${seg}`;
+  const fc = `https://fc.dgii.gov.do/${seg}`;
+  return {
+    semilla: `${ecf}/autenticacion/api/autenticacion/semilla`,
+    validarSemilla: `${ecf}/autenticacion/api/autenticacion/validarsemilla`,
+    recepcion: `${ecf}/recepcion/api/facturaselectronicas`,
+    consultaResultado: `${ecf}/consultaresultado/api/consultas/estado`,
+    consultaTrackIds: `${ecf}/consultatrackids/api/trackids/consulta`,
+    recepcionRfce: `${fc}/recepcionfc/api/recepcion/ecf`,
+    consultaRfce: `${fc}/consultarfce/api/Consultas/Consulta`,
+    anulacion: `${ecf}/anulacionrangos/api/operaciones/anularrango`,
+    aprobacionComercial: `${ecf}/aprobacioncomercial/api/aprobacioncomercial`,
+    directorioPorRnc: `${ecf}/consultadirectorio/api/consultas/obtenerdirectorioporrnc`,
+  };
+}
+
+// Ejecuta una petición HTTP con espera máxima; la falta de red se distingue del resto.
+async function pedirHttp(fetchImpl, url, opciones = {}) {
+  let respuesta;
+  try {
+    respuesta = await fetchImpl(url, { ...opciones, signal: AbortSignal.timeout(TIEMPO_ESPERA_MS) });
+  } catch (e) {
+    throw new ErrorConexionDgii(`Sin conexión con ${new URL(url).host} (${e.cause && e.cause.code ? e.cause.code : e.name === 'TimeoutError' ? 'tiempo de espera agotado' : e.message})`);
+  }
+  const texto = await respuesta.text();
+  if (respuesta.status >= 500) throw new ErrorConexionDgii(`El servicio ${new URL(url).host} no está disponible (HTTP ${respuesta.status})`);
+  let cuerpo = texto;
+  if ((respuesta.headers.get('content-type') || '').includes('json') || /^\s*[[{]/.test(texto)) {
+    try { cuerpo = JSON.parse(texto); } catch { cuerpo = texto; }
+  }
+  return { status: respuesta.status, cuerpo };
+}
+
+function formularioXml(xml, nombreArchivo) {
+  const form = new FormData();
+  form.append('xml', new Blob([xml], { type: 'text/xml' }), nombreArchivo);
+  return form;
+}
+
+// Servicios de otro contribuyente electrónico (Descripción Técnica Emisores Electrónicos):
+// las URL vienen del directorio de la DGII; la autenticación es opcional y, si existe, sigue el
+// mismo esquema de semilla firmada.
+function crearClienteContribuyente({ urlRecepcion, urlAceptacion, urlOpcional, firmar, fetchImpl = globalThis.fetch }) {
+  const base = (u) => String(u || '').replace(/\/+$/, '');
+  let token = null;
+  async function encabezados() {
+    if (!urlOpcional) return {};
+    if (!token || Date.parse(token.expira) - 60000 <= Date.now()) {
+      const semilla = await pedirHttp(fetchImpl, `${base(urlOpcional)}/fe/autenticacion/api/semilla`, { headers: { accept: '*/*' } });
+      if (semilla.status !== 200 || typeof semilla.cuerpo !== 'string') throw new Error(`El receptor no entregó la semilla de autenticación (HTTP ${semilla.status})`);
+      const r = await pedirHttp(fetchImpl, `${base(urlOpcional)}/fe/autenticacion/api/validacioncertificado`, {
+        method: 'POST', headers: { accept: 'application/json' }, body: formularioXml(firmar(semilla.cuerpo), 'semilla.xml'),
+      });
+      if (r.status !== 200 || !r.cuerpo || !r.cuerpo.token) throw new Error('El receptor rechazó la autenticación');
+      token = { valor: r.cuerpo.token, expira: r.cuerpo.expira || new Date(Date.now() + 3600000).toISOString() };
+    }
+    return { authorization: `Bearer ${token.valor}` };
+  }
+  return {
+    // Devuelve el acuse de recibo (ARECF firmado) que responde el receptor.
+    async enviarEcf(xml, nombreArchivo) {
+      return pedirHttp(fetchImpl, `${base(urlRecepcion)}/fe/recepcion/api/ecf`, { method: 'POST', headers: { accept: '*/*', ...(await encabezados()) }, body: formularioXml(xml, nombreArchivo) });
+    },
+    async enviarAprobacion(xml, nombreArchivo) {
+      return pedirHttp(fetchImpl, `${base(urlAceptacion)}/fe/aprobacioncomercial/api/ecf`, { method: 'POST', headers: { accept: '*/*', ...(await encabezados()) }, body: formularioXml(xml, nombreArchivo) });
+    },
+  };
+}
+
+// firmar(xml) → xml firmado (con el certificado del negocio). fetchImpl: inyectable en pruebas.
+function crearClienteDgii({ ambiente, firmar, fetchImpl = globalThis.fetch }) {
+  const urls = urlsDe(ambiente);
+  let token = null;
+
+  async function pedir(url, opciones = {}) {
+    const r = await pedirHttp(fetchImpl, url, opciones);
+    if (r.status === 401) token = null; // token vencido o revocado: se pide otro en el próximo envío
+    return r;
+  }
+  const formulario = formularioXml;
+
+  // Autenticación: semilla → semilla firmada → token (vigencia de una hora).
+  async function autenticar() {
+    if (token && Date.parse(token.expira) - 60000 > Date.now()) return token.valor;
+    const semilla = await pedir(urls.semilla, { headers: { accept: '*/*' } });
+    if (semilla.status !== 200 || typeof semilla.cuerpo !== 'string') throw new Error(`La DGII no entregó la semilla de autenticación (HTTP ${semilla.status})`);
+    const firmada = firmar(semilla.cuerpo);
+    const r = await pedir(urls.validarSemilla, { method: 'POST', headers: { accept: 'application/json' }, body: formulario(firmada, 'semilla.xml') });
+    if (r.status !== 200 || !r.cuerpo || !r.cuerpo.token) {
+      const detalle = r.cuerpo && (r.cuerpo.mensaje || r.cuerpo.message || r.cuerpo.title);
+      throw new Error(`La DGII rechazó la autenticación${detalle ? `: ${detalle}` : ''}. Revise que el certificado esté vigente y delegado para este RNC.`);
+    }
+    token = { valor: r.cuerpo.token, expira: r.cuerpo.expira || new Date(Date.now() + 3600000).toISOString() };
+    return token.valor;
+  }
+
+  async function conToken(url, opciones = {}) {
+    const t = await autenticar();
+    return pedir(url, { ...opciones, headers: { accept: 'application/json', ...(opciones.headers || {}), authorization: `Bearer ${t}` } });
+  }
+
+  return {
+    urls,
+    autenticar,
+    // e-CF (todos menos el 32 menor a RD$250,000): devuelve { trackId, error, mensaje }.
+    async enviarEcf(xml, nombreArchivo) {
+      const r = await conToken(urls.recepcion, { method: 'POST', body: formulario(xml, nombreArchivo) });
+      return { status: r.status, ...(typeof r.cuerpo === 'object' ? r.cuerpo : { mensaje: String(r.cuerpo) }) };
+    },
+    // Resultado de un envío: { codigo, estado, mensajes, secuenciaUtilizada, ... }.
+    async consultarResultado(trackId) {
+      const r = await conToken(`${urls.consultaResultado}?trackid=${encodeURIComponent(trackId)}`);
+      return { status: r.status, ...(typeof r.cuerpo === 'object' ? r.cuerpo : { mensaje: String(r.cuerpo) }) };
+    },
+    // Resumen de factura de consumo: respuesta inmediata { codigo, estado, mensajes, secuenciaUtilizada }.
+    async enviarRfce(xml, nombreArchivo) {
+      const r = await conToken(urls.recepcionRfce, { method: 'POST', body: formulario(xml, nombreArchivo) });
+      return { status: r.status, ...(typeof r.cuerpo === 'object' ? r.cuerpo : { mensaje: String(r.cuerpo) }) };
+    },
+    async anularRangos(xml, nombreArchivo) {
+      const r = await conToken(urls.anulacion, { method: 'POST', body: formulario(xml, nombreArchivo) });
+      return { status: r.status, ...(typeof r.cuerpo === 'object' ? r.cuerpo : { mensajes: [String(r.cuerpo)] }) };
+    },
+    async consultarTrackIds(rncEmisor, encf) {
+      const r = await conToken(`${urls.consultaTrackIds}?rncemisor=${rncEmisor}&encf=${encf}`);
+      return { status: r.status, lista: Array.isArray(r.cuerpo) ? r.cuerpo : [] };
+    },
+    async enviarAprobacionComercial(xml, nombreArchivo) {
+      const r = await conToken(urls.aprobacionComercial, { method: 'POST', body: formulario(xml, nombreArchivo) });
+      return { status: r.status, ...(typeof r.cuerpo === 'object' ? r.cuerpo : { mensaje: String(r.cuerpo) }) };
+    },
+    // Directorio de contribuyentes electrónicos: null si el RNC no es receptor electrónico.
+    async consultarDirectorio(rnc) {
+      const r = await conToken(`${urls.directorioPorRnc}?RNC=${encodeURIComponent(rnc)}`);
+      const lista = Array.isArray(r.cuerpo) ? r.cuerpo : (r.cuerpo && typeof r.cuerpo === 'object' && r.cuerpo.rnc ? [r.cuerpo] : []);
+      const fila = lista.find((x) => String(x.rnc || '').replace(/\D/g, '') === String(rnc)) || lista[0];
+      return fila && fila.urlRecepcion ? { nombre: fila.nombre, urlRecepcion: fila.urlRecepcion, urlAceptacion: fila.urlAceptacion, urlOpcional: fila.urlOpcional || null } : null;
+    },
+  };
+}
+
+module.exports = { crearClienteDgii, crearClienteContribuyente, ErrorConexionDgii, urlsDe };

@@ -31,6 +31,7 @@ const ACCIONES_TAB = {
   proveedores: '<button class="btn btn-primario" id="btn-nuevo-proveedor">+ Nuevo proveedor</button>',
   ordenes: '<button class="btn btn-primario" id="btn-nueva-orden" data-permiso="compras.orden.crear">+ Nueva orden de compra</button>',
   facturas: '<button class="btn btn-primario" id="btn-nueva-factura" data-permiso="compras.factura.crear">+ Nueva factura de compra</button>',
+  ecfRecibidos: '<button class="btn btn-primario" id="btn-importar-recibido" data-permiso="compras.ecf.recibir">Importar XML recibido</button>',
 };
 
 function cambiarTab(tab) {
@@ -46,6 +47,7 @@ function cambiarTab(tab) {
   if (tab === 'notas') cargarNotas();
   if (tab === 'comparacion') renderComparacion();
   if (tab === 'porProducto') cargarPorProducto();
+  if (tab === 'ecfRecibidos' && window.PuntoXEcfRecibidos) window.PuntoXEcfRecibidos.cargar();
 }
 
 function enlazarBtn(id, fn) {

@@ -165,6 +165,27 @@ Dashboard con indicadores y centro de alertas (stock bajo, vencimientos). Pantal
 ### Hecho y probado
 Ventas completas (incluye cotización, pedido, conduce, cuentas abiertas, promociones, multimoneda, impresión), inventario con PEPS/lotes/conversión/mermas, compras con notas y 606, CxC con retenciones, CxP, caja con conciliación, contabilidad, permisos, bitácora, módulos opcionales.
 
+### Facturación electrónica (e-CF, Ley 32-23)
+Rama `fe/facturacion-electronica`. Detalle completo en `docs/FACTURACION_ELECTRONICA.md`.
+
+**Como emisor:**
+- Comprobantes E31, E32, E33, E34, E44 y E45, firmados con el certificado `.p12` y validados contra los XSD oficiales.
+- Resumen RFCE para el consumo menor a RD$250,000.
+- Cola de envío a la DGII que funciona sin internet (contingencia de 72 horas).
+- Anulación de secuencias (ANECF).
+- Representación impresa con QR y código de seguridad.
+- Entrega al comprador electrónico.
+- Contingencia con serie B y su regularización al terminarla.
+
+**Como receptor:**
+- Acuse de recibo (ARECF).
+- Aprobación comercial (ACECF).
+- Importación del XML de los proveedores.
+
+**Pendiente:**
+- Publicar en internet los servicios del receptor, que la DGII exige para certificar.
+- Cuatro decisiones fiscales, listadas en el documento: E44 exento, nota de crédito después de 30 días, retenciones en el E31, E41/E43.
+
 ### Parcial (hay código pero falta cerrar)
 - **Listas de precio:** el backend existe (`inventario.js`: crear/editar/desactivar, `listasParaVenta`, `precioSegunListas`; regla acordada: **lista de la categoría del cliente > lista de la sucursal > nivel de precio normal**) y está probado. **Falta:** la pantalla para administrarlas y conectarlas al carrito de Ventas (aplicar el precio y mostrarlo).
 - **Conversión de producto:** backend y pestaña listos; la pestaña no tiene prueba de interfaz.

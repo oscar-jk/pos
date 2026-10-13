@@ -421,6 +421,10 @@ document.getElementById('btn-cobrar').addEventListener('click', async () => {
 
 // --- Historial ---
 
+// Estado del e-CF ante la DGII, debajo del e-NCF en el historial.
+const TEXTO_ECF = { pendiente: 'DGII: pendiente de envío', en_proceso: 'DGII: en proceso', aceptado: 'DGII: aceptado', aceptado_condicional: 'DGII: aceptado condicional', rechazado: 'DGII: rechazado', anulado: 'DGII: secuencia anulada' };
+const COLOR_ECF = { pendiente: 'var(--color-warning)', en_proceso: 'var(--color-info)', aceptado: 'var(--color-success)', aceptado_condicional: 'var(--color-success)', rechazado: 'var(--color-danger)' };
+
 async function cargarHistorial() {
   const facturas = await window.puntoXVentas.listarFacturas({ limite: 20 });
   const tbody = document.getElementById('historial-tbody');
@@ -433,7 +437,7 @@ async function cargarHistorial() {
     return `
       <tr>
         <td>${esc(f.numero)}</td>
-        <td>${esc(f.ncf)}</td>
+        <td>${esc(f.ncf)}${f.ecf_estado ? `<div style="font-size:11px; font-weight:700; color:${esc(COLOR_ECF[f.ecf_estado] || 'var(--color-text-muted)')};">${esc(TEXTO_ECF[f.ecf_estado] || f.ecf_estado)}</div>` : ''}</td>
         <td>${esc(f.cliente_nombre)}</td>
         <td>${fecha}</td>
         <td>${fmt(f.total)}${f.moneda_codigo && f.moneda_codigo !== 'DOP' ? ` <span style="font-size:11px; font-weight:700; color:var(--color-info);">${esc(f.moneda_codigo)}</span>` : ''}</td>
@@ -675,13 +679,25 @@ async function cargarNotas() {
   });
 }
 
+// --- Comprobante fiscal: en modo e-CF el selector muestra los tipos electrónicos ---
+
+const ETIQUETAS_ECF = { consumo: 'E32 — Consumo electrónica', credito_fiscal: 'E31 — Crédito fiscal electrónica', gubernamental: 'E45 — Gubernamental electrónico', regimen_especial: 'E44 — Regímenes especiales electrónico' };
+
+function configurarComprobantes() {
+  const fiscal = state.info.fiscal;
+  if (!fiscal || !fiscal.emiteEcf) return;
+  for (const opcion of document.getElementById('select-ncf').options) {
+    if (ETIQUETAS_ECF[opcion.value]) opcion.textContent = ETIQUETAS_ECF[opcion.value];
+  }
+}
+
 // --- Inicialización ---
 
 function mostrarExitoDocumento(doc) {
   const exito = document.getElementById('factura-exito');
   const titulo = { factura: 'Factura', cotizacion: 'Cotización', conduce: 'Conduce', pedido: 'Pedido' }[doc.tipo];
   const detalle = {
-    factura: ` (NCF ${doc.ncf}) guardada`,
+    factura: doc.ecf ? ` (e-NCF ${doc.ncf}) guardada y firmada; se envía a la DGII en segundo plano` : ` (NCF ${doc.ncf}) guardada`,
     cotizacion: ` guardada, válida hasta el ${(doc.valida_hasta || '').split('-').reverse().join('/')}`,
     conduce: ' registrado, pendiente de facturar',
     pedido: ' guardado: la mercancía queda reservada hasta facturarlo',
@@ -871,6 +887,7 @@ async function init() {
   state.info = await window.PuntoXShell.initPuntoXShell('ventas');
   if (!state.info) return; // sin sesión o con la contraseña pendiente: el shell ya redirigió al login
   state.categorias = await window.puntoXCxc.listarCategorias();
+  configurarComprobantes();
   actualizarSubtitulo();
   configurarSelectorDocumento();
   await configurarMonedas();

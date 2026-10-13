@@ -23,10 +23,10 @@ Cada PR se abre contra la rama del bloque anterior. Cuando el PR #1 se fusione, 
 
 | Bloque | Mejora | Qué se hace | Pruebas nuevas |
 |---|---|---|---|
-| **A** | A1 Cambio obligatorio de contraseña | Columna `usuarios.debe_cambiar_password` (migración 010a, 1 para el admin del seed), canal `auth:cambiarPassword` (actual + nueva de 8 o más, distinta). Con la marca activa, `seguro.js` y `requerirPermiso` rechazan toda operación; la app solo muestra la pantalla de cambio. | Con la marca activa no se puede facturar; el cambio valida y la quita. |
+| **A** | A1 Cambio obligatorio de contraseña | Columna `usuarios.debe_cambiar_password` (migración 010, 1 para el admin del seed), canal `auth:cambiarPassword` (actual + nueva de 8 o más, distinta). Con la marca activa, `seguro.js` y `requerirPermiso` rechazan toda operación; la app solo muestra la pantalla de cambio. | Con la marca activa no se puede facturar; el cambio valida y la quita. |
 | | A2 CSP + escape | `renderer/shared/escape.js` único; las 9 copias pasan a usarlo; revisión de los 144 `innerHTML`; `<meta>` CSP en las 14 pantallas. | Prueba que lee cada HTML y exige la CSP; prueba que no quede ninguna función de escape propia; prueba de `escapar()`. |
 | | A3 Permisos en vivo | Al editar los permisos de un rol se recargan los de la sesión activa si su usuario es de ese rol. | Quitar un permiso al rol activo bloquea la operación al instante. |
-| **B** | B1 Migración 010 | `created_at`/`updated_at`/`deleted_at` en las 14 tablas que faltan, también en `schema.sql`. | Recorre `sqlite_master` y falla si alguna tabla no tiene las tres columnas; misma prueba sobre una base "vieja". |
+| **B** | B1 Migración 011 | `created_at`/`updated_at`/`deleted_at` en las 14 tablas que faltan, también en `schema.sql`. | Recorre `sqlite_master` y falla si alguna tabla no tiene las tres columnas; misma prueba sobre una base "vieja". |
 | | B2 Pagos válidos | `crearFactura` rechaza al inicio pagos con monto ≤ 0, con mensaje claro. | Pago 0 y negativo rechazados con el mensaje propio. |
 | | B3 Invariante global | Debe = haber; 1300 = valor del inventario (capas PEPS + existencia × promedio); 1400 = saldo CxC de todos los clientes; efectivo de cada turno abierto = fondo + movimientos. Se corre al final de cada suite. | Las propias invariantes. |
 | **C** | Regresión perdida | Suites nuevas: cotización/conduce (1350), pedidos con reserva, promociones, cuentas abiertas, compras y notas (promedio y PEPS), 606 (caja chica y B04), CxP con cheques posdatados, conciliación, cierre y reapertura de periodo, transferencias con lote, conversión de producto. Cada una con flujo normal, anulación y cuadre (B3). | 12 suites. |
@@ -42,6 +42,8 @@ Cada PR se abre contra la rama del bloque anterior. Cuando el PR #1 se fusione, 
 | | F2 Binario nativo | `test` corre con el Node de Electron (mismo binario que `npm start`): nada que recompilar. Además `rebuild:node` y `rebuild:electron` para quien quiera usar Node directo. | `npm test` sin pasos previos. |
 | | F3 CI | GitHub Actions: `npm test` en cada PR, Windows y Linux. | El propio workflow. |
 | **G** | Roadmap | Etiquetas de código de barras, reportes de inventario (valorización a fecha, reposición, sobre-stock, rotación), liquidación de importación, 607 y 608, flujo de caja, multi-sucursal real. | Por función. 607/608: se pregunta cualquier regla que no esté en la especificación. |
+
+| **FE** | Facturación electrónica (Ley 32-23) | Rama `fe/facturacion-electronica`, encima de D. Ver `docs/FACTURACION_ELECTRONICA.md`. FE1 núcleo (XSD, firma, e-CF de ventas, RFCE, ANECF, cola, contingencia); FE2 representación impresa, pantallas y regularización de contingencia; FE3 entrega al comprador, recepción (ARECF) y aprobación comercial (ACECF). Migraciones 012 y 013. | 35 pruebas: XSD oficiales con libxml2, firma con xml-crypto, DGII simulada, servicio receptor de punta a punta. |
 
 ## Ajuste de orden
 

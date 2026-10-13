@@ -53,10 +53,18 @@ function desglosarItbisPorTasa(lineas) {
   return [...porTasa.entries()].sort((a, b) => b[0] - a[0]);
 }
 
-function encabezadoNegocio(negocio) {
+// ITBIS por tasa; lo exento se muestra como monto exento (no como ITBIS 0%).
+function filasImpuestos(itbisPorTasa, formato) {
+  return itbisPorTasa.map(([tasa, d]) => (tasa > 0
+    ? `<tr><td>ITBIS (${(tasa * 100).toFixed(0)}%)</td><td class="num">${formato(d.itbis)}</td></tr>`
+    : `<tr><td>Exento</td><td class="num">${formato(d.base)}</td></tr>`)).join('');
+}
+
+function encabezadoNegocio(negocio, ri) {
   return `
     <div style="margin-bottom:12px;">
       <div style="font-size:20px; font-weight:800;">${escapar(negocio.nombre || 'Mi Negocio')}</div>
+      ${ri && ri.razonSocial && ri.razonSocial !== negocio.nombre ? `<div>${escapar(ri.razonSocial)}</div>` : ''}
       ${negocio.rnc ? `<div>RNC: ${escapar(negocio.rnc)}</div>` : ''}
       ${negocio.direccion ? `<div>${escapar(negocio.direccion)}</div>` : ''}
       ${negocio.telefono ? `<div>Tel: ${escapar(negocio.telefono)}</div>` : ''}
@@ -65,7 +73,7 @@ function encabezadoNegocio(negocio) {
 }
 
 // Mismo formato carta para factura, cotización y conduce: cambian título, datos de cabecera y pie.
-const TITULO_DOCUMENTO = { factura: 'FACTURA', cotizacion: 'COTIZACIÓN', conduce: 'CONDUCE', pedido: 'PEDIDO' };
+const TITULO_DOCUMENTO = { factura: 'FACTURA', cotizacion: 'COTIZACIÓN', conduce: 'CONDUCE', pedido: 'PEDIDO', nota_credito: 'NOTA DE CRÉDITO', nota_debito: 'NOTA DE DÉBITO' };
 const ESTADO_DOCUMENTO = {
   factura: { anulado: 'ANULADA' },
   cotizacion: { abierto: 'Vigente', facturado: 'Facturada', anulado: 'ANULADA' },
@@ -73,12 +81,31 @@ const ESTADO_DOCUMENTO = {
   conduce: { entregado: 'Entregado, pendiente de facturar', facturado: 'Facturado', anulado: 'ANULADO' },
 };
 
+// Bloque de consulta del e-CF: QR (mínimo 22 × 22 mm, abajo a la izquierda), código de
+// seguridad y fecha de la firma digital; debajo, las leyendas (contingencia, pruebas, rechazo).
+function bloqueFiscal(ri, { centrado = false } = {}) {
+  if (!ri) return '';
+  return `
+    <div class="bloque-fiscal" style="display:flex; ${centrado ? 'flex-direction:column; align-items:center; text-align:center;' : 'align-items:flex-end; gap:12px;'} margin-top:18px;">
+      <div style="width:25mm; height:25mm; padding:1mm; background:#fff;">${ri.qrSvg}</div>
+      <div style="font-size:11px; line-height:1.5;">
+        <div>Código de Seguridad: <strong>${escapar(ri.codigoSeguridad)}</strong></div>
+        <div>Fecha de Firma Digital: ${escapar(ri.fechaFirma)}</div>
+      </div>
+    </div>
+    ${ri.leyendas.map((l) => `<div style="margin-top:10px; font-weight:700; font-style:italic; font-size:11px;">${escapar(l)}</div>`).join('')}`;
+}
+
+// Las partidas exentas llevan una "E" a la izquierda de la descripción (Decreto 254-06, art. 8).
+const marcaExento = (ri, linea) => (ri && !(linea.tasa_itbis > 0) ? '<strong>E</strong>&nbsp; ' : '');
+
 function plantillaFactura(factura, negocio) {
   const itbisPorTasa = desglosarItbisPorTasa(factura.lineas);
   const mon = formatoMonedaDocumento(factura);
   const tipo = factura.tipo || 'factura';
   const titulo = TITULO_DOCUMENTO[tipo] || 'FACTURA';
   const estado = (ESTADO_DOCUMENTO[tipo] || {})[factura.estado] || 'Vigente';
+  const ri = factura.ri || null;
   return `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8" />
     <title>${titulo.charAt(0)}${titulo.slice(1).toLowerCase()} ${escapar(factura.numero)}</title>
     <style>
@@ -100,18 +127,27 @@ function plantillaFactura(factura, negocio) {
     </style>
   </head><body>
     <div class="doc-header">
-      ${encabezadoNegocio(negocio)}
+      ${encabezadoNegocio(negocio, ri)}
       <div class="doc-header__meta">
-        <div class="numero">${titulo} No. ${escapar(factura.numero)}</div>
-        ${factura.ncf ? `<div>NCF: ${escapar(factura.ncf)}</div>` : ''}
-        <div>Fecha: ${fmtFecha(factura.fecha)}</div>
+        ${ri ? `
+          <div class="numero">${escapar(ri.titulo)}</div>
+          <div><strong>e-NCF:</strong> ${escapar(ri.encf)}</div>
+          ${ri.vencimiento ? `<div><strong>Fecha Vencimiento:</strong> ${escapar(ri.vencimiento)}</div>` : ''}
+          ${ri.referencia && ri.referencia.ncf ? `<div><strong>NCF modificado:</strong> ${escapar(ri.referencia.ncf)}</div>` : ''}
+          ${ri.referencia && ri.referencia.codigo ? `<div><strong>Código de modificación:</strong> ${escapar(ri.referencia.codigo)}</div>` : ''}
+          <div><strong>Fecha Emisión:</strong> ${escapar(ri.fechaEmision)}</div>
+          <div>${titulo.charAt(0)}${titulo.slice(1).toLowerCase()} interna No. ${escapar(factura.numero)}</div>` : `
+          <div class="numero">${titulo} No. ${escapar(factura.numero)}</div>
+          ${factura.ncf ? `<div>NCF: ${escapar(factura.ncf)}</div>` : ''}
+          <div>Fecha: ${fmtFecha(factura.fecha)}</div>`}
         ${tipo === 'cotizacion' && factura.valida_hasta ? `<div>Válida hasta: ${factura.valida_hasta.split('-').reverse().join('/')}</div>` : ''}
         <div>Estado: ${estado}</div>
       </div>
     </div>
 
     <div class="cliente">
-      <strong>Cliente:</strong> ${escapar(factura.cliente_nombre)}
+      <strong>${ri ? 'Razón Social Cliente' : 'Cliente'}:</strong> ${escapar(factura.cliente_nombre)}
+      ${ri && ri.rncComprador ? ` &nbsp;·&nbsp; <strong>RNC Cliente:</strong> ${escapar(ri.rncComprador)}` : ''}
       ${factura.vendedor_nombre ? ` &nbsp;·&nbsp; <strong>Vendedor:</strong> ${escapar(factura.vendedor_nombre)}` : ''}
       ${factura.concepto ? `<div style="margin-top:4px;"><strong>${tipo === 'conduce' ? 'Entrega / observaciones' : 'Nota'}:</strong> ${escapar(factura.concepto)}</div>` : ''}
     </div>
@@ -125,7 +161,7 @@ function plantillaFactura(factura, negocio) {
         ${factura.lineas.map((l) => `
           <tr>
             <td>${escapar(l.codigo_interno)}</td>
-            <td>${escapar(l.producto_descripcion)}</td>
+            <td>${marcaExento(ri, l)}${escapar(l.producto_descripcion)}</td>
             <td class="num">${l.cantidad}</td>
             <td class="num">${mon.n(l.precio_unitario)}</td>
             <td class="num">${l.descuento_monto ? mon.n(l.descuento_monto) : '—'}</td>
@@ -139,7 +175,7 @@ function plantillaFactura(factura, negocio) {
     <table class="totales">
       <tr><td>Subtotal</td><td class="num">${mon.m(factura.subtotal)}</td></tr>
       ${factura.descuento_total > 0 ? `<tr><td>Descuento</td><td class="num">-${mon.m(factura.descuento_total)}</td></tr>` : ''}
-      ${itbisPorTasa.map(([tasa, d]) => `<tr><td>ITBIS (${(tasa * 100).toFixed(0)}%)</td><td class="num">${mon.m(d.itbis)}</td></tr>`).join('')}
+      ${filasImpuestos(itbisPorTasa, mon.m)}
       ${factura.retencion_isr > 0 ? `<tr><td>ISR a retener al pagar</td><td class="num">-${mon.m(factura.retencion_isr)}</td></tr>` : ''}
       ${factura.retencion_itbis > 0 ? `<tr><td>ITBIS a retener al pagar</td><td class="num">-${mon.m(factura.retencion_itbis)}</td></tr>` : ''}
       <tr class="total-final"><td>Total</td><td class="num">${mon.m(factura.total)}</td></tr>
@@ -160,6 +196,8 @@ function plantillaFactura(factura, negocio) {
       <div style="flex:1; border-top:1px solid #111; padding-top:4px; text-align:center;">Recibido por (nombre, cédula y firma)</div>
     </div>` : ''}
 
+    ${bloqueFiscal(ri)}
+
     <div class="pie">Documento generado por Punto X</div>
   </body></html>`;
 }
@@ -167,6 +205,7 @@ function plantillaFactura(factura, negocio) {
 function plantillaTique(factura, negocio) {
   const mon = formatoMonedaDocumento(factura);
   const itbisPorTasa = desglosarItbisPorTasa(factura.lineas);
+  const ri = factura.ri || null;
   return `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8" />
     <title>Tique ${escapar(factura.numero)}</title>
     <style>
@@ -185,18 +224,26 @@ function plantillaTique(factura, negocio) {
   </head><body>
     <div class="centro">
       <div style="font-size:14px; font-weight:800;">${escapar(negocio.nombre || 'Mi Negocio')}</div>
+      ${ri && ri.razonSocial && ri.razonSocial !== negocio.nombre ? `<div>${escapar(ri.razonSocial)}</div>` : ''}
       ${negocio.rnc ? `<div>RNC: ${escapar(negocio.rnc)}</div>` : ''}
       ${negocio.direccion ? `<div>${escapar(negocio.direccion)}</div>` : ''}
       ${negocio.telefono ? `<div>Tel: ${escapar(negocio.telefono)}</div>` : ''}
     </div>
     <hr />
-    <div>No. ${escapar(factura.numero)}${factura.ncf ? ` &nbsp;NCF: ${escapar(factura.ncf)}` : ''}</div>
-    <div>${fmtFecha(factura.fecha)}</div>
+    ${ri ? `
+      <div class="centro" style="font-weight:800;">${escapar(ri.titulo)}</div>
+      <div>e-NCF: <strong>${escapar(ri.encf)}</strong></div>
+      ${ri.vencimiento ? `<div>Fecha Vencimiento: ${escapar(ri.vencimiento)}</div>` : ''}
+      ${ri.referencia && ri.referencia.ncf ? `<div>NCF modificado: ${escapar(ri.referencia.ncf)}</div>` : ''}
+      <div>Fecha Emisión: ${escapar(ri.fechaEmision)} &nbsp;No. ${escapar(factura.numero)}</div>` : `
+      <div>No. ${escapar(factura.numero)}${factura.ncf ? ` &nbsp;NCF: ${escapar(factura.ncf)}` : ''}</div>
+      <div>${fmtFecha(factura.fecha)}</div>`}
     <div>Cliente: ${escapar(factura.cliente_nombre)}</div>
+    ${ri && ri.rncComprador ? `<div>RNC Cliente: ${escapar(ri.rncComprador)}</div>` : ''}
     <hr />
     <table>
       ${factura.lineas.map((l) => `
-        <tr><td colspan="2" class="linea-desc">${escapar(l.producto_descripcion)}</td></tr>
+        <tr><td colspan="2" class="linea-desc">${marcaExento(ri, l)}${escapar(l.producto_descripcion)}</td></tr>
         <tr><td>${l.cantidad} x ${mon.n(l.precio_unitario)}</td><td class="num">${mon.n(l.total_linea)}</td></tr>
       `).join('')}
     </table>
@@ -204,12 +251,13 @@ function plantillaTique(factura, negocio) {
     <table class="totales">
       <tr><td>Subtotal</td><td class="num">${mon.n(factura.subtotal)}</td></tr>
       ${factura.descuento_total > 0 ? `<tr><td>Descuento</td><td class="num">-${mon.n(factura.descuento_total)}</td></tr>` : ''}
-      ${itbisPorTasa.map(([tasa, d]) => `<tr><td>ITBIS (${(tasa * 100).toFixed(0)}%)</td><td class="num">${mon.n(d.itbis)}</td></tr>`).join('')}
+      ${filasImpuestos(itbisPorTasa, mon.n)}
       <tr class="total-final"><td>TOTAL</td><td class="num">${mon.m(factura.total)}</td></tr>
       ${mon.filasEquivalencia()}
     </table>
     <hr />
     <div>${(factura.pagos || []).map((p) => `${FORMAS_PAGO_LABEL[p.forma_pago] || p.forma_pago}: ${mon.n(p.monto)}`).join('<br/>') || '—'}</div>
+    ${bloqueFiscal(ri, { centrado: true })}
     <div class="pie">¡Gracias por su compra!<br/>Generado por Punto X</div>
   </body></html>`;
 }
