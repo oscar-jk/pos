@@ -96,5 +96,5 @@ test('pantalla: la tienen el shell (redirección) y la configuración (reabrir)'
   assert.match(fs.readFileSync(path.join(raiz, 'shared', 'shell.js'), 'utf8'), /onboarding\.pendiente[\s\S]*onboarding\/index\.html/);
   assert.match(fs.readFileSync(path.join(raiz, 'configuracion', 'index.html'), 'utf8'), /href="\.\.\/onboarding\/index\.html"/);
   const html = fs.readFileSync(path.join(raiz, 'onboarding', 'index.html'), 'utf8');
-  for (const s of ['escape', 'estados', 'tema', 'logo', 'iconos']) assert.match(html, new RegExp(`shared/${s}\.js`));
+  for (const s of ['escape', 'estados', 'tema', 'logo', 'iconos']) assert.ok(html.includes(`shared/${s}.js`), s);
 });
