@@ -64,7 +64,8 @@ async function cargarCotizaciones() {
   }).join('');
   document.querySelectorAll('#cotizaciones-tbody [data-imprimir]').forEach((el) => el.addEventListener('click', () => imprimir(el.dataset.imprimir)));
   document.querySelectorAll('[data-anular-cotizacion]').forEach((el) => el.addEventListener('click', async () => {
-    const motivo = await window.PuntoXModal.pedirTexto('Motivo de la anulación:');
+    const doc = lista.find((x) => x.id === el.dataset.anularCotizacion) || {};
+    const motivo = await window.PuntoXModal.confirmarAnulacion({ documento: 'Cotización', numero: doc.numero, total: doc.total, revierte: ['Nada: la cotización no movió inventario ni contabilidad'] });
     if (!motivo) return;
     const r = await ejecutar(() => window.puntoXVentas.anularCotizacion({ documentoId: el.dataset.anularCotizacion, motivo, usuarioId: state.info.usuario.id }));
     if (r) cargarCotizaciones();
@@ -95,7 +96,8 @@ async function cargarPedidos() {
     </tr>`).join('');
   document.querySelectorAll('#pedidos-tbody [data-imprimir]').forEach((el) => el.addEventListener('click', () => imprimir(el.dataset.imprimir)));
   document.querySelectorAll('[data-anular-pedido]').forEach((el) => el.addEventListener('click', async () => {
-    const motivo = await window.PuntoXModal.pedirTexto('Motivo de la anulación (la mercancía reservada queda libre):');
+    const doc = lista.find((x) => x.id === el.dataset.anularPedido) || {};
+    const motivo = await window.PuntoXModal.confirmarAnulacion({ documento: 'Pedido', numero: doc.numero, total: doc.total, revierte: ['Inventario: la mercancía reservada queda libre para la venta'] });
     if (!motivo) return;
     const r = await ejecutar(() => window.puntoXVentas.anularPedido({ documentoId: el.dataset.anularPedido, motivo, usuarioId: state.info.usuario.id }));
     if (r) cargarPedidos();
@@ -132,7 +134,8 @@ async function cargarConduces() {
     actualizarBotonFacturar();
   }));
   document.querySelectorAll('[data-anular-conduce]').forEach((el) => el.addEventListener('click', async () => {
-    const motivo = await window.PuntoXModal.pedirTexto('Motivo de la anulación (la mercancía vuelve al inventario):');
+    const doc = lista.find((x) => x.id === el.dataset.anularConduce) || {};
+    const motivo = await window.PuntoXModal.confirmarAnulacion({ documento: 'Conduce', numero: doc.numero, total: doc.total, revierte: ['Inventario: la mercancía vuelve a sus lotes', 'Contabilidad: sale de la cuenta 1350 (mercancía entregada por facturar)'] });
     if (!motivo) return;
     const r = await ejecutar(() => window.puntoXVentas.anularConduce({ documentoId: el.dataset.anularConduce, motivo, usuarioId: state.info.usuario.id }));
     if (r) cargarConduces();

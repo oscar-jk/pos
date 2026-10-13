@@ -668,7 +668,8 @@ async function cargarConversiones() {
       <td>${c.estado !== 'anulada' ? `<span class="enlace-accion" data-permiso="inventario.conversion.anular" data-anular-conversion="${esc(c.id)}" style="color:var(--color-danger); cursor:pointer; font-weight:700; font-size:12px;">Anular</span>` : ''}</td>
     </tr>`).join('');
   document.querySelectorAll('[data-anular-conversion]').forEach((el) => el.addEventListener('click', async () => {
-    const motivo = await window.PuntoXModal.pedirTexto('Motivo de la anulación (el producto convertido vuelve a su origen):');
+    const doc = lista.find((x) => x.id === el.dataset.anularConversion) || {};
+    const motivo = await window.PuntoXModal.confirmarAnulacion({ documento: 'Conversión', numero: doc.numero, total: doc.costo_total, revierte: ['Inventario: el producto convertido sale y el original vuelve a su lote y costo'] });
     if (!motivo) return;
     try {
       await window.puntoXInventario.anularConversion({ conversionId: el.dataset.anularConversion, motivo, usuarioId: state.info.usuario.id });

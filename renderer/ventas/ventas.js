@@ -450,7 +450,8 @@ async function cargarHistorial() {
   tbody.querySelectorAll('.btn-anular').forEach((btn) => {
     btn.addEventListener('click', async (e) => {
       e.preventDefault();
-      const motivo = await window.PuntoXModal.pedirTexto('Motivo de la anulación:');
+      const doc = facturas.find((x) => x.id === btn.dataset.id) || {};
+      const motivo = await window.PuntoXModal.confirmarAnulacion({ documento: 'Factura', numero: doc.numero, total: doc.total, revierte: ['Inventario: la mercancía vuelve a sus lotes y costo', 'Caja: sale el efectivo cobrado (del turno abierto)', 'Cuentas por cobrar: si fue a crédito', 'Contabilidad: asiento espejo', 'Comisión del vendedor'] });
       if (!motivo) return;
       try {
         await window.puntoXVentas.anularFactura({
@@ -659,7 +660,8 @@ async function cargarNotas() {
   tbody.querySelectorAll('.btn-anular-nota').forEach((btn) => {
     btn.addEventListener('click', async (e) => {
       e.preventDefault();
-      const motivo = await window.PuntoXModal.pedirTexto('Motivo de la anulación:');
+      const doc = notas.find((x) => x.id === btn.dataset.id) || {};
+      const motivo = await window.PuntoXModal.confirmarAnulacion({ documento: 'Nota', numero: doc.numero, total: doc.total, revierte: ['Inventario o cuenta del cliente, según la nota', 'Contabilidad: asiento espejo'] });
       if (!motivo) return;
       try {
         const metodo = btn.dataset.tipo === 'nota_credito' ? 'anularNotaCredito' : 'anularNotaDebito';

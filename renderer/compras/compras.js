@@ -154,7 +154,8 @@ async function cargarOrdenes() {
   document.querySelectorAll('[data-ver]').forEach((el) => el.addEventListener('click', () => verOrdenCompra(el.dataset.ver)));
   document.querySelectorAll('[data-recibir]').forEach((el) => el.addEventListener('click', () => abrirFormularioFacturaCompra(el.dataset.recibir)));
   document.querySelectorAll('#ordenes-tbody [data-anular]').forEach((el) => el.addEventListener('click', async () => {
-    const motivo = await window.PuntoXModal.pedirTexto('Motivo de la anulación:');
+    const doc = ordenes.find((x) => x.id === el.dataset.anular) || {};
+    const motivo = await window.PuntoXModal.confirmarAnulacion({ documento: 'Orden de compra', numero: doc.numero, total: doc.total, revierte: ['La orden deja de estar pendiente; no mueve inventario ni contabilidad'] });
     if (!motivo) return;
     try {
       await window.puntoXCompras.anularOrden({ documentoId: el.dataset.anular, motivo, usuarioId: state.info.usuario.id });
@@ -298,7 +299,8 @@ async function cargarFacturas() {
     </tr>
   `).join('');
   document.querySelectorAll('#facturas-tbody [data-anular]').forEach((el) => el.addEventListener('click', async () => {
-    const motivo = await window.PuntoXModal.pedirTexto('Motivo de la anulación:');
+    const doc = facturas.find((x) => x.id === el.dataset.anular) || {};
+    const motivo = await window.PuntoXModal.confirmarAnulacion({ documento: 'Factura de compra', numero: doc.numero, total: doc.total, revierte: ['Inventario: sale la mercancía de esta compra', 'Cuentas por pagar o caja: el pago o la deuda', 'Contabilidad: asiento espejo'] });
     if (!motivo) return;
     try {
       await window.puntoXCompras.anularFacturaCompra({ documentoId: el.dataset.anular, motivo, usuarioId: state.info.usuario.id });
@@ -440,7 +442,8 @@ async function cargarNotas() {
   `).join('');
   document.querySelectorAll('[data-ver-nota]').forEach((el) => el.addEventListener('click', () => verNota(el.dataset.verNota)));
   document.querySelectorAll('[data-anular-nota]').forEach((el) => el.addEventListener('click', async () => {
-    const motivo = await window.PuntoXModal.pedirTexto('Motivo de la anulación:');
+    const doc = notas.find((x) => x.id === el.dataset.anularNota) || {};
+    const motivo = await window.PuntoXModal.confirmarAnulacion({ documento: 'Nota de compra', numero: doc.numero, total: doc.total, revierte: ['Inventario o costo, según la nota', 'Cuentas por pagar: el saldo con el proveedor', 'Contabilidad: asiento espejo'] });
     if (!motivo) return;
     try {
       await window.puntoXCompras.anularNota({ documentoId: el.dataset.anularNota, motivo, usuarioId: state.info.usuario.id });
