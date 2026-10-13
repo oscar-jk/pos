@@ -218,14 +218,20 @@ function plantillaTique(factura, negocio) {
       .centro { text-align: center; }
       hr { border: none; border-top: 1px dashed #111; margin: 6px 0; }
       table td { padding: 1px 0; font-size: 11px; vertical-align: top; }
-      td.num { text-align: right; }
+      td.num { text-align: right; font-family: ui-monospace, 'Courier New', monospace; }
       .linea-desc { font-weight: 600; }
+      /* Ticket de Nodo: el importe se une a la descripción con una guía de puntos; cifras tabulares. */
+      .fila { display: flex; align-items: baseline; gap: 4px; font-size: 11px; margin: 1px 0 3px; }
+      .fila .guia { flex: 1; min-width: 8px; border-bottom: 1px dotted #111; transform: translateY(-3px); }
+      .fila .imp { font-family: ui-monospace, 'Courier New', monospace; font-variant-numeric: tabular-nums; white-space: nowrap; }
       .totales td { font-size: 12px; }
-      .total-final td { font-weight: 800; font-size: 13px; }
+      .total-final td { font-weight: 800; font-size: 15px; border-bottom: 2px solid #111; padding-bottom: 3px; }
+      .logo { display: block; max-height: 40px; max-width: 160px; margin: 0 auto 4px; filter: grayscale(1) contrast(1.4); }
       .pie { margin-top: 10px; font-size: 9px; text-align: center; }
     </style>
   </head><body>
     <div class="centro">
+      ${negocio.logo && /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(negocio.logo) ? `<img class="logo" src="${negocio.logo}" alt="" />` : ''}
       <div style="font-size:14px; font-weight:800;">${escapar(negocio.nombre || 'Mi Negocio')}</div>
       ${ri && ri.razonSocial && ri.razonSocial !== negocio.nombre ? `<div>${escapar(ri.razonSocial)}</div>` : ''}
       ${negocio.rnc ? `<div>RNC: ${escapar(negocio.rnc)}</div>` : ''}
@@ -244,12 +250,10 @@ function plantillaTique(factura, negocio) {
     <div>Cliente: ${escapar(factura.cliente_nombre)}</div>
     ${ri && ri.rncComprador ? `<div>RNC Cliente: ${escapar(ri.rncComprador)}</div>` : ''}
     <hr />
-    <table>
-      ${factura.lineas.map((l) => `
-        <tr><td colspan="2" class="linea-desc">${marcaExento(ri, l)}${escapar(l.producto_descripcion)}</td></tr>
-        <tr><td>${l.cantidad} x ${mon.n(l.precio_unitario)}</td><td class="num">${mon.n(l.total_linea)}</td></tr>
-      `).join('')}
-    </table>
+    ${factura.lineas.map((l) => `
+      <div class="linea-desc">${marcaExento(ri, l)}${escapar(l.producto_descripcion)}</div>
+      <div class="fila"><span>${escapar(l.cantidad)} x ${mon.n(l.precio_unitario)}</span><span class="guia"></span><span class="imp">${mon.n(l.total_linea)}</span></div>
+    `).join('')}
     <hr />
     <table class="totales">
       <tr><td>Subtotal</td><td class="num">${mon.n(factura.subtotal)}</td></tr>
@@ -261,7 +265,7 @@ function plantillaTique(factura, negocio) {
     <hr />
     <div>${(factura.pagos || []).map((p) => `${FORMAS_PAGO_LABEL[p.forma_pago] || p.forma_pago}: ${mon.n(p.monto)}`).join('<br/>') || '—'}</div>
     ${bloqueFiscal(ri, { centrado: true })}
-    <div class="pie">¡Gracias por su compra!<br/>Generado por Nodo</div>
+    <div class="pie">Gracias por tu compra<br/>Generado por Nodo</div>
   </body></html>`;
 }
 
