@@ -317,27 +317,62 @@ async function abrirFormularioProducto(productoId) {
 
 // --- Kardex ---
 
+const TIPO_MOVIMIENTO_KARDEX = {
+  entrada_compra: 'Compra', salida_venta: 'Venta', devolucion_venta: 'Devolución de cliente', devolucion_compra: 'Devolución a proveedor',
+  ajuste_entrada: 'Ajuste (entrada)', ajuste_salida: 'Ajuste (salida)', entrada_manual: 'Entrada manual', salida_manual: 'Salida manual',
+  merma: 'Merma o avería', transferencia_entrada: 'Transferencia recibida', transferencia_salida: 'Transferencia enviada',
+  conversion: 'Conversión', ajuste_costo_compra: 'Ajuste de costo (compra)',
+};
+const etiquetaMovimiento = (t) => TIPO_MOVIMIENTO_KARDEX[t] || String(t || '').replace(/_/g, ' ');
+
+// Kardex por producto: movimientos con saldo y costo, filtrable por fecha y tipo.
 async function verKardex(productoId, nombre) {
-  const movimientos = await window.puntoXInventario.kardex({ productoId });
   window.PuntoXModal.abrirModal(`Kardex — ${nombre}`, `
-    <table class="data-table">
-      <thead><tr><th>Fecha</th><th>Tipo</th><th>Almacén</th><th>Lote</th><th>Cantidad</th><th>Costo</th><th>Saldo</th></tr></thead>
-      <tbody>
-        ${movimientos.length === 0 ? '<tr><td colspan="7" style="text-align:center; color:var(--color-text-faint);">Sin movimientos</td></tr>' : ''}
-        ${movimientos.map((m) => `
-          <tr>
-            <td>${new Date(m.created_at).toLocaleString('es-DO', { dateStyle: 'short', timeStyle: 'short' })}</td>
-            <td>${esc(m.tipo_movimiento)}</td>
-            <td>${esc(m.almacen_nombre)}</td>
-            <td>${m.numero_lote ? esc(m.numero_lote) : '—'}</td>
-            <td style="color:${m.cantidad < 0 ? 'var(--color-danger)' : 'var(--color-success)'};">${m.cantidad > 0 ? '+' : ''}${esc(m.cantidad)}</td>
-            <td>RD$ ${fmt(m.costo_unitario)}</td>
-            <td>${esc(m.saldo_cantidad)}</td>
-          </tr>
-        `).join('')}
-      </tbody>
-    </table>
+    <div class="form-grid" style="grid-template-columns: repeat(3, minmax(0,1fr)); margin-bottom:12px;">
+      <div class="form-field"><label for="kx-desde">Desde</label><input id="kx-desde" type="date" class="input-normal" /></div>
+      <div class="form-field"><label for="kx-hasta">Hasta</label><input id="kx-hasta" type="date" class="input-normal" /></div>
+      <div class="form-field"><label for="kx-tipo">Tipo</label><select id="kx-tipo" class="input-normal"><option value="">Todos</option>
+        ${Object.entries(TIPO_MOVIMIENTO_KARDEX).map(([v, e]) => `<option value="${esc(v)}">${esc(e)}</option>`).join('')}</select></div>
+    </div>
+    <div id="kx-tabla"><div class="empty-state">Cargando...</div></div>
   `);
+  document.querySelector('.modal-box').classList.add('modal-box--ancho');
+  const pintar = async () => {
+    const desde = document.getElementById('kx-desde').value;
+    const hasta = document.getElementById('kx-hasta').value;
+    const tipo = document.getElementById('kx-tipo').value;
+    let movimientos;
+    try {
+      movimientos = await window.puntoXInventario.kardex({
+        productoId,
+        desde: desde ? new Date(`${desde}T00:00:00-04:00`).toISOString() : undefined,
+        hasta: hasta ? new Date(`${hasta}T23:59:59.999-04:00`).toISOString() : undefined,
+        limite: 1000,
+      });
+    } catch (err) { mostrarError(err.message); return; }
+    if (tipo) movimientos = movimientos.filter((m) => m.tipo_movimiento === tipo);
+    document.getElementById('kx-tabla').innerHTML = `
+      <table class="data-table">
+        <thead><tr><th>Fecha</th><th>Tipo</th><th>Almacén</th><th>Lote</th><th style="text-align:right;">Cantidad</th><th style="text-align:right;">Costo</th><th style="text-align:right;">Saldo</th><th>Usuario</th></tr></thead>
+        <tbody>
+          ${movimientos.length === 0 ? '<tr><td colspan="8" style="text-align:center; color:var(--color-text-faint);">Sin movimientos en este filtro</td></tr>' : ''}
+          ${movimientos.map((m) => `
+            <tr>
+              <td>${new Date(m.created_at).toLocaleString('es-DO', { dateStyle: 'short', timeStyle: 'short' })}</td>
+              <td>${esc(etiquetaMovimiento(m.tipo_movimiento))}</td>
+              <td>${esc(m.almacen_nombre)}</td>
+              <td>${m.numero_lote ? esc(m.numero_lote) : '—'}</td>
+              <td style="text-align:right; color:${m.cantidad < 0 ? 'var(--color-danger)' : 'var(--color-success)'};">${m.cantidad > 0 ? '+' : ''}${esc(m.cantidad)}</td>
+              <td style="text-align:right;">RD$ ${fmt(m.costo_unitario)}</td>
+              <td style="text-align:right;">${esc(m.saldo_cantidad)}</td>
+              <td>${esc(m.usuario_nombre || '')}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>`;
+  };
+  ['kx-desde', 'kx-hasta', 'kx-tipo'].forEach((idCampo) => document.getElementById(idCampo).addEventListener('change', pintar));
+  pintar();
 }
 
 // --- Existencias ---
@@ -821,7 +856,7 @@ async function init() {
     window.puntoXInventario.listarAlmacenes(),
   ]);
   state.categorias = categorias; state.unidades = unidades; state.tasas = tasas; state.almacenes = almacenes;
-  cambiarTab('productos');
+  cambiarTab(window.PuntoXShell.tabInicial('productos'));
 }
 
 init();

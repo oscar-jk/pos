@@ -20,12 +20,27 @@ function listarCajas(db) {
   return db.prepare('SELECT id, sucursal_id, nombre FROM cajas WHERE deleted_at IS NULL AND activo = 1 ORDER BY nombre').all();
 }
 
-function crearCaja(db, { sucursalId, nombre }) {
+function crearCaja(db, { sucursalId, nombre, usuarioId }) {
   session.requerirPermiso('configuracion.gestionar');
   if (!nombre || !nombre.trim()) throw new Error('El nombre de la caja es obligatorio');
+  if (!db.prepare('SELECT 1 FROM sucursales WHERE id = ? AND deleted_at IS NULL').get(sucursalId)) throw new Error('Elige la sucursal de la caja');
+  if (db.prepare('SELECT 1 FROM cajas WHERE sucursal_id = ? AND lower(nombre) = lower(?) AND deleted_at IS NULL').get(sucursalId, nombre.trim())) {
+    throw new Error(`Ya existe una caja llamada "${nombre.trim()}" en esa sucursal`);
+  }
   const id = crypto.randomUUID();
   db.prepare('INSERT INTO cajas (id, sucursal_id, nombre, activo) VALUES (?, ?, ?, 1)').run(id, sucursalId, nombre.trim());
+  configuracion.registrarAuditoria(db, { usuarioId, modulo: 'caja', entidad: 'cajas', entidadId: id, accion: 'crear', detalle: { nombre: nombre.trim() } });
   return { id, sucursal_id: sucursalId, nombre: nombre.trim() };
+}
+
+// Caja con la que trabaja el usuario: la de su turno abierto (si tiene uno) o, si no, la primera.
+// Con varias cajas, cada cajero abre turno en la suya y ventas y cobros van a esa caja.
+function cajaDelUsuario(db, usuarioId) {
+  const conTurno = usuarioId && db.prepare(
+    `SELECT c.id, c.sucursal_id, c.nombre FROM turnos_caja t JOIN cajas c ON c.id = t.caja_id
+     WHERE t.usuario_id = ? AND t.estado = 'abierto' AND c.deleted_at IS NULL ORDER BY t.fecha_apertura DESC LIMIT 1`
+  ).get(usuarioId);
+  return conTurno || db.prepare('SELECT id, sucursal_id, nombre FROM cajas WHERE deleted_at IS NULL AND activo = 1 ORDER BY created_at LIMIT 1').get();
 }
 
 function obtenerTurnoAbierto(db, cajaId) {
@@ -166,11 +181,57 @@ function obtenerOCrearCajaChica(db, { cajaId, fondoAsignado }) {
   return cc;
 }
 
+// La caja chica es de fondo fijo: el periodo empieza en la última reposición. Lo gastado desde
+// entonces se descuenta del fondo; al reponer, el fondo vuelve a estar completo.
+function inicioPeriodoCajaChica(db, cajaChicaId) {
+  const ultima = db.prepare('SELECT fecha FROM reposiciones_caja_chica WHERE caja_chica_id = ? AND deleted_at IS NULL ORDER BY fecha DESC LIMIT 1').get(cajaChicaId);
+  return ultima ? ultima.fecha : null;
+}
+
 function gastoCajaChicaTotalDelPeriodo(db, cajaChicaId) {
   const row = db
-    .prepare("SELECT COALESCE(SUM(monto), 0) AS total FROM gastos_caja_chica WHERE caja_chica_id = ? AND estado != 'anulado'")
+    .prepare("SELECT COALESCE(SUM(monto), 0) AS total FROM gastos_caja_chica WHERE caja_chica_id = ? AND estado != 'anulado' AND deleted_at IS NULL AND reposicion_id IS NULL")
     .get(cajaChicaId);
-  return row.total;
+  return redondear(row.total);
+}
+
+function resumenCajaChica(db, cajaChicaId) {
+  const cc = db.prepare('SELECT * FROM caja_chica WHERE id = ?').get(cajaChicaId);
+  const gastado = gastoCajaChicaTotalDelPeriodo(db, cajaChicaId);
+  return {
+    ...cc, gastado_periodo: gastado, disponible: redondear(cc.fondo_asignado - gastado), inicio_periodo: inicioPeriodoCajaChica(db, cajaChicaId),
+    reposiciones: db.prepare(
+      `SELECT r.*, u.nombre_completo AS usuario_nombre FROM reposiciones_caja_chica r LEFT JOIN usuarios u ON u.id = r.usuario_id
+       WHERE r.caja_chica_id = ? AND r.deleted_at IS NULL ORDER BY r.fecha DESC LIMIT 20`
+    ).all(cajaChicaId),
+  };
+}
+
+// Reponer: se entrega a la caja chica lo gastado en el periodo y empieza uno nuevo. Los gastos ya
+// salieron de caja y se registraron en contabilidad al hacerse; la reposición solo cierra el periodo.
+function reponerCajaChica(db, { cajaChicaId, usuarioId }) {
+  session.requerirPermiso('caja.cierre');
+  const cc = db.prepare('SELECT * FROM caja_chica WHERE id = ? AND deleted_at IS NULL').get(cajaChicaId);
+  if (!cc) throw new Error('Caja chica no encontrada');
+  const gastos = db.prepare("SELECT COUNT(*) n FROM gastos_caja_chica WHERE caja_chica_id = ? AND estado != 'anulado' AND deleted_at IS NULL AND reposicion_id IS NULL").get(cajaChicaId).n;
+  const monto = gastoCajaChicaTotalDelPeriodo(db, cajaChicaId);
+  if (monto <= 0) throw new Error('No hay gastos que reponer en este periodo');
+  const id = crypto.randomUUID();
+  db.prepare("INSERT INTO reposiciones_caja_chica (id, caja_chica_id, monto, gastos, fecha, usuario_id) VALUES (?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%fZ','now'), ?)")
+    .run(id, cajaChicaId, monto, gastos, usuarioId);
+  db.prepare("UPDATE gastos_caja_chica SET reposicion_id = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE caja_chica_id = ? AND reposicion_id IS NULL AND deleted_at IS NULL").run(id, cajaChicaId);
+  configuracion.registrarAuditoria(db, { usuarioId, modulo: 'caja', entidad: 'reposiciones_caja_chica', entidadId: id, accion: 'crear', detalle: { monto, gastos } });
+  return id;
+}
+
+function actualizarFondoCajaChica(db, { cajaChicaId, fondoAsignado, usuarioId }) {
+  session.requerirPermiso('caja.cierre');
+  const fondo = Number(fondoAsignado);
+  if (!(fondo > 0)) throw new Error('El fondo de la caja chica debe ser mayor a cero');
+  const cc = db.prepare('SELECT * FROM caja_chica WHERE id = ? AND deleted_at IS NULL').get(cajaChicaId);
+  if (!cc) throw new Error('Caja chica no encontrada');
+  db.prepare("UPDATE caja_chica SET fondo_asignado = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?").run(redondear(fondo), cajaChicaId);
+  configuracion.registrarAuditoria(db, { usuarioId, modulo: 'caja', entidad: 'caja_chica', entidadId: cajaChicaId, accion: 'editar', detalle: { fondoAnterior: cc.fondo_asignado, fondo } });
 }
 
 const TIPOS_BIENES_SERVICIOS_606 = ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11'];
@@ -197,6 +258,10 @@ function crearGastoCajaChica(db, {
   if (ncfLimpio && !rnc) throw new Error('Si el gasto tiene NCF, indique también el RNC o cédula del suplidor');
   const tipo = tipoBienesServicios || '02';
   if (!TIPOS_BIENES_SERVICIOS_606.includes(tipo)) throw new Error('Tipo de bienes y servicios inválido');
+  const cajaChica = db.prepare('SELECT * FROM caja_chica WHERE id = ? AND deleted_at IS NULL').get(cajaChicaId);
+  if (!cajaChica) throw new Error('Caja chica no encontrada');
+  const disponible = redondear(cajaChica.fondo_asignado - gastoCajaChicaTotalDelPeriodo(db, cajaChicaId));
+  if (monto - disponible > 0.005) throw new Error(`El gasto supera lo disponible en caja chica (RD$ ${disponible.toFixed(2)}). Repón el fondo antes de registrarlo`);
 
   const gastoId = crypto.randomUUID();
   db.prepare(
@@ -781,11 +846,14 @@ function reabrirConciliacion(db, { conciliacionId, usuarioId }) {
 
 function register(ipcMain, getDb) {
   ipcMain.handle('caja:principal', () => {
-    const db = getDb();
-    return db.prepare('SELECT id, sucursal_id, nombre FROM cajas WHERE deleted_at IS NULL AND activo = 1 LIMIT 1').get();
+    const sesion = session.obtenerSesion();
+    return cajaDelUsuario(getDb(), sesion ? sesion.usuarioId : null);
   });
   ipcMain.handle('caja:listar', () => listarCajas(getDb()));
-  ipcMain.handle('caja:crear', (event, payload) => crearCaja(getDb(), payload));
+  ipcMain.handle('caja:crear', (event, payload) => {
+    const db = getDb();
+    return db.transaction(() => crearCaja(db, payload || {}))();
+  });
 
   ipcMain.handle('caja:turnoAbierto', (event, { cajaId }) => obtenerTurnoAbierto(getDb(), cajaId));
   ipcMain.handle('caja:abrirTurno', (event, payload) => {
@@ -818,6 +886,15 @@ function register(ipcMain, getDb) {
     return db.transaction(() => crearGastoCajaChica(db, payload))();
   });
   ipcMain.handle('caja:listarGastosCajaChica', (event, filtros) => listarGastosCajaChica(getDb(), filtros || {}));
+  ipcMain.handle('caja:resumenCajaChica', (event, { cajaChicaId }) => resumenCajaChica(getDb(), cajaChicaId));
+  ipcMain.handle('caja:reponerCajaChica', (event, payload) => {
+    const db = getDb();
+    return db.transaction(() => reponerCajaChica(db, payload || {}))();
+  });
+  ipcMain.handle('caja:fondoCajaChica', (event, payload) => {
+    const db = getDb();
+    db.transaction(() => actualizarFondoCajaChica(db, payload || {}))();
+  });
 
   ipcMain.handle('caja:listarCuentasBancarias', () => listarCuentasBancarias(getDb()));
   ipcMain.handle('caja:crearCuentaBancaria', (event, payload) => crearCuentaBancaria(getDb(), payload));
@@ -848,9 +925,9 @@ function register(ipcMain, getDb) {
 
 module.exports = {
   register, obtenerTurnoAbierto, registrarMovimiento, efectivoEsperado, abrirTurno, cerrarTurno,
-  listarTurnos, historialSobrantesFaltantes, movimientosDeTurno, registrarMovimientoManual, obtenerOCrearCajaChica,
+  listarTurnos, historialSobrantesFaltantes, movimientosDeTurno, registrarMovimientoManual, obtenerOCrearCajaChica, resumenCajaChica, reponerCajaChica, actualizarFondoCajaChica, gastoCajaChicaTotalDelPeriodo,
   crearGastoCajaChica, listarGastosCajaChica, listarCuentasBancarias, crearCuentaBancaria,
-  crearTransferenciaCajaBanco, listarTransferenciasCajaBanco, listarCajas, crearCaja,
+  crearTransferenciaCajaBanco, listarTransferenciasCajaBanco, listarCajas, crearCaja, cajaDelUsuario,
   listarConciliaciones, obtenerConciliacion, crearConciliacion, actualizarSaldoEstadoCuenta, agregarPartidas,
   eliminarPartida, conciliarPareja, conciliarAutomaticamente, registrarPartidaEnContabilidad,
   deshacerConciliacionPartida, cerrarConciliacion, reabrirConciliacion, saldoLibroBancos, saldoSinCuentaAsignada, asignarCuentaMovimiento,

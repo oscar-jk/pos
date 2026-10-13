@@ -437,6 +437,50 @@ function listarFacturasCompra(db, { proveedorId, limite = 50 } = {}) {
     .all(...params);
 }
 
+// Historial de compras por proveedor y periodo, con su estado de pago (pagada, parcial, pendiente).
+function historialCompras(db, { proveedorId, desde, hasta, estadoPago } = {}) {
+  session.requerirPermiso('compras.reportes.ver');
+  const condiciones = ["dc.tipo = 'factura_compra'", 'dc.deleted_at IS NULL'];
+  const params = [];
+  if (proveedorId) { condiciones.push('dc.proveedor_id = ?'); params.push(proveedorId); }
+  if (desde) { condiciones.push('dc.fecha >= ?'); params.push(`${String(desde).slice(0, 10)}T04:00:00.000Z`); }
+  if (hasta) { condiciones.push('dc.fecha < ?'); params.push(new Date(Date.parse(`${String(hasta).slice(0, 10)}T04:00:00.000Z`) + 86400000).toISOString()); }
+  const filas = db.prepare(
+    `SELECT dc.*, p.nombre AS proveedor_nombre FROM documentos_compra dc JOIN proveedores p ON p.id = dc.proveedor_id
+     WHERE ${condiciones.join(' AND ')} ORDER BY dc.fecha DESC`
+  ).all(...params).map((d) => {
+    if (d.estado === 'anulado') return { ...d, pendiente: 0, estado_pago: 'anulada' };
+    const pendiente = redondear(saldoDocumentoCompra(db, d).pendiente);
+    const estadoPagoDoc = pendiente <= 0.005 ? 'pagada' : pendiente < d.total - 0.005 ? 'parcial' : 'pendiente';
+    return { ...d, pendiente: Math.max(0, pendiente), estado_pago: estadoPagoDoc };
+  });
+  return estadoPago ? filas.filter((f) => f.estado_pago === estadoPago) : filas;
+}
+
+// Listado de CxP: saldo por proveedor con lo vencido, el próximo vencimiento y los días de la
+// deuda más atrasada, ordenable por saldo o por urgencia.
+function listadoCxp(db, { orden = 'urgencia', soloVencidos } = {}) {
+  session.requerirPermiso('cxp.reportes.ver');
+  const hoy = Date.now();
+  const filas = db.prepare('SELECT id, nombre, rnc, dias_credito FROM proveedores WHERE deleted_at IS NULL').all().map((p) => {
+    const docs = documentosPorPagarProveedor(db, p.id).map((d) => ({ ...d, pendiente: saldoDocumentoCompra(db, d).pendiente })).filter((d) => d.pendiente > 0.005);
+    const vence = (d) => Date.parse(d.fecha_vencimiento || d.fecha);
+    const vencidos = docs.filter((d) => vence(d) < hoy);
+    const proximo = docs.filter((d) => vence(d) >= hoy).sort((a, b) => vence(a) - vence(b))[0];
+    return {
+      ...p,
+      saldo_pendiente: redondear(docs.reduce((a, d) => a + d.pendiente, 0)),
+      saldo_vencido: redondear(vencidos.reduce((a, d) => a + d.pendiente, 0)),
+      facturas_abiertas: docs.length,
+      dias_mora_max: vencidos.length ? Math.max(...vencidos.map((d) => Math.floor((hoy - vence(d)) / 86400000))) : 0,
+      proximo_vencimiento: proximo ? (proximo.fecha_vencimiento || proximo.fecha) : null,
+    };
+  }).filter((f) => f.saldo_pendiente > 0.005 && (!soloVencidos || f.saldo_vencido > 0.005));
+  if (orden === 'saldo') return filas.sort((a, b) => b.saldo_pendiente - a.saldo_pendiente);
+  // Urgencia: primero lo más atrasado, luego lo que vence antes.
+  return filas.sort((a, b) => (b.dias_mora_max - a.dias_mora_max) || ((a.proximo_vencimiento ? Date.parse(a.proximo_vencimiento) : Infinity) - (b.proximo_vencimiento ? Date.parse(b.proximo_vencimiento) : Infinity)));
+}
+
 function obtenerFacturaCompra(db, documentoId) {
   const documento = db
     .prepare(`SELECT dc.*, p.nombre AS proveedor_nombre FROM documentos_compra dc JOIN proveedores p ON p.id = dc.proveedor_id WHERE dc.id = ?`)
@@ -1128,6 +1172,9 @@ function register(ipcMain, getDb) {
   });
   ipcMain.handle('compras:compararPresupuestos', () => compararPresupuestos(getDb()));
 
+  ipcMain.handle('compras:historial', (event, filtros) => historialCompras(getDb(), filtros || {}));
+  ipcMain.handle('compras:listadoCxp', (event, filtros) => listadoCxp(getDb(), filtros || {}));
+
   ipcMain.handle('compras:comparacionMejorCosto', (event, { productoId }) => comparacionMejorCosto(getDb(), { productoId }));
   ipcMain.handle('compras:comprasPorProducto', (event, filtros) => comprasPorProducto(getDb(), filtros || {}));
 
@@ -1152,5 +1199,5 @@ module.exports = {
   crearFacturaCompra, anularFacturaCompra, listarFacturasCompra, obtenerFacturaCompra,
   crearOrdenCompra, listarOrdenesCompra, obtenerOrdenCompra, anularOrdenCompra, convertirPresupuestoEnOrden, compararPresupuestos,
   lineasParaNota, crearNotaCompra, anularNotaCompra, listarNotasCompra, obtenerNotaCompra,
-  comparacionMejorCosto, comprasPorProducto, reporte606, txt606, csv606,
+  comparacionMejorCosto, comprasPorProducto, reporte606, txt606, csv606, historialCompras, listadoCxp,
 };

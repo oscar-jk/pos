@@ -500,7 +500,7 @@ async function cargarCheques() {
 async function init() {
   state.info = await window.PuntoXShell.initPuntoXShell('cxp');
   if (!state.info) return; // sin sesión o con la contraseña pendiente: el shell ya redirigió al login
-  cambiarTab('proveedores');
+  cambiarTab(window.PuntoXShell.tabInicial('proveedores'));
 }
 
 init();

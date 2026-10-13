@@ -38,6 +38,7 @@
         <button class="tab-btn is-active" data-tab="cotizaciones">Cotizaciones</button>
         <button class="tab-btn" data-tab="pedidos">Pedidos</button>
         <button class="tab-btn" data-tab="conduces">Conduces</button>
+        <button class="tab-btn" data-tab="delivery" data-permiso="ventas.delivery.gestionar">Delivery</button>
       </div>
 
       <div id="tab-cotizaciones" class="tab-panel">
@@ -66,6 +67,22 @@
           <tbody id="conduces-tbody"></tbody>
         </table>
         <div id="conduces-vacio" class="empty-state" style="display:none;">Aún no hay conduces.</div>
+      </div>
+
+      <div id="tab-delivery" class="tab-panel" style="display:none;">
+        <div class="barra-conduces">
+          <div style="font-size:12px; color:var(--color-text-muted);">Pedidos a domicilio: asigna el repartidor, márcalos en ruta y entregados. Se crean desde la venta completa.</div>
+          <select id="filtro-delivery" class="input-normal" style="width:auto;" aria-label="Filtrar delivery">
+            <option value="activos">Pendientes y en ruta</option>
+            <option value="entregado">Entregados</option>
+            <option value="">Todos</option>
+          </select>
+        </div>
+        <table class="data-table">
+          <thead><tr><th>Factura</th><th>Cliente</th><th>Dirección</th><th>Zona</th><th>Repartidor</th><th>Tiempo</th><th>Estado</th><th></th></tr></thead>
+          <tbody id="delivery-tbody"></tbody>
+        </table>
+        <div id="delivery-vacio" class="empty-state" style="display:none;">No hay pedidos de delivery en este filtro.</div>
       </div>
     </div>
   </div>

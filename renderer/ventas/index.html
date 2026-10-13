@@ -76,6 +76,20 @@
             </div>
           </div>
 
+          <div id="bloque-delivery" style="display:none;">
+            <label class="delivery-check"><input type="checkbox" id="chk-delivery" /> Entrega a domicilio (delivery)</label>
+            <div id="campos-delivery" style="display:none; margin-top:8px;">
+              <label class="campo-label" for="input-direccion-entrega">Dirección de entrega *</label>
+              <input id="input-direccion-entrega" class="input-normal" maxlength="200" placeholder="Calle, número, sector, referencia" />
+              <div class="delivery-fila">
+                <div><label class="campo-label" for="input-zona-entrega">Zona</label><input id="input-zona-entrega" class="input-normal" maxlength="60" placeholder="Ej.: Naco" /></div>
+                <div><label class="campo-label" for="input-tiempo-entrega">Tiempo estimado (min)</label><input id="input-tiempo-entrega" class="input-normal" type="number" min="1" max="1440" step="1" placeholder="45" /></div>
+              </div>
+              <label class="campo-label" for="select-repartidor">Repartidor</label>
+              <select id="select-repartidor" class="input-normal"><option value="">Asignar después</option></select>
+            </div>
+          </div>
+
           <div>
             <label class="campo-label">Nivel de precio</label>
             <select id="select-nivel-precio" class="input-normal">

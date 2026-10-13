@@ -2,6 +2,7 @@ const state = {
   info: null,
   tab: 'turno',
   cajaActual: null,
+  cajas: [],
   turnoActual: null,
   monedas: [],
 };
@@ -54,6 +55,10 @@ async function renderTurno() {
     panel.innerHTML = `
       <div class="empty-state empty-state--panel">
         <p style="margin-bottom:14px; color:var(--color-text);">No hay un turno de caja abierto para <strong>${esc(state.cajaActual.nombre)}</strong>. Ábrelo antes de facturar ventas al contado en efectivo.</p>
+        ${state.cajas.length > 1 ? `<div class="form-field" style="max-width:240px; margin:0 auto 14px;">
+          <label for="caja-elegida">Caja</label>
+          <select id="caja-elegida" class="input-normal">${state.cajas.map((c) => `<option value="${esc(c.id)}" ${c.id === state.cajaActual.id ? 'selected' : ''}>${esc(c.nombre)}</option>`).join('')}</select>
+        </div>` : ''}
         <div class="form-field" style="max-width:240px; margin:0 auto 14px;">
           <label>Fondo inicial</label>
           <input id="fondo-inicial" class="input-normal" type="number" step="0.01" value="0" />
@@ -219,15 +224,44 @@ async function cargarCajaChica() {
   document.getElementById('btn-nuevo-gasto').addEventListener('click', abrirFormularioGasto);
 
   const gastos = await window.puntoXCaja.listarGastosCajaChica({ cajaChicaId: cc.id });
-  const totalGastado = gastos.reduce((acc, g) => acc + g.monto, 0);
   document.getElementById('cc-fondo').textContent = fmt(cc.fondo_asignado);
-  document.getElementById('cc-gastado').textContent = fmt(totalGastado);
+  if (window.puntoXCaja.resumenCajaChica) {
+    // Fondo fijo: lo gastado desde la última reposición se descuenta; al reponer vuelve a estar completo.
+    const r = await window.puntoXCaja.resumenCajaChica({ cajaChicaId: cc.id });
+    document.getElementById('cc-gastado').textContent = fmt(r.gastado_periodo);
+    document.getElementById('cc-disponible').textContent = fmt(r.disponible);
+    document.getElementById('cc-acciones').style.display = 'flex';
+    document.getElementById('cc-periodo').textContent = r.inicio_periodo ? `Periodo desde la reposición del ${fechaHora(r.inicio_periodo)}` : 'Primer periodo: aún no se ha repuesto';
+    document.getElementById('cc-reposiciones').innerHTML = r.reposiciones.length ? `
+      <div class="card__title" style="margin:18px 0 8px;">Reposiciones</div>
+      <table class="data-table"><thead><tr><th>Fecha</th><th>Gastos</th><th style="text-align:right;">Monto repuesto</th><th>Usuario</th></tr></thead>
+      <tbody>${r.reposiciones.map((x) => `<tr><td>${fechaHora(x.fecha)}</td><td>${esc(x.gastos)}</td><td style="text-align:right;">${fmt(x.monto)}</td><td>${esc(x.usuario_nombre || '')}</td></tr>`).join('')}</tbody></table>` : '';
+  } else {
+    document.getElementById('cc-gastado').textContent = fmt(gastos.reduce((acc, g) => acc + g.monto, 0));
+  }
 
   document.getElementById('cajachica-vacio').style.display = gastos.length === 0 ? 'block' : 'none';
   document.getElementById('cajachica-tbody').innerHTML = gastos.map((g) => `
     <tr><td>${esc(g.concepto)}</td><td>${esc(g.categoria) || '—'}</td><td>${fmt(g.monto)}</td><td>${esc(g.comprobante_ruta)}${g.ncf ? ` · NCF ${esc(g.ncf)}` : ''}</td><td>${fechaHora(g.fecha)}</td><td>${esc(g.usuario_nombre)}</td></tr>
   `).join('');
 }
+
+document.getElementById('btn-cc-reponer').addEventListener('click', async () => {
+  const ok = await window.PuntoXModal.confirmar({ titulo: 'Reponer el fondo de caja chica', mensaje: `Se entrega a la caja chica lo gastado en este periodo (${document.getElementById('cc-gastado').textContent}) y empieza un periodo nuevo con el fondo completo.`, textoConfirmar: 'Reponer' });
+  if (!ok) return;
+  try {
+    await window.puntoXCaja.reponerCajaChica({ cajaChicaId: state.cajaChica.id, usuarioId: state.info.usuario.id });
+    cargarCajaChica();
+  } catch (err) { mostrarError(err.message); }
+});
+document.getElementById('btn-cc-fondo').addEventListener('click', async () => {
+  const valor = await window.PuntoXModal.pedirTexto('Nuevo fondo de caja chica (RD$):', String(state.cajaChica.fondo_asignado), { tipo: 'number' });
+  if (valor === null) return;
+  try {
+    await window.puntoXCaja.fondoCajaChica({ cajaChicaId: state.cajaChica.id, fondoAsignado: parseFloat(valor), usuarioId: state.info.usuario.id });
+    cargarCajaChica();
+  } catch (err) { mostrarError(err.message); }
+});
 
 const TIPOS_BIENES_SERVICIOS_606 = [
   ['01', 'Gastos de personal'], ['02', 'Gastos por trabajos, suministros y servicios'], ['03', 'Arrendamientos'],
@@ -745,7 +779,14 @@ async function init() {
   // La conciliación bancaria solo existe en la app de escritorio.
   if (!window.puntoXCaja.listarConciliaciones) document.querySelector('.tab-btn[data-tab="conciliacion"]').remove();
   state.cajaActual = await window.puntoXCaja.obtenerCajaPrincipal();
-  cambiarTab('turno');
+  state.cajas = (await window.puntoXCaja.listarCajas()) || [];
+  // Con varias cajas, se elige en cuál abrir el turno; las ventas van a la caja del turno abierto.
+  document.addEventListener('change', (e) => {
+    if (e.target.id !== 'caja-elegida') return;
+    state.cajaActual = state.cajas.find((c) => c.id === e.target.value) || state.cajaActual;
+    renderTurno();
+  });
+  cambiarTab(window.PuntoXShell.tabInicial('turno'));
 }
 
 init();

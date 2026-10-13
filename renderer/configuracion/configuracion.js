@@ -106,7 +106,8 @@ async function cargarNegocio() {
   mostrarLogo(datos.negocio_logo || null, datos.negocio_iniciales);
   document.getElementById('neg-nombre').value = datos.negocio_nombre || '';
   document.getElementById('neg-iniciales').value = datos.negocio_iniciales || '';
-  document.getElementById('neg-color').value = datos.negocio_color_acento || '#0A6B68';
+  // El color de marca ya no se edita aquí (la identidad Nodo fija el color); se conserva el guardado.
+  state.colorAcento = datos.negocio_color_acento || '#0A6B68';
   document.getElementById('neg-rnc').value = datos.negocio_rnc || '';
   document.getElementById('neg-razon-social').value = datos.negocio_razon_social || '';
   document.getElementById('neg-direccion').value = datos.negocio_direccion || '';
@@ -118,7 +119,7 @@ document.getElementById('btn-guardar-negocio').addEventListener('click', async (
     await window.puntoXConfig.actualizarDatosNegocio({
       payload: {
         nombre: document.getElementById('neg-nombre').value, iniciales: document.getElementById('neg-iniciales').value,
-        colorAcento: document.getElementById('neg-color').value,
+        colorAcento: state.colorAcento || '#0A6B68',
         rnc: document.getElementById('neg-rnc').value.trim(),
         razonSocial: document.getElementById('neg-razon-social').value.trim(),
         direccion: document.getElementById('neg-direccion').value.trim(),
@@ -203,6 +204,10 @@ async function abrirFormularioUsuario(usuarioId) {
 // --- Roles y permisos ---
 
 async function cargarRoles() {
+  if (window.puntoXConfig.crearRol) {
+    document.getElementById('acciones-tab').innerHTML = '<button class="btn btn-primario" id="btn-nuevo-rol" data-permiso="configuracion.gestionar">+ Nuevo rol</button>';
+    document.getElementById('btn-nuevo-rol').addEventListener('click', () => abrirFormularioRol(null));
+  }
   state.roles = await window.puntoXConfig.listarRoles();
   state.permisos = await window.puntoXConfig.listarPermisos();
 
@@ -210,7 +215,7 @@ async function cargarRoles() {
     <div class="rol-card ${r.id === state.rolSeleccionadoId ? 'is-active' : ''}" data-rol="${esc(r.id)}">
       <div>
         <div style="font-weight:700; font-size:13px;">${esc(r.nombre)}</div>
-        <div style="font-size: 12px; color:var(--color-text-muted);">${esc(r.total_usuarios)} usuario${r.total_usuarios === 1 ? '' : 's'}</div>
+        <div style="font-size: 12px; color:var(--color-text-muted);">${esc(r.total_usuarios)} usuario${r.total_usuarios === 1 ? '' : 's'} · ${r.es_rol_sistema ? 'del sistema' : 'propio'}</div>
       </div>
     </div>
   `).join('');
@@ -235,7 +240,12 @@ async function renderDetalleRol() {
     <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px;">
       <div>
         <div style="font-weight:800; font-size:16px;">${esc(rol.nombre)}</div>
-        <div style="font-size:12px; color:var(--color-text-muted);">${esc(rol.descripcion)}</div>
+        <div style="font-size:12px; color:var(--color-text-muted);">${esc(rol.descripcion || '')}</div>
+        ${window.puntoXConfig.editarRol ? `<div data-permiso="configuracion.gestionar"><div style="margin-top:8px; display:flex; gap:16px; flex-wrap:wrap;">
+          <span class="enlace-accion" id="rol-editar">Editar</span>
+          <span class="enlace-accion" id="rol-duplicar">Crear uno a partir de este</span>
+          ${rol.es_rol_sistema ? '' : '<span class="enlace-accion" id="rol-eliminar" style="color:var(--color-danger);">Eliminar</span>'}
+        </div></div>` : ''}
       </div>
       <div class="form-field" style="width:200px;">
         <label>Límite de descuento (%)</label>
@@ -258,6 +268,21 @@ async function renderDetalleRol() {
     <button class="btn btn-primario" id="btn-guardar-permisos" data-permiso="configuracion.gestionar">Guardar permisos</button>
   `;
 
+  const enlazar = (id, fn) => { const el = document.getElementById(id); if (el) el.addEventListener('click', fn); };
+  enlazar('rol-editar', () => abrirFormularioRol(rol));
+  enlazar('rol-duplicar', () => abrirFormularioRol(null, rol));
+  enlazar('rol-eliminar', async () => {
+    const ok = await window.PuntoXModal.confirmar({ titulo: `Eliminar el rol ${rol.nombre}`, mensaje: 'El rol deja de estar disponible para asignar. Los usuarios que lo tengan deben cambiarse antes.', textoConfirmar: 'Eliminar rol', peligro: true });
+    if (!ok) return;
+    try {
+      await window.puntoXConfig.eliminarRol({ rolId: rol.id, usuarioId: state.info.usuario.id });
+      state.rolSeleccionadoId = null;
+      document.getElementById('rol-detalle').innerHTML = '<div class="empty-state">Selecciona un rol para ver y editar sus permisos.</div>';
+      await cargarRoles();
+      mostrarExito('Rol eliminado.');
+    } catch (err) { mostrarError(err.message); }
+  });
+
   document.getElementById('rol-limite-descuento').addEventListener('change', async (e) => {
     try {
       await window.puntoXConfig.actualizarLimiteDescuentoRol({ rolId: rol.id, limitePct: parseFloat(e.target.value) || 0, usuarioId: state.info.usuario.id });
@@ -273,6 +298,39 @@ async function renderDetalleRol() {
       // pantalla muestre y oculte botones con los nuevos.
       if (rol.id === state.info.usuario.rolId) { window.location.hash = 'roles'; window.location.reload(); return; }
       mostrarExito('Permisos actualizados.');
+    } catch (err) { mostrarError(err.message); }
+  });
+}
+
+// Crear (vacío o a partir de otro rol) o editar nombre y descripción de un rol.
+function abrirFormularioRol(rol, base) {
+  const esEdicion = Boolean(rol);
+  window.PuntoXModal.abrirModal(esEdicion ? `Editar rol` : 'Nuevo rol', `
+    <div class="form-grid">
+      <div class="form-field" style="grid-column: span 2;"><label for="rol-nombre">Nombre *</label><input id="rol-nombre" class="input-normal" maxlength="60" value="${esc(esEdicion ? rol.nombre : base ? `${base.nombre} (copia)` : '')}" ${esEdicion && rol.es_rol_sistema ? 'disabled' : ''} /></div>
+      <div class="form-field" style="grid-column: span 2;"><label for="rol-descripcion">Descripción</label><input id="rol-descripcion" class="input-normal" maxlength="200" value="${esc(esEdicion ? rol.descripcion || '' : '')}" placeholder="Qué hace quien tiene este rol" /></div>
+      ${esEdicion ? '' : `<div class="form-field" style="grid-column: span 2;"><label for="rol-base">Empezar con los permisos de</label>
+        <select id="rol-base" class="input-normal"><option value="">Ninguno (sin permisos)</option>${state.roles.map((r) => `<option value="${esc(r.id)}" ${base && base.id === r.id ? 'selected' : ''}>${esc(r.nombre)}</option>`).join('')}</select></div>`}
+    </div>
+    ${esEdicion && rol.es_rol_sistema ? '<p style="font-size:13px; color:var(--color-text-muted);">Los roles del sistema no se pueden renombrar. Para uno distinto, crea un rol a partir de este.</p>' : ''}
+    <div class="form-seccion" style="display:flex; justify-content:flex-end; gap:8px;">
+      <button type="button" class="btn btn-secundario" id="rol-cancelar">Cancelar</button>
+      <button type="button" class="btn btn-primario" id="rol-guardar">${esEdicion ? 'Guardar cambios' : 'Crear rol'}</button>
+    </div>
+  `);
+  document.getElementById('rol-cancelar').addEventListener('click', window.PuntoXModal.cerrarModal);
+  document.getElementById('rol-guardar').addEventListener('click', async () => {
+    const payload = { nombre: document.getElementById('rol-nombre').value, descripcion: document.getElementById('rol-descripcion').value };
+    try {
+      if (esEdicion) {
+        await window.puntoXConfig.editarRol({ rolId: rol.id, payload, usuarioId: state.info.usuario.id });
+      } else {
+        payload.copiarDeRolId = document.getElementById('rol-base').value || null;
+        state.rolSeleccionadoId = await window.puntoXConfig.crearRol({ payload, usuarioId: state.info.usuario.id });
+      }
+      window.PuntoXModal.cerrarModal();
+      await cargarRoles();
+      mostrarExito(esEdicion ? 'Rol actualizado.' : 'Rol creado. Marca sus permisos y guarda.');
     } catch (err) { mostrarError(err.message); }
   });
 }
@@ -426,6 +484,14 @@ async function cargarSucursales() {
     return `<tr><td>${esc(a.nombre)}</td><td>${esc(sucursal ? sucursal.nombre : '—')}</td></tr>`;
   }).join('');
 
+  if (window.puntoXCaja && window.puntoXCaja.listarCajas) {
+    const cajas = await window.puntoXCaja.listarCajas();
+    document.getElementById('cajas-tbody').innerHTML = cajas.map((c) => {
+      const sucursal = sucursales.find((s) => s.id === c.sucursal_id);
+      return `<tr><td>${esc(c.nombre)}</td><td>${esc(sucursal ? sucursal.nombre : '—')}</td></tr>`;
+    }).join('');
+  }
+
   window.__sucursalesCache = sucursales;
 }
 
@@ -472,6 +538,30 @@ document.getElementById('btn-nuevo-almacen').addEventListener('click', async () 
       await window.puntoXInventario.crearAlmacen({ sucursalId: document.getElementById('al-sucursal').value, nombre: document.getElementById('al-nombre').value });
       window.PuntoXModal.cerrarModal();
       cargarSucursales();
+    } catch (err) { mostrarError(err.message); }
+  });
+});
+
+document.getElementById('btn-nueva-caja').addEventListener('click', async () => {
+  if (!window.puntoXCaja || !window.puntoXCaja.crearCaja) return;
+  const sucursales = window.__sucursalesCache || await window.puntoXConfig.listarSucursales();
+  window.PuntoXModal.abrirModal('Nueva caja', `
+    <div class="form-grid">
+      <div class="form-field"><label for="cj-nombre">Nombre *</label><input id="cj-nombre" class="input-normal" placeholder="Ej.: Caja 2" /></div>
+      <div class="form-field"><label for="cj-sucursal">Sucursal</label><select id="cj-sucursal" class="input-normal">${opciones(sucursales, sucursales[0]?.id, (s) => s.nombre)}</select></div>
+    </div>
+    <div class="form-seccion" style="display:flex; justify-content:flex-end; gap:8px;">
+      <button type="button" class="btn btn-secundario" id="cj-cancelar">Cancelar</button>
+      <button type="button" class="btn btn-primario" id="cj-guardar">Crear caja</button>
+    </div>
+  `);
+  document.getElementById('cj-cancelar').addEventListener('click', window.PuntoXModal.cerrarModal);
+  document.getElementById('cj-guardar').addEventListener('click', async () => {
+    try {
+      await window.puntoXCaja.crearCaja({ sucursalId: document.getElementById('cj-sucursal').value, nombre: document.getElementById('cj-nombre').value, usuarioId: state.info.usuario.id });
+      window.PuntoXModal.cerrarModal();
+      cargarSucursales();
+      mostrarExito('Caja creada.');
     } catch (err) { mostrarError(err.message); }
   });
 });

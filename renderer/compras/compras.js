@@ -725,7 +725,7 @@ async function init() {
   if (!state.info) return; // sin sesión o con la contraseña pendiente: el shell ya redirigió al login
   // Las notas de crédito/débito de compra solo existen en la app de escritorio.
   if (!window.puntoXCompras.crearNota) document.querySelector('.tab-btn[data-tab="notas"]').remove();
-  cambiarTab('proveedores');
+  cambiarTab(window.PuntoXShell.tabInicial('proveedores'));
 }
 
 init();

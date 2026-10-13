@@ -236,6 +236,18 @@ function estadoCuenta(db, clienteId) {
   });
 }
 
+function csvEstadoCuenta(cliente, movimientos) {
+  const ETIQUETA = { factura: 'Factura', nota_debito: 'Nota de débito', nota_credito: 'Nota de crédito', recibo: 'Recibo de cobro' };
+  const celda = (v) => (/[",;\n]/.test(String(v)) ? `"${String(v).replace(/"/g, '""')}"` : String(v));
+  const fecha = (iso) => new Date(Date.parse(iso) - 4 * 3600000).toISOString().slice(0, 10);
+  const lineas = [['Cliente', cliente.nombre], ['RNC/Cédula', cliente.rnc_cedula || ''], [], ['Fecha', 'Documento', 'Número', 'Cargo', 'Abono', 'Saldo']];
+  for (const m of movimientos) {
+    const cargo = m.tipo === 'factura' || m.tipo === 'nota_debito';
+    lineas.push([fecha(m.fecha), ETIQUETA[m.tipo] || m.tipo, m.numero, cargo ? m.total.toFixed(2) : '', cargo ? '' : m.total.toFixed(2), m.saldo_acumulado.toFixed(2)]);
+  }
+  return `\uFEFF${lineas.map((l) => l.map(celda).join(',')).join('\r\n')}\r\n`;
+}
+
 // =========================================================================
 // Recibos de ingreso (cobros)
 // =========================================================================
@@ -414,6 +426,33 @@ function historialCobros(db, { desde, hasta, clienteId, vendedorId } = {}) {
   };
 }
 
+// Listado de CxC: saldo por cliente. Con vendedor o sucursal, el saldo es solo el de las facturas
+// (y notas de débito) de ese vendedor o sucursal; sin esos filtros es el saldo completo del
+// cliente (incluye el saldo a favor por notas de crédito).
+function listadoCxc(db, { vendedorId, sucursalId, categoriaId, soloConSaldo } = {}) {
+  session.requerirPermiso('cxc.reportes.ver');
+  const condiciones = ['c.deleted_at IS NULL'];
+  const params = [];
+  if (categoriaId) { condiciones.push('c.categoria_id = ?'); params.push(categoriaId); }
+  const clientes = db.prepare(
+    `SELECT c.id, c.nombre, c.rnc_cedula, c.telefono, c.limite_credito, c.dias_credito, cc.nombre AS categoria_nombre
+     FROM clientes c LEFT JOIN categorias_cliente cc ON cc.id = c.categoria_id WHERE ${condiciones.join(' AND ')} ORDER BY c.nombre`
+  ).all(...params);
+  const hoy = Date.now();
+  const filas = clientes.map((c) => {
+    const cond = ["cliente_id = ?", "estado != 'anulado'", 'deleted_at IS NULL', "((tipo = 'factura' AND condicion_pago IN ('credito','mixto')) OR tipo = 'nota_debito')"];
+    const p = [c.id];
+    if (vendedorId) { cond.push('vendedor_id = ?'); p.push(vendedorId); }
+    if (sucursalId) { cond.push('sucursal_id = ?'); p.push(sucursalId); }
+    const docs = db.prepare(`SELECT id, fecha FROM documentos_venta WHERE ${cond.join(' AND ')}`).all(...p)
+      .map((d) => ({ ...d, saldo: saldoPorFactura(db, d.id) })).filter((d) => d.saldo > 0.005);
+    const saldo = vendedorId || sucursalId ? redondear(docs.reduce((a, d) => a + d.saldo, 0)) : saldoPendienteCliente(db, c.id);
+    const vencido = redondear(docs.filter((d) => Date.parse(d.fecha) + (c.dias_credito || 0) * 86400000 < hoy).reduce((a, d) => a + d.saldo, 0));
+    return { ...c, saldo_pendiente: saldo, saldo_vencido: vencido, documentos_abiertos: docs.length, credito_disponible: redondear(Math.max(0, (c.limite_credito || 0) - saldo)) };
+  });
+  return (soloConSaldo ? filas.filter((f) => Math.abs(f.saldo_pendiente) > 0.005) : filas).sort((a, b) => b.saldo_pendiente - a.saldo_pendiente);
+}
+
 // =========================================================================
 // Reportes: antigüedad de saldos y facturas vencidas
 // =========================================================================
@@ -585,7 +624,23 @@ function register(ipcMain, getDb) {
     return db.transaction(() => anularRecibo(db, payload))();
   });
   ipcMain.handle('cxc:listarRecibos', (event, filtros) => listarRecibos(getDb(), filtros || {}));
+  ipcMain.handle('cxc:exportarEstadoCuenta', async (event, { clienteId }) => {
+    session.requerirAlgunPermiso('cxc.reportes.ver', 'cxc.recibo.crear');
+    const { dialog, BrowserWindow } = require('electron');
+    const fs = require('node:fs');
+    const db = getDb();
+    const cliente = db.prepare('SELECT * FROM clientes WHERE id = ? AND deleted_at IS NULL').get(clienteId);
+    if (!cliente) throw new Error('Cliente no encontrado');
+    const nombre = `Estado_de_cuenta_${cliente.nombre.replace(/[^\p{L}\p{N}]+/gu, '_')}.csv`;
+    const { canceled, filePath } = await dialog.showSaveDialog(BrowserWindow.fromWebContents(event.sender), {
+      title: 'Guardar estado de cuenta', defaultPath: nombre, filters: [{ name: 'CSV (Excel)', extensions: ['csv'] }],
+    });
+    if (canceled || !filePath) return { cancelado: true };
+    fs.writeFileSync(filePath, csvEstadoCuenta(cliente, estadoCuenta(db, clienteId)), 'utf8');
+    return { ruta: filePath };
+  });
   ipcMain.handle('cxc:historialCobros', (event, filtros) => historialCobros(getDb(), filtros || {}));
+  ipcMain.handle('cxc:listadoCxc', (event, filtros) => listadoCxc(getDb(), filtros || {}));
 
   ipcMain.handle('cxc:antiguedadSaldos', () => antiguedadSaldos(getDb()));
   ipcMain.handle('cxc:facturasVencidas', () => facturasVencidas(getDb()));
@@ -610,6 +665,6 @@ function register(ipcMain, getDb) {
 module.exports = {
   register, obtenerCliente, saldoPendienteCliente, saldoPorFactura, facturasAbiertasCliente,
   verificarBloqueoPorMora, guardarCliente, listarClientes, estadoCuenta,
-  crearRecibo, anularRecibo, listarRecibos, historialCobros, antiguedadSaldos, facturasVencidas,
+  crearRecibo, anularRecibo, listarRecibos, historialCobros, csvEstadoCuenta, listadoCxc, antiguedadSaldos, facturasVencidas,
   crearGestionCobro, listarGestionCobros, crearCxcEmpleado, registrarPagoCxcEmpleado, listarCxcEmpleados,
 };

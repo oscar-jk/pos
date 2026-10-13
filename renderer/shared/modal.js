@@ -107,4 +107,31 @@ async function confirmarAnulacion({ documento, numero, total, revierte = [], avi
   return pedirTexto('Motivo de la anulación:');
 }
 
-window.PuntoXModal = { abrirModal, cerrarModal, pedirTexto, confirmarAnulacion };
+// Confirmación genérica (reemplazo de window.confirm, que Electron no muestra). Devuelve true o false.
+function confirmar({ titulo, mensaje, textoConfirmar = 'Confirmar', peligro = false }) {
+  return new Promise((resolve) => {
+    const capa = document.createElement('div');
+    capa.className = 'modal-overlay';
+    capa.style.zIndex = '2000';
+    capa.innerHTML = `
+      <div class="modal-box" style="max-width:440px" role="alertdialog" aria-label="${esc(titulo)}">
+        <div class="modal-box__header"><h2>${esc(titulo)}</h2></div>
+        <div style="padding:4px 0;display:flex;flex-direction:column;gap:16px">
+          ${mensaje ? `<p style="margin:0;font-size:14px;line-height:1.5;color:var(--color-text-muted)">${esc(mensaje)}</p>` : ''}
+          <div style="display:flex;justify-content:flex-end;gap:8px">
+            <button type="button" class="btn btn-secundario" data-cancelar>Cancelar</button>
+            <button type="button" class="btn ${peligro ? 'btn-peligro' : 'btn-primario'}" data-confirmar>${esc(textoConfirmar)}</button>
+          </div>
+        </div>
+      </div>`;
+    document.body.appendChild(capa);
+    const terminar = (valor) => { capa.remove(); document.removeEventListener('keydown', onKey, true); resolve(valor); };
+    const onKey = (e) => { if (e.key === 'Escape') { e.stopPropagation(); terminar(false); } };
+    document.addEventListener('keydown', onKey, true);
+    capa.querySelector('[data-cancelar]').addEventListener('click', () => terminar(false));
+    capa.querySelector('[data-confirmar]').addEventListener('click', () => terminar(true));
+    capa.querySelector('[data-cancelar]').focus();
+  });
+}
+
+window.PuntoXModal = { abrirModal, cerrarModal, pedirTexto, confirmarAnulacion, confirmar };

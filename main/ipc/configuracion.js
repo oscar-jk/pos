@@ -328,6 +328,74 @@ function actualizarPermisosRol(db, rolId, permisoIds, usuarioId) {
   refrescarSesion(db);
 }
 
+// Roles propios del negocio, además de los 6 del sistema. Un rol nuevo puede partir de los
+// permisos de otro. Los roles del sistema no se renombran ni se eliminan (la sincronización de
+// permisos de cada versión los identifica por nombre); los propios se eliminan con borrado
+// lógico y solo si nadie los tiene asignado.
+function nombreRolValido(nombre) {
+  const limpio = String(nombre || '').trim().replace(/\s+/g, ' ');
+  if (!limpio) throw new Error('Escribe el nombre del rol');
+  if (limpio.length > 60) throw new Error('El nombre del rol admite hasta 60 caracteres');
+  return limpio;
+}
+
+function crearRol(db, { nombre, descripcion, copiarDeRolId }, usuarioId) {
+  session.requerirPermiso('configuracion.gestionar');
+  const limpio = nombreRolValido(nombre);
+  const existente = db.prepare('SELECT * FROM roles WHERE lower(nombre) = lower(?)').get(limpio);
+  if (existente && !existente.deleted_at) throw new Error(`Ya existe un rol llamado "${existente.nombre}"`);
+  let base = null;
+  if (copiarDeRolId) {
+    base = db.prepare('SELECT * FROM roles WHERE id = ? AND deleted_at IS NULL').get(copiarDeRolId);
+    if (!base) throw new Error('El rol de base no existe');
+  }
+  // El nombre es único en la tabla: un rol eliminado con el mismo nombre se restaura.
+  const rolId = existente ? existente.id : crypto.randomUUID();
+  if (existente) {
+    db.prepare("UPDATE roles SET nombre = ?, descripcion = ?, limite_descuento_pct = ?, deleted_at = NULL, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?")
+      .run(limpio, (descripcion || '').trim() || null, base ? base.limite_descuento_pct : 0, rolId);
+    db.prepare("UPDATE roles_permisos SET deleted_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE rol_id = ? AND deleted_at IS NULL").run(rolId);
+  } else {
+    db.prepare('INSERT INTO roles (id, nombre, descripcion, es_rol_sistema, limite_descuento_pct) VALUES (?, ?, ?, 0, ?)')
+      .run(rolId, limpio, (descripcion || '').trim() || null, base ? base.limite_descuento_pct : 0);
+  }
+  if (base) {
+    const permisos = db.prepare('SELECT permiso_id FROM roles_permisos WHERE rol_id = ? AND deleted_at IS NULL').all(base.id).map((r) => r.permiso_id);
+    const filas = new Map(db.prepare('SELECT id, permiso_id FROM roles_permisos WHERE rol_id = ?').all(rolId).map((f) => [f.permiso_id, f.id]));
+    for (const permisoId of permisos) {
+      if (filas.has(permisoId)) db.prepare("UPDATE roles_permisos SET deleted_at = NULL, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?").run(filas.get(permisoId));
+      else db.prepare('INSERT INTO roles_permisos (id, rol_id, permiso_id) VALUES (?, ?, ?)').run(crypto.randomUUID(), rolId, permisoId);
+    }
+  }
+  registrarAuditoria(db, { usuarioId, modulo: 'configuracion', entidad: 'roles', entidadId: rolId, accion: 'crear', detalle: { nombre: limpio, copiaDe: base ? base.nombre : null } });
+  return rolId;
+}
+
+function editarRol(db, rolId, { nombre, descripcion }, usuarioId) {
+  session.requerirPermiso('configuracion.gestionar');
+  const rol = db.prepare('SELECT * FROM roles WHERE id = ? AND deleted_at IS NULL').get(rolId);
+  if (!rol) throw new Error('Rol no encontrado');
+  const limpio = nombreRolValido(nombre);
+  if (rol.es_rol_sistema && limpio !== rol.nombre) throw new Error('Los roles del sistema no se pueden renombrar. Crea un rol nuevo a partir de este');
+  const otro = db.prepare('SELECT nombre, deleted_at FROM roles WHERE lower(nombre) = lower(?) AND id != ?').get(limpio, rolId);
+  if (otro) throw new Error(otro.deleted_at ? `El nombre "${limpio}" pertenece a un rol eliminado; créalo de nuevo para restaurarlo` : `Ya existe un rol llamado "${otro.nombre}"`);
+  db.prepare("UPDATE roles SET nombre = ?, descripcion = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?").run(limpio, (descripcion || '').trim() || null, rolId);
+  registrarAuditoria(db, { usuarioId, modulo: 'configuracion', entidad: 'roles', entidadId: rolId, accion: 'editar', detalle: { nombre: limpio } });
+  refrescarSesion(db);
+}
+
+function eliminarRol(db, rolId, usuarioId) {
+  session.requerirPermiso('configuracion.gestionar');
+  const rol = db.prepare('SELECT * FROM roles WHERE id = ? AND deleted_at IS NULL').get(rolId);
+  if (!rol) throw new Error('Rol no encontrado');
+  if (rol.es_rol_sistema) throw new Error('Los roles del sistema no se pueden eliminar');
+  const asignados = db.prepare('SELECT COUNT(*) n FROM usuarios WHERE rol_id = ? AND deleted_at IS NULL').get(rolId).n;
+  if (asignados > 0) throw new Error(`El rol tiene ${asignados} usuario(s). Asígnales otro rol antes de eliminarlo`);
+  db.prepare("UPDATE roles SET deleted_at = strftime('%Y-%m-%dT%H:%M:%fZ','now'), updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?").run(rolId);
+  db.prepare("UPDATE roles_permisos SET deleted_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE rol_id = ? AND deleted_at IS NULL").run(rolId);
+  registrarAuditoria(db, { usuarioId, modulo: 'configuracion', entidad: 'roles', entidadId: rolId, accion: 'eliminar', detalle: { nombre: rol.nombre } });
+}
+
 function actualizarLimiteDescuentoRol(db, rolId, limitePct, usuarioId) {
   session.requerirPermiso('configuracion.gestionar');
   db.prepare("UPDATE roles SET limite_descuento_pct = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?").run(limitePct, rolId);
@@ -460,6 +528,18 @@ function register(ipcMain, getDb) {
     const db = getDb();
     return db.transaction(() => actualizarPermisosRol(db, rolId, permisoIds, usuarioId))();
   });
+  ipcMain.handle('config:crearRol', (event, { payload, usuarioId }) => {
+    const db = getDb();
+    return db.transaction(() => crearRol(db, payload || {}, usuarioId))();
+  });
+  ipcMain.handle('config:editarRol', (event, { rolId, payload, usuarioId }) => {
+    const db = getDb();
+    db.transaction(() => editarRol(db, rolId, payload || {}, usuarioId))();
+  });
+  ipcMain.handle('config:eliminarRol', (event, { rolId, usuarioId }) => {
+    const db = getDb();
+    db.transaction(() => eliminarRol(db, rolId, usuarioId))();
+  });
   ipcMain.handle('config:actualizarLimiteDescuentoRol', (event, { rolId, limitePct, usuarioId }) => {
     const db = getDb();
     return db.transaction(() => actualizarLimiteDescuentoRol(db, rolId, limitePct, usuarioId))();
@@ -510,7 +590,7 @@ function register(ipcMain, getDb) {
 module.exports = {
   register, registrarAuditoria, listarBitacora, obtenerDatosNegocio, actualizarDatosNegocio, guardarLogoNegocio, quitarLogoNegocio, validarLogo,
   listarParametrosNegocio, actualizarParametroNegocio, listarUsuarios, crearUsuario, actualizarUsuario,
-  listarRoles, listarPermisos, permisosDeRol, actualizarPermisosRol, actualizarLimiteDescuentoRol,
+  listarRoles, listarPermisos, permisosDeRol, actualizarPermisosRol, actualizarLimiteDescuentoRol, crearRol, editarRol, eliminarRol,
   listarTasasItbis, crearTasaItbis, actualizarTasaItbis, listarTiposNcf, crearTipoNcf, ampliarRangoNcf,
   actualizarEstadoTipoNcf, listarSucursales, crearSucursal,
   listarModulos, modulosActivos, moduloActivo, exigirModulo, actualizarModulo,

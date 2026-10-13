@@ -16,6 +16,8 @@ const MIGRACIONES = [
   require('./012_facturacion_electronica'),
   require('./013_ecf_receptor'),
   require('./014_cuenta_bancaria_en_asientos'),
+  require('./015_delivery'),
+  require('./016_reposicion_caja_chica'),
 ];
 
 function columnasDe(db, tabla) {

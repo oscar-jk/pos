@@ -143,25 +143,50 @@ async function abrirFormularioCliente(clienteId) {
   });
 }
 
+const TIPO_MOVIMIENTO_CXC = { factura: 'Factura', nota_debito: 'Nota de débito', nota_credito: 'Nota de crédito', recibo: 'Recibo de cobro' };
+
 async function verEstadoCuenta(clienteId, nombre) {
   const movimientos = await window.puntoXCxc.estadoCuenta({ clienteId });
+  const esCargo = (m) => m.tipo === 'factura' || m.tipo === 'nota_debito';
+  const saldo = movimientos.length ? movimientos[movimientos.length - 1].saldo_acumulado : 0;
   window.PuntoXModal.abrirModal(`Estado de cuenta — ${nombre}`, `
+    <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:12px;">
+      <div style="font-size:15px;">Saldo pendiente: <strong>${fmt(saldo)}</strong></div>
+      <div style="display:flex; gap:8px;">
+        ${window.puntoXImpresion && window.puntoXImpresion.imprimirEstadoCuenta ? '<button type="button" class="btn btn-secundario btn-chico" id="ec-imprimir">Imprimir</button>' : ''}
+        ${window.puntoXCxc.exportarEstadoCuenta ? '<button type="button" class="btn btn-secundario btn-chico" id="ec-exportar">Exportar a Excel</button>' : ''}
+      </div>
+    </div>
+    <div id="ec-aviso" style="display:none; font-size:12px; color:var(--color-success); font-weight:600; margin-bottom:8px;"></div>
     <table class="data-table">
-      <thead><tr><th>Fecha</th><th>Tipo</th><th>Número</th><th>Monto</th><th>Saldo acumulado</th></tr></thead>
+      <thead><tr><th>Fecha</th><th>Documento</th><th>Número</th><th style="text-align:right;">Cargo</th><th style="text-align:right;">Abono</th><th style="text-align:right;">Saldo</th></tr></thead>
       <tbody>
-        ${movimientos.length === 0 ? '<tr><td colspan="5" style="text-align:center; color:var(--color-text-faint);">Sin movimientos</td></tr>' : ''}
+        ${movimientos.length === 0 ? '<tr><td colspan="6" style="text-align:center; color:var(--color-text-faint);">Sin movimientos</td></tr>' : ''}
         ${movimientos.map((m) => `
           <tr>
             <td>${fechaCorta(m.fecha)}</td>
-            <td>${m.tipo === 'factura' ? 'Factura' : 'Recibo de cobro'}</td>
+            <td>${esc(TIPO_MOVIMIENTO_CXC[m.tipo] || m.tipo)}</td>
             <td>${esc(m.numero)}</td>
-            <td style="color:${m.tipo === 'factura' ? 'var(--color-text)' : 'var(--color-success)'};">${m.tipo === 'factura' ? fmt(m.total) : '- ' + fmt(m.total)}</td>
-            <td style="font-weight:700;">${fmt(m.saldo_acumulado)}</td>
+            <td style="text-align:right;">${esCargo(m) ? fmt(m.total) : ''}</td>
+            <td style="text-align:right; color:var(--color-success);">${esCargo(m) ? '' : fmt(m.total)}</td>
+            <td style="text-align:right; font-weight:700;">${fmt(m.saldo_acumulado)}</td>
           </tr>
         `).join('')}
       </tbody>
     </table>
   `);
+  document.querySelector('.modal-box').classList.add('modal-box--ancho');
+  const imprimir = document.getElementById('ec-imprimir');
+  if (imprimir) imprimir.addEventListener('click', async () => {
+    try { await window.puntoXImpresion.imprimirEstadoCuenta({ clienteId }); } catch (err) { mostrarError(err.message); }
+  });
+  const exportar = document.getElementById('ec-exportar');
+  if (exportar) exportar.addEventListener('click', async () => {
+    try {
+      const r = await window.puntoXCxc.exportarEstadoCuenta({ clienteId });
+      if (r && r.ruta) { const aviso = document.getElementById('ec-aviso'); aviso.textContent = `Archivo guardado: ${r.ruta}`; aviso.style.display = 'block'; }
+    } catch (err) { mostrarError(err.message); }
+  });
 }
 
 // --- Cobrar ---
@@ -468,7 +493,7 @@ async function init() {
   state.info = await window.PuntoXShell.initPuntoXShell('cxc');
   if (!state.info) return; // sin sesión o con la contraseña pendiente: el shell ya redirigió al login
   state.categorias = await window.puntoXCxc.listarCategorias();
-  cambiarTab('clientes');
+  cambiarTab(window.PuntoXShell.tabInicial('clientes'));
 }
 
 init();

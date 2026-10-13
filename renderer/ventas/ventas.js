@@ -368,6 +368,9 @@ function setModoVenta(modo) {
   document.getElementById('btn-modo-rapida').classList.toggle('is-active', modo === 'rapida');
   document.getElementById('btn-modo-completa').classList.toggle('is-active', modo === 'completa');
   document.getElementById('bloque-cliente').style.display = modo === 'completa' ? 'block' : 'none';
+  // El delivery va con la venta completa (cliente, dirección y repartidor).
+  document.getElementById('bloque-delivery').style.display = modo === 'completa' && window.puntoXDelivery && state.documento === 'factura' ? 'block' : 'none';
+  if (modo === 'rapida') limpiarDelivery();
   if (modo === 'rapida') {
     state.cliente = null;
     document.getElementById('cliente-nombre').textContent = 'Consumidor final';
@@ -375,6 +378,45 @@ function setModoVenta(modo) {
   }
   actualizarSubtitulo();
 }
+
+// --- Delivery ---
+
+function limpiarDelivery() {
+  const chk = document.getElementById('chk-delivery');
+  if (!chk) return;
+  chk.checked = false;
+  document.getElementById('campos-delivery').style.display = 'none';
+  for (const id of ['input-direccion-entrega', 'input-zona-entrega', 'input-tiempo-entrega']) document.getElementById(id).value = '';
+  document.getElementById('select-repartidor').value = '';
+}
+
+function datosDelivery() {
+  const chk = document.getElementById('chk-delivery');
+  if (!chk || !chk.checked || state.documento !== 'factura') return {};
+  return {
+    esDelivery: true,
+    direccionEntrega: document.getElementById('input-direccion-entrega').value.trim(),
+    zonaEntrega: document.getElementById('input-zona-entrega').value.trim(),
+    tiempoEstimadoMin: document.getElementById('input-tiempo-entrega').value ? parseInt(document.getElementById('input-tiempo-entrega').value, 10) : null,
+    repartidorId: document.getElementById('select-repartidor').value || null,
+  };
+}
+
+document.getElementById('chk-delivery').addEventListener('change', async (e) => {
+  document.getElementById('campos-delivery').style.display = e.target.checked ? 'block' : 'none';
+  if (!e.target.checked) return;
+  if (state.cliente && state.cliente.direccion && !document.getElementById('input-direccion-entrega').value) {
+    document.getElementById('input-direccion-entrega').value = state.cliente.direccion;
+  }
+  const select = document.getElementById('select-repartidor');
+  if (select.options.length <= 1 && window.puntoXDelivery) {
+    try {
+      const repartidores = await window.puntoXDelivery.repartidores();
+      select.insertAdjacentHTML('beforeend', repartidores.map((r) => `<option value="${esc(r.id)}">${esc(r.nombre_completo)}</option>`).join(''));
+    } catch (err) { mostrarError(err.message.replace(/^Error invoking remote method '.*?': Error: /, '')); }
+  }
+  document.getElementById('input-direccion-entrega').focus();
+});
 
 document.getElementById('btn-modo-rapida').addEventListener('click', () => setModoVenta('rapida'));
 document.getElementById('btn-modo-completa').addEventListener('click', () => setModoVenta('completa'));
@@ -498,6 +540,7 @@ document.getElementById('btn-cobrar').addEventListener('click', async () => {
         cotizacionId: origen && origen.tipo === 'cotizacion' ? origen.id : null,
         conduceIds: origen && origen.tipo === 'conduces' ? origen.ids : null,
         pedidoId: origen && origen.tipo === 'pedido' ? origen.id : null,
+        ...datosDelivery(),
       });
     }
     mostrarExitoDocumento(documento);
@@ -511,6 +554,7 @@ document.getElementById('btn-cobrar').addEventListener('click', async () => {
     document.getElementById('pago-transferencia').value = 0;
     document.getElementById('input-descuento-global').value = 0;
     document.getElementById('input-concepto').value = '';
+    limpiarDelivery();
     renderCarrito();
     cargarHistorial();
   } catch (err) {
@@ -946,6 +990,8 @@ function setDocumento(tipo) {
   document.getElementById('label-concepto').textContent = tipo === 'conduce' ? 'Entrega / observaciones' : 'Nota (opcional)';
   document.getElementById('input-concepto').placeholder = tipo === 'conduce' ? 'Dirección de entrega, quién recibe...' : '';
   if (['conduce', 'pedido'].includes(tipo) && state.modoVenta !== 'completa') setModoVenta('completa'); // siempre a un cliente
+  document.getElementById('bloque-delivery').style.display = esFactura && state.modoVenta === 'completa' && window.puntoXDelivery ? 'block' : 'none';
+  if (!esFactura) limpiarDelivery();
   actualizarBloqueMoneda();
   document.querySelector('.page-header h1').textContent = { factura: 'Nueva factura', cotizacion: 'Nueva cotización', conduce: 'Nuevo conduce', pedido: 'Nuevo pedido' }[tipo];
   renderTotales();

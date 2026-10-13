@@ -32,9 +32,49 @@ function cambiarTab(tab) {
   document.querySelectorAll('.tab-btn').forEach((b) => b.classList.toggle('is-active', b.dataset.tab === tab));
   document.querySelectorAll('.tab-panel').forEach((p) => { p.style.display = p.id === `tab-${tab}` ? 'block' : 'none'; });
   mostrarError(null);
-  if (tab === 'cotizaciones') cargarCotizaciones(); else if (tab === 'pedidos') cargarPedidos(); else cargarConduces();
+  if (tab === 'cotizaciones') cargarCotizaciones(); else if (tab === 'pedidos') cargarPedidos(); else if (tab === 'delivery') cargarDelivery(); else cargarConduces();
 }
 document.querySelectorAll('.tab-btn').forEach((b) => b.addEventListener('click', () => cambiarTab(b.dataset.tab)));
+
+// --- Delivery ---
+
+const COLOR_DELIVERY = { pendiente: 'var(--color-warning)', en_ruta: 'var(--color-info)', entregado: 'var(--color-success)' };
+let repartidores = null;
+
+function minutosDesde(iso, hastaIso) {
+  return Math.max(0, Math.round(((hastaIso ? Date.parse(hastaIso) : Date.now()) - Date.parse(iso)) / 60000));
+}
+
+async function cargarDelivery() {
+  if (!window.puntoXDelivery) return;
+  const filas = await ejecutar(() => window.puntoXDelivery.listar({ estado: document.getElementById('filtro-delivery').value }));
+  if (!filas) return;
+  if (!repartidores) repartidores = await ejecutar(() => window.puntoXDelivery.repartidores()) || [];
+  document.getElementById('delivery-vacio').style.display = filas.length ? 'none' : 'block';
+  document.getElementById('delivery-tbody').innerHTML = filas.map((d) => {
+    const transcurrido = minutosDesde(d.fecha, d.fecha_entrega_real);
+    const tarde = d.tiempo_estimado_min && transcurrido > d.tiempo_estimado_min;
+    const opciones = repartidores.map((r) => `<option value="${esc(r.id)}" ${r.id === d.repartidor_id ? 'selected' : ''}>${esc(r.nombre_completo)}</option>`).join('');
+    const accion = d.estado_delivery === 'pendiente' ? 'Salió a ruta' : d.estado_delivery === 'en_ruta' ? 'Entregado' : '';
+    return `
+      <tr>
+        <td>${esc(d.numero)}</td>
+        <td>${esc(d.cliente_nombre || 'Consumidor final')}${d.cliente_telefono ? `<div style="font-size:12px; color:var(--color-text-muted);">${esc(d.cliente_telefono)}</div>` : ''}</td>
+        <td style="max-width:260px;">${esc(d.direccion_entrega)}</td>
+        <td>${esc(d.zona_entrega || '—')}</td>
+        <td>${d.estado_delivery === 'pendiente' ? `<select class="input-normal" data-repartidor="${esc(d.id)}" aria-label="Repartidor de ${esc(d.numero)}"><option value="">Sin asignar</option>${opciones}</select>` : esc(d.repartidor_nombre || '—')}</td>
+        <td style="white-space:nowrap; ${tarde ? 'color:var(--color-danger); font-weight:700;' : ''}">${esc(transcurrido)} min${d.tiempo_estimado_min ? ` / ${esc(d.tiempo_estimado_min)}` : ''}</td>
+        <td>${pill(esc(d.estado_texto), COLOR_DELIVERY[d.estado_delivery] || 'var(--color-text-faint)')}</td>
+        <td>${accion ? `<button class="btn btn-primario btn-chico" data-avanzar="${esc(d.id)}">${accion}</button>` : ''}</td>
+      </tr>`;
+  }).join('');
+  document.querySelectorAll('[data-avanzar]').forEach((b) => b.addEventListener('click', async () => {
+    const select = document.querySelector(`[data-repartidor="${b.dataset.avanzar}"]`);
+    const ok = await ejecutar(() => window.puntoXDelivery.avanzar({ documentoId: b.dataset.avanzar, repartidorId: select ? select.value || null : null, usuarioId: state.info.usuario.id }));
+    if (ok) cargarDelivery();
+  }));
+}
+document.getElementById('filtro-delivery').addEventListener('change', cargarDelivery);
 
 // --- Cotizaciones ---
 
