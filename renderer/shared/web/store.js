@@ -1,3 +1,4 @@
+window.__PUNTOX_CATALOGO_PERMISOS = {"permisos":[["ventas","ventas.factura.crear","Crear factura de venta"],["ventas","ventas.factura.editar","Editar documentos de venta abiertos"],["ventas","ventas.factura.anular","Anular factura de venta"],["ventas","ventas.cotizacion.crear","Crear cotización"],["ventas","ventas.pedido.crear","Crear pedido/orden de venta"],["ventas","ventas.conduce.crear","Crear nota de entrega/conduce"],["ventas","ventas.devolucion.crear","Registrar devolución (nota de crédito de venta)"],["ventas","ventas.nota_debito.crear","Registrar nota de débito de venta"],["ventas","ventas.descuento.aplicar","Aplicar descuentos dentro del límite del rol"],["ventas","ventas.descuento.exceder_limite","Aplicar descuentos por encima del límite del rol"],["ventas","ventas.costos.ver","Ver costo de producto en ventas"],["ventas","ventas.reportes_financieros.ver","Ver reportes financieros de ventas (márgenes, utilidad)"],["ventas","ventas.comision.ver","Ver comisiones propias"],["ventas","ventas.factura.imprimir","Imprimir factura o tique de venta"],["ventas","ventas.delivery.gestionar","Despachar y entregar pedidos de delivery"],["ventas","ventas.cuenta_abierta.gestionar","Abrir cuentas abiertas y agregarles productos"],["ventas","ventas.cuenta_abierta.anular","Quitar productos de una cuenta abierta o anularla"],["ventas","ventas.promocion.gestionar","Crear, editar y desactivar promociones programadas"],["inventario","inventario.ver","Consultar inventario (solo lectura)"],["inventario","inventario.costos.ver","Ver costo de producto en inventario"],["inventario","inventario.producto.crear","Crear/editar ficha de producto"],["inventario","inventario.producto.editar","Editar ficha de producto"],["inventario","inventario.ajuste.crear","Registrar ajuste de inventario"],["inventario","inventario.ajuste.anular","Anular ajuste de inventario"],["inventario","inventario.transferencia.crear","Registrar transferencia entre almacenes"],["inventario","inventario.recepcion.crear","Registrar recepción de mercancía"],["inventario","inventario.merma.crear","Registrar merma o avería"],["inventario","inventario.conversion.crear","Convertir un producto en otro (ej. saco en libras)"],["inventario","inventario.conversion.anular","Anular una conversión de producto"],["inventario","inventario.lista_precio.gestionar","Crear y editar listas de precio"],["inventario","inventario.etiqueta.imprimir","Imprimir etiquetas de código de barra y precio"],["compras","compras.orden.crear","Crear orden de compra"],["compras","compras.factura.crear","Registrar factura de compra"],["compras","compras.factura.anular","Anular documento de compra"],["compras","compras.devolucion.crear","Registrar devolución a proveedor o nota de crédito de compra"],["compras","compras.nota_debito.crear","Registrar nota de débito de compra"],["compras","compras.pago.aprobar","Aprobar pago a proveedor"],["compras","compras.costos.ver","Ver costos de compra"],["compras","compras.reportes.ver","Ver reportes de compras"],["cxc","cxc.recibo.crear","Registrar recibo de ingreso (cobro)"],["cxc","cxc.recibo.anular","Anular recibo de ingreso"],["cxc","cxc.gestion_cobro.crear","Registrar gestión de cobro"],["cxc","cxc.cliente.editar","Crear/editar ficha de cliente"],["cxc","cxc.reportes.ver","Ver reportes de cuentas por cobrar"],["cxc","cxc.empleados.crear","Registrar préstamo/anticipo/consumo de empleado"],["cxc","cxc.empleados.pagar","Registrar pago de préstamo/anticipo/consumo de empleado"],["cxp","cxp.pago.crear","Registrar pago a proveedor"],["cxp","cxp.pago.anular","Anular pago a proveedor"],["cxp","cxp.reportes.ver","Ver reportes de cuentas por pagar"],["caja","caja.apertura","Abrir turno de caja"],["caja","caja.cierre","Cerrar turno de caja"],["caja","caja.movimiento.crear","Registrar movimiento manual de caja"],["caja","caja.conciliacion.gestionar","Gestionar conciliación bancaria"],["caja","caja.tique.imprimir","Imprimir tique de arqueo de caja"],["contabilidad","contabilidad.ver","Ver libro diario, libro mayor y estados financieros"],["contabilidad","contabilidad.asiento_manual.crear","Registrar asiento contable manual"],["contabilidad","contabilidad.catalogo.gestionar","Crear y editar cuentas del catálogo contable"],["contabilidad","contabilidad.periodo.cerrar","Cerrar periodo contable"],["contabilidad","contabilidad.periodo.reabrir","Reabrir periodo contable cerrado"],["configuracion","configuracion.gestionar","Gestionar usuarios, roles y parámetros del sistema"],["configuracion","configuracion.auditoria.ver","Ver bitácora de auditoría"],["configuracion","configuracion.impresoras.gestionar","Configurar impresoras de factura, tique y etiqueta"],["configuracion","configuracion.ecf.gestionar","Configurar facturación electrónica: certificado digital, ambiente y secuencias e-NCF"],["ventas","ventas.ecf.ver","Ver el estado de los comprobantes electrónicos (e-CF) ante la DGII"],["ventas","ventas.ecf.gestionar","Reenviar e-CF a la DGII y anular secuencias e-NCF no usadas"],["compras","compras.ecf.recibir","Recibir e-CF de proveedores y dar su aprobación o rechazo comercial"]],"roles":[{"nombre":"Administrador/Dueño","descripcion":"Acceso total: configuración de impuestos, catálogo contable, reapertura de periodos cerrados.","limite_descuento_pct":100,"permisos":"ALL"},{"nombre":"Cajero/Vendedor","descripcion":"Factura, cobra, consulta inventario en solo lectura. No ve costos ni accede a contabilidad o compras.","limite_descuento_pct":10,"permisos":["ventas.factura.crear","ventas.cotizacion.crear","ventas.pedido.crear","ventas.conduce.crear","ventas.devolucion.crear","ventas.descuento.aplicar","ventas.comision.ver","ventas.factura.imprimir","ventas.delivery.gestionar","ventas.cuenta_abierta.gestionar","ventas.ecf.ver","inventario.ver","caja.apertura","caja.cierre","caja.movimiento.crear","caja.tique.imprimir","cxc.recibo.crear"]},{"nombre":"Encargado de Inventario/Almacén","descripcion":"Ajustes de inventario, transferencias, recepción de mercancía. Ve costos. No factura ni cobra.","limite_descuento_pct":0,"permisos":["inventario.ver","inventario.costos.ver","inventario.producto.crear","inventario.producto.editar","inventario.ajuste.crear","inventario.ajuste.anular","inventario.transferencia.crear","inventario.recepcion.crear","inventario.merma.crear","inventario.conversion.crear","inventario.conversion.anular","inventario.etiqueta.imprimir"]},{"nombre":"Comprador","descripcion":"Crea órdenes de compra y registra facturas de compra. No aprueba pagos.","limite_descuento_pct":0,"permisos":["compras.orden.crear","compras.factura.crear","compras.devolucion.crear","compras.nota_debito.crear","compras.costos.ver","compras.reportes.ver","compras.ecf.recibir","inventario.ver"]},{"nombre":"Contador","descripcion":"Solo lectura en todos los módulos operativos. Acceso completo a contabilidad, cierre de periodos y asientos manuales.","limite_descuento_pct":0,"permisos":["ventas.costos.ver","ventas.reportes_financieros.ver","inventario.ver","inventario.costos.ver","compras.costos.ver","compras.reportes.ver","cxc.reportes.ver","cxp.reportes.ver","contabilidad.ver","contabilidad.asiento_manual.crear","contabilidad.catalogo.gestionar","contabilidad.periodo.cerrar","contabilidad.periodo.reabrir","configuracion.auditoria.ver","ventas.ecf.ver"]},{"nombre":"Cobrador/Gestor de cartera","descripcion":"Solo el módulo de CxC: recibos de ingreso, gestión de llamadas. No factura.","limite_descuento_pct":0,"permisos":["cxc.recibo.crear","cxc.gestion_cobro.crear","cxc.reportes.ver"]}]};
 // Almacén local para la versión web de prueba de Punto X. Todo vive en localStorage del
 // navegador — no hay servidor, no hay Supabase, nada sale de esta máquina. Es un sustituto
 // deliberadamente más simple que SQLite + Electron (sin permisos por rol, sin partida doble
@@ -187,14 +188,21 @@ window.__PUNTOX_ES_ELECTRON = Boolean(window.puntoX);
       agregarDemoInventario(db);
       guardar();
     }
+    // Roles base y usuario cajero de prueba (también en demos creadas antes de que existieran).
+    if (!db.rolesSembrados && catalogo().roles.length) { rolesDe(db); guardar(); }
     return db;
   }
 
-  function guardar() {
+  function guardar({ exigir = false } = {}) {
     try {
       localStorage.setItem(CLAVE_ALMACENAMIENTO, JSON.stringify(db));
     } catch (e) {
       console.error('No se pudo guardar en localStorage (¿modo privado o cuota llena?):', e);
+      if (exigir) {
+        // Se recarga lo último guardado para no quedar con datos que no se pudieron guardar.
+        try { db = JSON.parse(localStorage.getItem(CLAVE_ALMACENAMIENTO)) || db; } catch (err) { /* se conserva en memoria */ }
+        throw new Error('El navegador ya no tiene espacio para guardar más fotos en la demo. Quita algunas o usa la app de escritorio');
+      }
     }
   }
 
@@ -204,5 +212,42 @@ window.__PUNTOX_ES_ELECTRON = Boolean(window.puntoX);
     cargar();
   }
 
-  window.PuntoXWebStore = { cargar, guardar, reiniciar, uuid, ahora, redondear, siguienteNumero, hashSimple };
+  // --- Roles y permisos de la demo ---
+  // La compilación de la demo (scripts/construir-demo-web.js) inyecta el catálogo real de permisos
+  // y los roles base de escritorio en window.__PUNTOX_CATALOGO_PERMISOS. Sin él (abriendo los
+  // archivos sueltos) queda solo el rol de administrador.
+  const ROL_ADMIN_ID = 'rol-unico-web';
+  function catalogo() { return window.__PUNTOX_CATALOGO_PERMISOS || { permisos: [], roles: [] }; }
+  const slug = (t) => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+
+  // Asegura los roles base (una sola vez por demo) y un usuario cajero de prueba.
+  function rolesDe(base) {
+    if (!Array.isArray(base.roles)) base.roles = [];
+    if (!base.roles.some((r) => r.id === ROL_ADMIN_ID)) {
+      base.roles.unshift({ id: ROL_ADMIN_ID, nombre: 'Administrador/Dueño', descripcion: 'Acceso total.', es_rol_sistema: true, limite_descuento_pct: 100, permisos: [] });
+    }
+    if (!base.rolesSembrados && catalogo().roles.length) {
+      catalogo().roles.forEach((r) => {
+        if (r.permisos === 'ALL') { base.roles.find((x) => x.id === ROL_ADMIN_ID).descripcion = r.descripcion; return; }
+        const id = 'rol-web-' + slug(r.nombre);
+        if (!base.roles.some((x) => x.id === id)) base.roles.push({ id, nombre: r.nombre, descripcion: r.descripcion, es_rol_sistema: true, limite_descuento_pct: r.limite_descuento_pct, permisos: [...r.permisos] });
+      });
+      const cajero = base.roles.find((x) => x.id === 'rol-web-cajero-vendedor');
+      if (cajero && !base.usuarios.some((u) => u.usuario === 'cajero')) {
+        base.usuarios.push({ id: uuid(), nombre_completo: 'Cajera de prueba', usuario: 'cajero', password_hash: hashSimple('cajero123'), rol_id: cajero.id, rol_nombre: cajero.nombre, pct_comision: 0, activo: true });
+      }
+      base.rolesSembrados = true;
+    }
+    return base;
+  }
+
+  // Permisos efectivos de un usuario: el administrador (o un usuario sin rol) tiene todos.
+  function permisosDeUsuario(base, usuario) {
+    const rolId = usuario.rol_id || ROL_ADMIN_ID;
+    if (rolId === ROL_ADMIN_ID) return ['*'];
+    const rol = rolesDe(base).roles.find((r) => r.id === rolId && !r.deleted_at);
+    return rol ? [...(rol.permisos || [])] : [];
+  }
+
+  window.PuntoXWebStore = { cargar, guardar, reiniciar, uuid, ahora, redondear, siguienteNumero, hashSimple, rolesDe, permisosDeUsuario, ROL_ADMIN_ID, catalogo };
 })();

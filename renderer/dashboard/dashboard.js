@@ -181,6 +181,19 @@ async function cargarVentasYCaja() {
   }
 }
 
+// Foto del local del usuario junto al saludo (si la sucursal tiene una).
+async function mostrarFotoLocal(sucursalId) {
+  if (!sucursalId || !window.puntoXConfig || !window.puntoXConfig.listarSucursales) return;
+  try {
+    const sucursal = (await window.puntoXConfig.listarSucursales()).find((s) => s.id === sucursalId);
+    const foto = document.getElementById('foto-local');
+    if (!sucursal || !sucursal.imagen || !foto) return;
+    foto.src = sucursal.imagen;
+    foto.alt = 'Foto de ' + sucursal.nombre;
+    foto.hidden = false;
+  } catch (e) { /* sin foto */ }
+}
+
 async function init() {
   const info = await window.PuntoXShell.initPuntoXShell('dashboard');
   if (!info) return; // sin sesión o con la contraseña pendiente: el shell ya redirigió al login
@@ -192,6 +205,7 @@ async function init() {
   const sucursal = info.sucursal ? ` · ${info.sucursal}` : '';
   document.getElementById('fecha-turno').textContent = `${fechaLarga()}${sucursal}`;
 
+  mostrarFotoLocal(info.sucursalId);
   renderModuleGrid(info.modulos);
   cargarAlertas();
   cargarVentasYCaja();

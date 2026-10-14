@@ -175,6 +175,8 @@
 @media (hover: hover) { .tile:hover:not(:disabled) { border-color: var(--color-border-input); } }
 .tile[aria-pressed="true"] { border-color: var(--color-accent); background: var(--color-accent-soft); }
 .tile:disabled { opacity: 0.55; cursor: not-allowed; }
+.tile__foto { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border-radius: var(--radius-md); background: var(--color-bg); display: block; }
+.rapidos__grid:has(.tile--foto) { max-height: 340px; }
 .tile__nombre { font-size: 13px; font-weight: 600; line-height: 1.3; padding-right: 24px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .tile__pie { display: flex; align-items: baseline; justify-content: space-between; gap: 6px; }
 .tile__precio { font-family: var(--font-mono); font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; }
