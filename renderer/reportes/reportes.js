@@ -289,7 +289,7 @@ function descargarCsv(contenedor, reporte) {
   }
 }
 
-// Barra sobre el resultado. acciones: [{ texto, alHacer, atributos, peligro }]. "Exportar a
+// Barra sobre el resultado. acciones: [{ texto, alHacer, columnas, peligro }]. "Exportar a
 // Excel" va siempre que haya una tabla.
 function barraHerramientas(contenedor, reporte, acciones = []) {
   const barra = document.createElement('div');
@@ -297,7 +297,7 @@ function barraHerramientas(contenedor, reporte, acciones = []) {
   const botones = [...acciones];
   if (contenedor.querySelector('table.data-table')) botones.push({ texto: 'Exportar a Excel', alHacer: () => descargarCsv(contenedor, reporte) });
   if (botones.length === 0) return;
-  barra.innerHTML = botones.map((b, i) => `<button type="button" class="btn ${b.peligro ? 'btn-peligro' : 'btn-secundario'} btn-chico" data-accion="${i}" ${b.atributos || ''}>${esc(b.texto)}</button>`).join('');
+  barra.innerHTML = botones.map((b, i) => `<button type="button" class="btn ${b.peligro ? 'btn-peligro' : 'btn-secundario'} btn-chico" data-accion="${i}"${b.columnas ? ' data-columnas aria-haspopup="dialog"' : ''}>${esc(b.texto)}</button>`).join('');
   barra.querySelectorAll('[data-accion]').forEach((btn) => btn.addEventListener('click', () => botones[Number(btn.dataset.accion)].alHacer(btn)));
   contenedor.prepend(barra);
 }
@@ -1116,7 +1116,7 @@ async function ejecutarReporte(reporte) {
     pintar();
     if (reporte.alRenderizar) reporte.alRenderizar(datos, contenedor, filtros);
     const acciones = [{
-      texto: 'Columnas', atributos: 'data-columnas aria-haspopup="dialog"',
+      texto: 'Columnas', columnas: true,
       alHacer: (btn) => Pers().abrirSelectorColumnas(btn, reporte, campos, columnas, (nuevas) => { columnas = nuevas; pintar(); }),
     }];
     if (Pers().disponible()) {
