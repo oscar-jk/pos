@@ -192,6 +192,7 @@ contextBridge.exposeInMainWorld('puntoXConfig', {
   obtenerDatosNegocio: invoke('config:datosNegocio'),
   actualizarDatosNegocio: invoke('config:actualizarDatosNegocio'),
   guardarLogoNegocio: invoke('config:guardarLogoNegocio'),
+  actualizarSucursal: invoke('config:actualizarSucursal'),
   quitarLogoNegocio: invoke('config:quitarLogoNegocio'),
 
   listarParametrosNegocio: invoke('config:parametrosNegocio'),

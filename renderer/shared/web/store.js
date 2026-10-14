@@ -190,11 +190,16 @@ window.__PUNTOX_ES_ELECTRON = Boolean(window.puntoX);
     return db;
   }
 
-  function guardar() {
+  function guardar({ exigir = false } = {}) {
     try {
       localStorage.setItem(CLAVE_ALMACENAMIENTO, JSON.stringify(db));
     } catch (e) {
       console.error('No se pudo guardar en localStorage (¿modo privado o cuota llena?):', e);
+      if (exigir) {
+        // Se recarga lo último guardado para no quedar con datos que no se pudieron guardar.
+        try { db = JSON.parse(localStorage.getItem(CLAVE_ALMACENAMIENTO)) || db; } catch (err) { /* se conserva en memoria */ }
+        throw new Error('El navegador ya no tiene espacio para guardar más fotos en la demo. Quita algunas o usa la app de escritorio');
+      }
     }
   }
 

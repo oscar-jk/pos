@@ -55,6 +55,7 @@ CREATE TABLE sucursales (
   telefono    TEXT,
   es_principal INTEGER NOT NULL DEFAULT 0,
   activo      INTEGER NOT NULL DEFAULT 1,
+  imagen      TEXT,                 -- foto del local (data URL)
   created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
   updated_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
   deleted_at  TEXT
@@ -242,6 +243,20 @@ CREATE TABLE productos_codigos_barra (
   deleted_at        TEXT
 );
 CREATE INDEX idx_codigos_barra_producto ON productos_codigos_barra(producto_id);
+
+-- Fotos del producto (data URL). La de menor orden es la principal; la miniatura se usa en
+-- listas, búsquedas y la cuadrícula del mostrador.
+CREATE TABLE productos_imagenes (
+  id           TEXT PRIMARY KEY,
+  producto_id  TEXT NOT NULL REFERENCES productos(id),
+  imagen       TEXT NOT NULL,
+  miniatura    TEXT NOT NULL,
+  orden        INTEGER NOT NULL DEFAULT 0,
+  created_at   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  updated_at   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  deleted_at   TEXT
+);
+CREATE INDEX idx_productos_imagenes ON productos_imagenes(producto_id, orden);
 
 -- Unidades alternativas de un producto (ej: caja = 24 unidades) además de sus códigos de barra.
 CREATE TABLE productos_unidades_alternativas (

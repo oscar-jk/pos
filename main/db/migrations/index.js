@@ -18,6 +18,7 @@ const MIGRACIONES = [
   require('./014_cuenta_bancaria_en_asientos'),
   require('./015_delivery'),
   require('./016_reposicion_caja_chica'),
+  require('./017_imagenes'),
 ];
 
 function columnasDe(db, tabla) {

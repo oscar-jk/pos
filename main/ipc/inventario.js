@@ -1,5 +1,6 @@
 const crypto = require('node:crypto');
 const session = require('../auth/session');
+const { validarImagen, LIMITES: LIMITES_IMAGEN } = require('../imagenes');
 const contabilidad = require('./contabilidad');
 
 // Ajustes y mermas: la diferencia con el inventario físico va a gasto, separada por causa.
@@ -94,7 +95,8 @@ function buscarProductos(db, { texto, almacenId, limite = 20 }) {
               p.precio_distribuidor, p.costo_promedio, p.permite_venta_negativo, p.es_kit,
               p.controla_lote, p.tasa_itbis_id, t.porcentaje AS tasa_itbis_pct,
               COALESCE(e.cantidad_disponible, 0) AS cantidad_disponible,
-              COALESCE(e.cantidad_comprometida, 0) AS cantidad_comprometida
+              COALESCE(e.cantidad_comprometida, 0) AS cantidad_comprometida,
+              (SELECT pi.miniatura FROM productos_imagenes pi WHERE pi.producto_id = p.id AND pi.deleted_at IS NULL ORDER BY pi.orden LIMIT 1) AS imagen_miniatura
        FROM productos p
        JOIN tasas_itbis t ON t.id = p.tasa_itbis_id
        LEFT JOIN existencias e ON e.producto_id = p.id AND e.almacen_id = ?
@@ -122,7 +124,8 @@ function productosRapidos(db, { almacenId, categoriaId, limite = 24 } = {}) {
               p.controla_lote, p.tasa_itbis_id, p.stock_minimo, t.porcentaje AS tasa_itbis_pct,
               COALESCE(e.cantidad_disponible, 0) AS cantidad_disponible,
               COALESCE(e.cantidad_comprometida, 0) AS cantidad_comprometida,
-              COALESCE(v.vendido, 0) AS vendido_30d
+              COALESCE(v.vendido, 0) AS vendido_30d,
+              (SELECT pi.miniatura FROM productos_imagenes pi WHERE pi.producto_id = p.id AND pi.deleted_at IS NULL ORDER BY pi.orden LIMIT 1) AS imagen_miniatura
        FROM productos p
        JOIN tasas_itbis t ON t.id = p.tasa_itbis_id
        LEFT JOIN (SELECT dvd.producto_id, SUM(dvd.cantidad) AS vendido FROM documentos_venta_detalle dvd
@@ -212,6 +215,7 @@ function obtenerProductoCompleto(db, productoId) {
       )
       .all(productoId);
   }
+  producto.imagenes = imagenesDeProducto(db, productoId);
   producto.existencias = db
     .prepare(
       `SELECT e.almacen_id, a.nombre AS almacen_nombre, e.cantidad_disponible, e.cantidad_comprometida
@@ -222,6 +226,35 @@ function obtenerProductoCompleto(db, productoId) {
   return producto;
 }
 
+function imagenesDeProducto(db, productoId) {
+  return db.prepare('SELECT id, imagen, miniatura, orden FROM productos_imagenes WHERE producto_id = ? AND deleted_at IS NULL ORDER BY orden').all(productoId);
+}
+
+// Fotos del producto: se recibe el set completo en orden (la primera es la principal). Las que
+// traen id y ya existen se conservan (solo cambia su orden); las nuevas se validan e insertan;
+// las que ya no vienen se dan de baja lógica.
+const MAX_IMAGENES_PRODUCTO = 6;
+function guardarImagenesProducto(db, productoId, imagenes) {
+  if (!Array.isArray(imagenes)) return;
+  if (imagenes.length > MAX_IMAGENES_PRODUCTO) throw new Error(`Un producto puede tener hasta ${MAX_IMAGENES_PRODUCTO} fotos`);
+  const actuales = new Map(imagenesDeProducto(db, productoId).map((i) => [i.id, i]));
+  const conservadas = new Set();
+  imagenes.forEach((img, orden) => {
+    if (img && img.id && actuales.has(img.id)) {
+      conservadas.add(img.id);
+      db.prepare("UPDATE productos_imagenes SET orden = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?").run(orden, img.id);
+      return;
+    }
+    const imagen = validarImagen(img && img.imagen, { maxBytes: LIMITES_IMAGEN.producto, etiqueta: 'La foto del producto' });
+    const miniatura = validarImagen(img && img.miniatura, { maxBytes: LIMITES_IMAGEN.miniatura, etiqueta: 'La miniatura del producto' });
+    db.prepare('INSERT INTO productos_imagenes (id, producto_id, imagen, miniatura, orden) VALUES (?, ?, ?, ?, ?)')
+      .run(crypto.randomUUID(), productoId, imagen, miniatura, orden);
+  });
+  for (const id of actuales.keys()) {
+    if (!conservadas.has(id)) db.prepare("UPDATE productos_imagenes SET deleted_at = strftime('%Y-%m-%dT%H:%M:%fZ','now'), updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?").run(id);
+  }
+}
+
 function listarProductos(db, { texto = '', soloActivos = true, limite = 100 } = {}) {
   const like = `%${texto}%`;
   const condiciones = ['p.deleted_at IS NULL', '(p.codigo_interno LIKE ? OR p.descripcion LIKE ?)'];
@@ -230,7 +263,8 @@ function listarProductos(db, { texto = '', soloActivos = true, limite = 100 } = 
     .prepare(
       `SELECT p.id, p.codigo_interno, p.descripcion, p.precio_detalle, p.costo_promedio,
               p.activo, p.es_kit, p.controla_lote, p.stock_minimo, c.nombre AS categoria_nombre,
-              COALESCE((SELECT SUM(e.cantidad_disponible) FROM existencias e WHERE e.producto_id = p.id), 0) AS existencia_total
+              COALESCE((SELECT SUM(e.cantidad_disponible) FROM existencias e WHERE e.producto_id = p.id), 0) AS existencia_total,
+              (SELECT pi.miniatura FROM productos_imagenes pi WHERE pi.producto_id = p.id AND pi.deleted_at IS NULL ORDER BY pi.orden LIMIT 1) AS imagen_miniatura
        FROM productos p LEFT JOIN categorias_producto c ON c.id = p.categoria_id
        WHERE ${condiciones.join(' AND ')}
        ORDER BY p.descripcion LIMIT ?`
@@ -258,7 +292,7 @@ function guardarProducto(db, payload, productoIdExistente) {
     codigoInterno, descripcion, categoriaId, unidadMedidaBaseId, tasaItbisId,
     precioDetalle, precioMayorista, precioDistribuidor, costoPromedio,
     metodoValoracion, esKit, permiteVentaNegativo, controlaLote, stockMinimo, stockMaximo,
-    diasAlertaVencimiento, activo, codigosBarra, unidadesAlternativas, componentes, esServicio,
+    diasAlertaVencimiento, activo, codigosBarra, unidadesAlternativas, componentes, esServicio, imagenes,
   } = payload;
 
   if (!codigoInterno || !codigoInterno.trim()) throw new Error('El código interno es obligatorio');
@@ -333,7 +367,9 @@ function guardarProducto(db, payload, productoIdExistente) {
     }
   }
 
-  auditoria().registrarAuditoria(db, { usuarioId: session.usuarioActualId(), modulo: 'inventario', entidad: 'productos', entidadId: productoId, accion: productoIdExistente ? 'editar' : 'crear', detalle: { codigoInterno, descripcion } });
+  guardarImagenesProducto(db, productoId, imagenes);
+
+  auditoria().registrarAuditoria(db, { usuarioId: session.usuarioActualId(), modulo: 'inventario', entidad: 'productos', entidadId: productoId, accion: productoIdExistente ? 'editar' : 'crear', detalle: { codigoInterno, descripcion, fotos: Array.isArray(imagenes) ? imagenes.length : undefined } });
   return productoId;
 }
 

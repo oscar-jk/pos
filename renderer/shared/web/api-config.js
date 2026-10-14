@@ -17,7 +17,15 @@
   ].map(([modulo, codigo, descripcion]) => ({ id: codigo, modulo, codigo, descripcion }));
 
   // Los roles se guardan en el almacenamiento de la demo; la primera vez se crea el de administrador.
-  function rolesDe(db) {
+  // Fotos en la demo: misma forma que en escritorio (data URL PNG, JPG o WebP), más livianas.
+function imagenWeb(dataUrl, etiqueta) {
+  if (!dataUrl) return null;
+  if (!/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(dataUrl)) throw new Error(`${etiqueta} debe ser una imagen PNG, JPG o WebP`);
+  if (dataUrl.length > 560000) throw new Error(`${etiqueta} pesa demasiado. Usa una imagen más pequeña`);
+  return dataUrl;
+}
+
+function rolesDe(db) {
     if (!Array.isArray(db.roles)) db.roles = [{ ...ROL_UNICO, permisos: [] }];
     return db;
   }
@@ -213,11 +221,22 @@
     },
 
     listarSucursales: async () => store.cargar().sucursales,
+    actualizarSucursal: async ({ sucursalId, payload, usuarioId }) => {
+      const db = store.cargar();
+      const s = db.sucursales.find((x) => x.id === sucursalId);
+      if (!s) throw new Error('Sucursal no encontrada');
+      if (!payload.nombre || !String(payload.nombre).trim()) throw new Error('El nombre de la sucursal es obligatorio');
+      Object.assign(s, { nombre: String(payload.nombre).trim(), direccion: payload.direccion || null, telefono: payload.telefono || null });
+      if (payload.imagen !== undefined) s.imagen = imagenWeb(payload.imagen, 'La foto del local') || null;
+      bitacora(db, { usuarioId, modulo: 'configuracion', entidad: 'sucursales', entidadId: sucursalId, accion: 'editar' });
+      store.guardar({ exigir: true });
+      return true;
+    },
     crearSucursal: async ({ payload, usuarioId }) => {
       const db = store.cargar();
       if (!payload.nombre) throw new Error('El nombre de la sucursal es obligatorio');
       const id = store.uuid();
-      db.sucursales.push({ id, nombre: payload.nombre, direccion: payload.direccion || null, telefono: payload.telefono || null, es_principal: false, activo: true });
+      db.sucursales.push({ id, nombre: payload.nombre, direccion: payload.direccion || null, telefono: payload.telefono || null, imagen: imagenWeb(payload.imagen, 'La foto del local') || null, es_principal: false, activo: true });
       bitacora(db, { usuarioId, modulo: 'configuracion', entidad: 'sucursales', entidadId: id, accion: 'crear' });
       store.guardar();
       return id;
