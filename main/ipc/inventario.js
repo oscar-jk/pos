@@ -823,7 +823,7 @@ function listarLotes(db, { productoId, almacenId, soloConExistencia = true } = {
     .prepare(
       `SELECT l.numero_lote, l.fecha_vencimiento, l.producto_id, l.almacen_id, p.descripcion, p.codigo_interno,
               a.nombre AS almacen_nombre, ROUND(SUM(l.cantidad), 4) AS cantidad, MIN(l.id) AS lote_id,
-              CAST(julianday(l.fecha_vencimiento) - julianday('now', 'localtime', 'start of day') AS INTEGER) AS dias_restantes
+              CAST(julianday(l.fecha_vencimiento) - julianday('now', '-4 hours', 'start of day') AS INTEGER) AS dias_restantes
        FROM lotes l JOIN productos p ON p.id = l.producto_id JOIN almacenes a ON a.id = l.almacen_id
        WHERE ${condiciones.join(' AND ')}
        GROUP BY l.producto_id, l.almacen_id, l.numero_lote, l.fecha_vencimiento
