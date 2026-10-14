@@ -1235,3 +1235,30 @@ CREATE TABLE ecf_recibidos (
   deleted_at           TEXT
 );
 CREATE INDEX idx_ecf_recibidos_emisor ON ecf_recibidos(rnc_emisor, encf);
+
+-- Reportes personalizados: definición (JSON) armada por el usuario sobre las fuentes de datos
+-- existentes; los propios y los compartidos.
+CREATE TABLE reportes_personalizados (
+  id           TEXT PRIMARY KEY,
+  nombre       TEXT NOT NULL,
+  descripcion  TEXT,
+  definicion   TEXT NOT NULL,
+  usuario_id   TEXT NOT NULL REFERENCES usuarios(id),
+  compartido   INTEGER NOT NULL DEFAULT 0,
+  created_at   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  updated_at   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  deleted_at   TEXT
+);
+CREATE INDEX idx_reportes_personalizados_usuario ON reportes_personalizados(usuario_id);
+
+-- Preferencias por usuario (p. ej. columnas visibles de cada reporte), valor en JSON.
+CREATE TABLE preferencias_usuario (
+  id           TEXT PRIMARY KEY,
+  usuario_id   TEXT NOT NULL REFERENCES usuarios(id),
+  clave        TEXT NOT NULL,
+  valor        TEXT NOT NULL,
+  created_at   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  updated_at   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  deleted_at   TEXT,
+  UNIQUE (usuario_id, clave)
+);

@@ -327,6 +327,14 @@ contextBridge.exposeInMainWorld('puntoXProyecciones', {
 });
 
 // Delivery: pedidos a domicilio, su despacho y tiempos de entrega.
+contextBridge.exposeInMainWorld('puntoXReportes', {
+  listarPersonalizados: invoke('reportes:listarPersonalizados'),
+  guardarPersonalizado: invoke('reportes:guardarPersonalizado'),
+  eliminarPersonalizado: invoke('reportes:eliminarPersonalizado'),
+  obtenerPreferencia: invoke('reportes:obtenerPreferencia'),
+  guardarPreferencia: invoke('reportes:guardarPreferencia'),
+});
+
 contextBridge.exposeInMainWorld('puntoXDelivery', {
   repartidores: invoke('delivery:repartidores'),
   listar: invoke('delivery:listar'),

@@ -1,4 +1,5 @@
-const state = { info: null, reporteActivo: null };
+const state = { info: null, reporteActivo: null, personalizados: [] };
+const Pers = () => window.PuntoXReportesPers;
 
 function fmt(n) {
   return `RD$ ${(n || 0).toLocaleString('es-DO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -170,6 +171,8 @@ function valorColumna(fila, key) {
 
 function formatearValor(v, formato) {
   if (v === null || v === undefined || v === '') return '—';
+  if (formato === 'booleano') return v ? 'Sí' : 'No';
+  if (formato === 'numero') return esc(Number(v).toLocaleString('es-DO', { maximumFractionDigits: 2 }));
   if (formato === 'moneda') return fmt(v);
   if (formato === 'fecha') return fechaCorta(v);
   if (formato === 'fechahora') return fechaHora(v);
@@ -272,12 +275,8 @@ function csvDeTablas(contenedor, titulo) {
   return `\uFEFF${lineas.map((l) => l.map(celda).join(',')).join('\r\n')}\r\n`;
 }
 
-function agregarExportacion(contenedor, reporte) {
-  if (!contenedor.querySelector('table.data-table')) return;
-  const barra = document.createElement('div');
-  barra.className = 'reporte-exportar';
-  barra.innerHTML = '<button type="button" class="btn btn-secundario btn-chico">Exportar a Excel</button>';
-  barra.querySelector('button').addEventListener('click', () => {
+function descargarCsv(contenedor, reporte) {
+  {
     const blob = new Blob([csvDeTablas(contenedor, reporte.etiqueta)], { type: 'text/csv;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -287,8 +286,24 @@ function agregarExportacion(contenedor, reporte) {
     a.click();
     a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
-  });
+  }
+}
+
+// Barra sobre el resultado. acciones: [{ texto, alHacer, atributos, peligro }]. "Exportar a
+// Excel" va siempre que haya una tabla.
+function barraHerramientas(contenedor, reporte, acciones = []) {
+  const barra = document.createElement('div');
+  barra.className = 'reporte-herramientas';
+  const botones = [...acciones];
+  if (contenedor.querySelector('table.data-table')) botones.push({ texto: 'Exportar a Excel', alHacer: () => descargarCsv(contenedor, reporte) });
+  if (botones.length === 0) return;
+  barra.innerHTML = botones.map((b, i) => `<button type="button" class="btn ${b.peligro ? 'btn-peligro' : 'btn-secundario'} btn-chico" data-accion="${i}" ${b.atributos || ''}>${esc(b.texto)}</button>`).join('');
+  barra.querySelectorAll('[data-accion]').forEach((btn) => btn.addEventListener('click', () => botones[Number(btn.dataset.accion)].alHacer(btn)));
   contenedor.prepend(barra);
+}
+
+function agregarExportacion(contenedor, reporte) {
+  barraHerramientas(contenedor, reporte);
 }
 
 // --- Catálogo de reportes ---
@@ -966,7 +981,14 @@ function grupoVisible(g) {
 
 function renderNav() {
   const nav = document.getElementById('reportes-nav');
-  nav.innerHTML = CATALOGO.filter(grupoVisible).map((g) => `
+  const puedeCrear = Pers() && Pers().disponible();
+  const mios = puedeCrear ? `
+    <div class="reportes-nav__grupo reportes-nav__grupo--propios">
+      <div class="reportes-nav__titulo">Mis reportes</div>
+      ${state.personalizados.map((r) => `<button class="reportes-nav__item" data-clave="pers:${esc(r.id)}">${esc(r.nombre)}${!r.propio ? ` <span class="reportes-nav__marca">de ${esc((r.autor_nombre || '').split(' ')[0])}</span>` : r.compartido ? ' <span class="reportes-nav__marca">compartido</span>' : ''}</button>`).join('')}
+      <button class="reportes-nav__item reportes-nav__crear" data-clave="__nuevo">+ Crear reporte</button>
+    </div>` : '';
+  nav.innerHTML = mios + CATALOGO.filter(grupoVisible).map((g) => `
     <div class="reportes-nav__grupo">
       <div class="reportes-nav__titulo">${esc(g.grupo)}</div>
       ${g.reportes.filter((r) => !r.disponible || r.disponible()).map((r) => `<button class="reportes-nav__item" data-clave="${esc(r.clave)}">${esc(r.etiqueta)}</button>`).join('')}
@@ -975,7 +997,83 @@ function renderNav() {
   nav.querySelectorAll('[data-clave]').forEach((btn) => btn.addEventListener('click', () => seleccionarReporte(btn.dataset.clave)));
 }
 
+async function cargarPersonalizados() {
+  if (!window.puntoXReportes) return;
+  try { state.personalizados = await window.puntoXReportes.listarPersonalizados(); } catch (e) { state.personalizados = []; }
+}
+
+// Abre el editor de reportes personalizados; al guardar, se recarga la lista y se abre el reporte.
+function abrirEditorReporte(opciones = {}) {
+  mostrarError(null);
+  state.reporteActivo = '__editor';
+  Pers().abrirEditor({
+    ...opciones,
+    alTerminar: async (guardado) => {
+      await cargarPersonalizados();
+      renderNav();
+      if (guardado) seleccionarReporte(`pers:${guardado.id}`);
+      else if (opciones.volverA) seleccionarReporte(opciones.volverA);
+      else { document.getElementById('reportes-contenido').style.display = 'none'; document.getElementById('reportes-vacio').style.display = ''; }
+    },
+  });
+}
+
+async function seleccionarPersonalizado(id) {
+  const reporte = state.personalizados.find((r) => r.id === id);
+  if (!reporte) return;
+  const clave = `pers:${id}`;
+  state.reporteActivo = clave;
+  mostrarError(null);
+  document.querySelectorAll('.reportes-nav__item').forEach((b) => b.classList.toggle('is-active', b.dataset.clave === clave));
+  document.getElementById('reportes-vacio').style.display = 'none';
+  document.getElementById('reportes-contenido').style.display = 'block';
+  document.getElementById('reporte-titulo').textContent = reporte.nombre;
+  const contenedor = document.getElementById('reporte-resultado');
+  const fuente = Pers().fuentePorClave(reporte.definicion.fuente);
+  if (!fuente) {
+    document.getElementById('reporte-filtros').innerHTML = '';
+    contenedor.innerHTML = '<div class="empty-state">No tienes acceso a los datos de este reporte.</div>';
+    return;
+  }
+  const filtros = Pers().filtrosIniciales(fuente, reporte.definicion);
+  document.getElementById('reporte-filtros').innerHTML = await renderFiltros(filtros);
+  const ejecutar = async () => {
+    contenedor.innerHTML = '<div class="empty-state">Cargando...</div>';
+    try {
+      const { campos, filas } = await Pers().cargarFuente(fuente, leerFiltros(filtros));
+      const resultado = Pers().calcular(reporte.definicion, campos, filas);
+      contenedor.innerHTML = Pers().resultadoHtml(reporte.definicion, resultado);
+      const puedeCambiar = reporte.propio || (state.info.usuario.permisos || []).some((p) => p === '*' || p === 'configuracion.gestionar');
+      barraHerramientas(contenedor, reporte.nombre ? { etiqueta: reporte.nombre } : reporte, [
+        ...(puedeCambiar ? [{ texto: 'Editar', alHacer: () => abrirEditorReporte({ reporte, volverA: clave }) }] : []),
+        { texto: 'Duplicar', alHacer: () => abrirEditorReporte({ base: { ...reporte.definicion, nombreSugerido: `${reporte.nombre} (copia)` }, volverA: clave }) },
+        ...(puedeCambiar ? [{ texto: 'Eliminar', peligro: true, alHacer: async () => {
+          const ok = await window.PuntoXModal.confirmar({ titulo: 'Eliminar reporte', mensaje: `¿Eliminar "${reporte.nombre}"? ${reporte.compartido ? 'Deja de verse para todos los usuarios.' : ''}`, textoConfirmar: 'Eliminar', peligro: true });
+          if (!ok) return;
+          try {
+            await window.puntoXReportes.eliminarPersonalizado({ id: reporte.id });
+            await cargarPersonalizados();
+            renderNav();
+            document.getElementById('reportes-contenido').style.display = 'none';
+            document.getElementById('reportes-vacio').style.display = '';
+          } catch (err) { mostrarError(err.message); }
+        } }] : []),
+      ]);
+      if (reporte.definicion.descripcion) contenedor.insertAdjacentHTML('afterbegin', `<p class="reporte-descripcion">${esc(reporte.definicion.descripcion)}</p>`);
+    } catch (err) {
+      contenedor.innerHTML = '';
+      mostrarError(err.message);
+    }
+  };
+  const btnAplicar = document.getElementById('btn-aplicar-filtros');
+  if (btnAplicar) btnAplicar.addEventListener('click', ejecutar);
+  await ejecutar();
+}
+
 async function seleccionarReporte(clave) {
+  if (Pers()) Pers().cerrarSelector();
+  if (clave === '__nuevo') { abrirEditorReporte(); return; }
+  if (clave.startsWith('pers:')) { await seleccionarPersonalizado(clave.slice(5)); return; }
   const reporte = reporteBusca(clave);
   if (!reporte) return;
   state.reporteActivo = clave;
@@ -1000,9 +1098,38 @@ async function ejecutarReporte(reporte) {
   try {
     const filtros = leerFiltros(reporte.filtros);
     const datos = await reporte.cargar(filtros);
-    contenedor.innerHTML = reporte.personalizado ? reporte.render(datos) : renderTabla(reporte.columnas, datos);
+    if (reporte.personalizado || !Pers()) {
+      contenedor.innerHTML = reporte.personalizado ? reporte.render(datos) : renderTabla(reporte.columnas, datos);
+      if (reporte.alRenderizar) reporte.alRenderizar(datos, contenedor, filtros);
+      agregarExportacion(contenedor, reporte);
+      return;
+    }
+    // Reporte tabular: el usuario elige qué columnas ver (incluidas las que el reporte trae
+    // pero no muestra) y en qué orden; se recuerda por usuario.
+    const { campos, filas } = Pers().camposDeFuente(reporte, datos);
+    let columnas = await Pers().columnasGuardadas(reporte, campos);
+    if (state.reporteActivo !== reporte.clave) return;
+    const tabla = document.createElement('div');
+    const pintar = () => { tabla.innerHTML = Pers().tablaHtml(columnas, filas); };
+    contenedor.innerHTML = '';
+    contenedor.appendChild(tabla);
+    pintar();
     if (reporte.alRenderizar) reporte.alRenderizar(datos, contenedor, filtros);
-    agregarExportacion(contenedor, reporte);
+    const acciones = [{
+      texto: 'Columnas', atributos: 'data-columnas aria-haspopup="dialog"',
+      alHacer: (btn) => Pers().abrirSelectorColumnas(btn, reporte, campos, columnas, (nuevas) => { columnas = nuevas; pintar(); }),
+    }];
+    if (Pers().disponible()) {
+      acciones.push({
+        texto: 'Guardar como reporte propio',
+        alHacer: () => abrirEditorReporte({
+          base: { fuente: reporte.clave, nombreSugerido: reporte.etiqueta, periodo: 'este_mes', columnas: columnas.map((c) => ({ id: c.id, label: c.label })) },
+          volverA: reporte.clave,
+        }),
+      });
+    }
+    barraHerramientas(contenedor, reporte, acciones);
+    if (filas.length === 0) contenedor.querySelector('.reporte-herramientas [data-columnas]')?.setAttribute('disabled', '');
   } catch (err) {
     contenedor.innerHTML = '';
     mostrarError(err.message);
@@ -1014,6 +1141,7 @@ async function ejecutarReporte(reporte) {
 async function init() {
   state.info = await window.PuntoXShell.initPuntoXShell('reportes');
   if (!state.info) return; // sin sesión o con la contraseña pendiente: el shell ya redirigió al login
+  await cargarPersonalizados();
   renderNav();
 }
 

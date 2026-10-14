@@ -248,4 +248,68 @@ function rolesDe(db) {
         .map((b) => ({ ...b, usuario_nombre: (db.usuarios.find((u) => u.id === b.usuario_id) || {}).nombre_completo || '—' }));
     },
   };
+
+  // Reportes personalizados y preferencias por usuario (columnas de cada reporte).
+  function usuarioDemo() {
+    try { const u = JSON.parse(sessionStorage.getItem('punto-x-web-sesion')); if (u && u.id) return u; } catch (e) { /* sin sesión */ }
+    throw new Error('Inicia sesión para continuar');
+  }
+  function reportesDe(db) {
+    if (!Array.isArray(db.reportesPersonalizados)) db.reportesPersonalizados = [];
+    if (!db.preferenciasUsuario || typeof db.preferenciasUsuario !== 'object') db.preferenciasUsuario = {};
+    return db;
+  }
+  const vistaReporte = (db, r, usuarioId) => ({ ...r, propio: r.usuario_id === usuarioId, autor_nombre: (db.usuarios.find((u) => u.id === r.usuario_id) || {}).nombre_completo || '—' });
+
+  window.puntoXReportes = {
+    listarPersonalizados: async () => {
+      const yo = usuarioDemo();
+      const db = reportesDe(store.cargar());
+      return db.reportesPersonalizados.filter((r) => !r.deleted_at && (r.usuario_id === yo.id || r.compartido))
+        .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es')).map((r) => vistaReporte(db, r, yo.id));
+    },
+    guardarPersonalizado: async ({ id, nombre, descripcion, definicion, compartido }) => {
+      const yo = usuarioDemo();
+      const db = reportesDe(store.cargar());
+      const limpio = String(nombre || '').trim();
+      if (!limpio) throw new Error('Ponle un nombre al reporte');
+      if (!definicion || !definicion.fuente) throw new Error('Elige de dónde salen los datos del reporte');
+      if (!Array.isArray(definicion.columnas) || definicion.columnas.length === 0) throw new Error('Elige al menos una columna');
+      let r = id ? db.reportesPersonalizados.find((x) => x.id === id && !x.deleted_at) : null;
+      if (id && !r) throw new Error('Reporte no encontrado');
+      if (r) Object.assign(r, { nombre: limpio, descripcion: descripcion || null, definicion, compartido: Boolean(compartido), updated_at: store.ahora() });
+      else {
+        r = { id: store.uuid(), nombre: limpio, descripcion: descripcion || null, definicion, compartido: Boolean(compartido), usuario_id: yo.id, created_at: store.ahora(), updated_at: store.ahora(), deleted_at: null };
+        db.reportesPersonalizados.push(r);
+      }
+      bitacora(db, { usuarioId: yo.id, modulo: 'reportes', entidad: 'reportes_personalizados', entidadId: r.id, accion: id ? 'editar' : 'crear' });
+      store.guardar({ exigir: true });
+      return vistaReporte(db, r, yo.id);
+    },
+    eliminarPersonalizado: async ({ id }) => {
+      const yo = usuarioDemo();
+      const db = reportesDe(store.cargar());
+      const r = db.reportesPersonalizados.find((x) => x.id === id && !x.deleted_at);
+      if (!r) throw new Error('Reporte no encontrado');
+      r.deleted_at = store.ahora();
+      bitacora(db, { usuarioId: yo.id, modulo: 'reportes', entidad: 'reportes_personalizados', entidadId: id, accion: 'eliminar' });
+      store.guardar();
+      return true;
+    },
+    obtenerPreferencia: async ({ clave }) => {
+      const yo = usuarioDemo();
+      const db = reportesDe(store.cargar());
+      const v = (db.preferenciasUsuario[yo.id] || {})[clave];
+      return v === undefined ? null : v;
+    },
+    guardarPreferencia: async ({ clave, valor }) => {
+      const yo = usuarioDemo();
+      const db = reportesDe(store.cargar());
+      db.preferenciasUsuario[yo.id] = db.preferenciasUsuario[yo.id] || {};
+      if (valor === null || valor === undefined) delete db.preferenciasUsuario[yo.id][clave];
+      else db.preferenciasUsuario[yo.id][clave] = valor;
+      store.guardar();
+      return true;
+    },
+  };
 })();
