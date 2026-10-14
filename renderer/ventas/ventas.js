@@ -148,9 +148,12 @@ function renderResultadosProducto(resultados) {
   } else {
     contenedor.innerHTML = resultados.map((p, i) => `
       <div class="buscador-resultados__item" data-index="${i}">
-        <div>
+        <div style="display:flex; align-items:center; gap:10px; min-width:0;">
+          ${p.imagen_miniatura ? `<img class="foto-mini" src="${esc(p.imagen_miniatura)}" alt="" />` : ''}
+          <div style="min-width:0;">
           <div class="buscador-resultados__nombre">${esc(p.descripcion)}</div>
           <div class="buscador-resultados__meta">${esc(p.codigo_interno)} · Disp: ${esc(p.cantidad_disponible)}${p.promocion ? ` · <span style="color:var(--color-success); font-weight:700;">Promoción ${textoPromocion(p.promocion)}</span>` : ""}</div>
+          </div>
         </div>
         <div class="buscador-resultados__precio">${fmtV((precioDeLista(p) || { precio: precioPorNivel(p, state.nivelPrecio) }).precio)}</div>
       </div>
@@ -199,8 +202,9 @@ function pintarTiles() {
     const bajo = !sinControl && !agotado && p.stock_minimo > 0 && disponible <= p.stock_minimo;
     const precio = (precioDeLista(p) || { precio: precioPorNivel(p, state.nivelPrecio) }).precio;
     return `
-      <button type="button" class="tile" data-tile="${i}" aria-pressed="${enCarrito > 0}" ${agotado || state.origen ? 'disabled' : ''} title="${esc(p.codigo_interno)}">
+      <button type="button" class="tile${p.imagen_miniatura ? ' tile--foto' : ''}" data-tile="${i}" aria-pressed="${enCarrito > 0}" ${agotado || state.origen ? 'disabled' : ''} title="${esc(p.codigo_interno)}">
         ${enCarrito > 0 ? `<span class="tile__contador" aria-label="${esc(enCarrito)} en el carrito">${esc(enCarrito)}</span>` : ''}
+        ${p.imagen_miniatura ? `<img class="tile__foto" src="${esc(p.imagen_miniatura)}" alt="" />` : ''}
         <span class="tile__nombre">${esc(p.descripcion)}</span>
         <span class="tile__pie">
           <span class="tile__precio">${fmtV(precio)}</span>

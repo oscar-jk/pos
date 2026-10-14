@@ -187,14 +187,21 @@ window.__PUNTOX_ES_ELECTRON = Boolean(window.puntoX);
       agregarDemoInventario(db);
       guardar();
     }
+    // Roles base y usuario cajero de prueba (también en demos creadas antes de que existieran).
+    if (!db.rolesSembrados && catalogo().roles.length) { rolesDe(db); guardar(); }
     return db;
   }
 
-  function guardar() {
+  function guardar({ exigir = false } = {}) {
     try {
       localStorage.setItem(CLAVE_ALMACENAMIENTO, JSON.stringify(db));
     } catch (e) {
       console.error('No se pudo guardar en localStorage (¿modo privado o cuota llena?):', e);
+      if (exigir) {
+        // Se recarga lo último guardado para no quedar con datos que no se pudieron guardar.
+        try { db = JSON.parse(localStorage.getItem(CLAVE_ALMACENAMIENTO)) || db; } catch (err) { /* se conserva en memoria */ }
+        throw new Error('El navegador ya no tiene espacio para guardar más fotos en la demo. Quita algunas o usa la app de escritorio');
+      }
     }
   }
 
@@ -204,5 +211,42 @@ window.__PUNTOX_ES_ELECTRON = Boolean(window.puntoX);
     cargar();
   }
 
-  window.PuntoXWebStore = { cargar, guardar, reiniciar, uuid, ahora, redondear, siguienteNumero, hashSimple };
+  // --- Roles y permisos de la demo ---
+  // La compilación de la demo (scripts/construir-demo-web.js) inyecta el catálogo real de permisos
+  // y los roles base de escritorio en window.__PUNTOX_CATALOGO_PERMISOS. Sin él (abriendo los
+  // archivos sueltos) queda solo el rol de administrador.
+  const ROL_ADMIN_ID = 'rol-unico-web';
+  function catalogo() { return window.__PUNTOX_CATALOGO_PERMISOS || { permisos: [], roles: [] }; }
+  const slug = (t) => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+
+  // Asegura los roles base (una sola vez por demo) y un usuario cajero de prueba.
+  function rolesDe(base) {
+    if (!Array.isArray(base.roles)) base.roles = [];
+    if (!base.roles.some((r) => r.id === ROL_ADMIN_ID)) {
+      base.roles.unshift({ id: ROL_ADMIN_ID, nombre: 'Administrador/Dueño', descripcion: 'Acceso total.', es_rol_sistema: true, limite_descuento_pct: 100, permisos: [] });
+    }
+    if (!base.rolesSembrados && catalogo().roles.length) {
+      catalogo().roles.forEach((r) => {
+        if (r.permisos === 'ALL') { base.roles.find((x) => x.id === ROL_ADMIN_ID).descripcion = r.descripcion; return; }
+        const id = 'rol-web-' + slug(r.nombre);
+        if (!base.roles.some((x) => x.id === id)) base.roles.push({ id, nombre: r.nombre, descripcion: r.descripcion, es_rol_sistema: true, limite_descuento_pct: r.limite_descuento_pct, permisos: [...r.permisos] });
+      });
+      const cajero = base.roles.find((x) => x.id === 'rol-web-cajero-vendedor');
+      if (cajero && !base.usuarios.some((u) => u.usuario === 'cajero')) {
+        base.usuarios.push({ id: uuid(), nombre_completo: 'Cajera de prueba', usuario: 'cajero', password_hash: hashSimple('cajero123'), rol_id: cajero.id, rol_nombre: cajero.nombre, pct_comision: 0, activo: true });
+      }
+      base.rolesSembrados = true;
+    }
+    return base;
+  }
+
+  // Permisos efectivos de un usuario: el administrador (o un usuario sin rol) tiene todos.
+  function permisosDeUsuario(base, usuario) {
+    const rolId = usuario.rol_id || ROL_ADMIN_ID;
+    if (rolId === ROL_ADMIN_ID) return ['*'];
+    const rol = rolesDe(base).roles.find((r) => r.id === rolId && !r.deleted_at);
+    return rol ? [...(rol.permisos || [])] : [];
+  }
+
+  window.PuntoXWebStore = { cargar, guardar, reiniciar, uuid, ahora, redondear, siguienteNumero, hashSimple, rolesDe, permisosDeUsuario, ROL_ADMIN_ID, catalogo };
 })();

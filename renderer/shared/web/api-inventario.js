@@ -85,7 +85,7 @@
   function productoParaLista(db, p) {
     const categoria = p.categoria_id ? db.categoriasProducto?.find((c) => c.id === p.categoria_id) : null;
     return {
-      ...p, categoria_nombre: categoria ? categoria.nombre : null,
+      ...p, categoria_nombre: categoria ? categoria.nombre : null, imagenes: undefined, imagen_miniatura: (p.imagenes && p.imagenes[0] && p.imagenes[0].miniatura) || null,
       existencia_total: p.es_kit ? 0 : existenciaTotal(db, p.id),
     };
   }
@@ -93,10 +93,22 @@
   function productoParaVenta(db, p, almacenId) {
     const tasa = tasaPorId(db, p.tasa_itbis_id);
     return {
-      ...p, tasa_itbis_pct: tasa ? tasa.porcentaje : 0.18,
+      ...p, tasa_itbis_pct: tasa ? tasa.porcentaje : 0.18, imagenes: undefined, imagen_miniatura: (p.imagenes && p.imagenes[0] && p.imagenes[0].miniatura) || null,
       cantidad_disponible: existenciaDisponibleParaVenta(db, p, almacenId),
       costo_promedio: costoUnitarioVenta(db, p),
     };
+  }
+
+  // Fotos de producto en la demo: las que traen id se conservan; las nuevas se validan.
+  function imagenesWeb(nuevas, actuales) {
+    if (nuevas.length > 6) throw new Error('Un producto puede tener hasta 6 fotos');
+    const previas = new Map((actuales || []).map((f) => [f.id, f]));
+    const valida = (d) => typeof d === 'string' && /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(d);
+    return nuevas.map((f) => {
+      if (f.id && previas.has(f.id)) return previas.get(f.id);
+      if (!valida(f.imagen) || !valida(f.miniatura)) throw new Error('La foto del producto debe ser una imagen PNG, JPG o WebP');
+      return { id: store.uuid(), imagen: f.imagen, miniatura: f.miniatura };
+    });
   }
 
   window.puntoXInventario = {
@@ -129,6 +141,7 @@
         codigosBarra: (p.codigosBarra || []).map((c) => ({ codigo_barra: c.codigoBarra, presentacion: c.presentacion, factor_conversion: c.factorConversion })),
         unidadesAlternativas: (p.unidadesAlternativas || []).map((u) => ({ unidad_id: u.unidadId, factor_conversion: u.factorConversion })),
         componentes: (p.componentes || []).map((c) => ({ componente_producto_id: c.componenteProductoId, descripcion: c.descripcion, cantidad: c.cantidad })),
+        imagenes: (p.imagenes || []).map((f, orden) => ({ ...f, orden })),
       };
     },
 
@@ -157,7 +170,8 @@
           codigosBarra: payload.codigosBarra || p.codigosBarra, unidadesAlternativas: payload.unidadesAlternativas || p.unidadesAlternativas,
           componentes: payload.componentes || p.componentes,
         });
-        store.guardar();
+        if (Array.isArray(payload.imagenes)) p.imagenes = imagenesWeb(payload.imagenes, p.imagenes);
+        store.guardar({ exigir: true });
         return { id: p.id };
       }
       const nuevo = {
@@ -168,9 +182,10 @@
         es_kit: Boolean(payload.esKit), permite_venta_negativo: Boolean(payload.permiteVentaNegativo), controla_lote: Boolean(payload.controlaLote),
         stock_minimo: payload.stockMinimo || 0, stock_maximo: payload.stockMaximo || null, activo: true,
         codigosBarra: payload.codigosBarra || [], unidadesAlternativas: payload.unidadesAlternativas || [], componentes: payload.componentes || [],
+        imagenes: imagenesWeb(payload.imagenes || [], []),
       };
       db.productos.push(nuevo);
-      store.guardar();
+      store.guardar({ exigir: true });
       return { id: nuevo.id };
     },
 

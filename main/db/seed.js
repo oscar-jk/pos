@@ -393,4 +393,4 @@ function sincronizarPermisosFaltantes(db) {
   })();
 }
 
-module.exports = { seed, sincronizarPermisosFaltantes };
+module.exports = { seed, sincronizarPermisosFaltantes, PERMISOS, ROLES };

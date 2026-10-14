@@ -2,6 +2,7 @@ const crypto = require('node:crypto');
 
 const { hashPassword } = require('../auth/password');
 const session = require('../auth/session');
+const { validarImagen, LIMITES: LIMITES_IMAGEN } = require('../imagenes');
 
 // Bitácora de auditoría transversal: creación, anulación, cierre y acciones administrativas
 // de todos los módulos.
@@ -58,20 +59,8 @@ function actualizarDatosNegocio(db, { nombre, iniciales, colorAcento, rnc, razon
 // Logo del negocio: imagen PNG, JPEG o WebP guardada como data URL en parametros_negocio
 // (negocio_logo). Se valida el tipo real por su firma, no por lo que diga el nombre o el
 // encabezado, y se limita el tamaño: va en cada arranque de la app y en las facturas impresas.
-const LOGO_MAX_BYTES = 300 * 1024;
-const FIRMAS_LOGO = {
-  'image/png': (b) => b.length > 8 && b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47,
-  'image/jpeg': (b) => b.length > 3 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff,
-  'image/webp': (b) => b.length > 12 && b.toString('latin1', 0, 4) === 'RIFF' && b.toString('latin1', 8, 12) === 'WEBP',
-};
-
 function validarLogo(dataUrl) {
-  const m = /^data:(image\/(?:png|jpeg|webp));base64,([A-Za-z0-9+/]+={0,2})$/.exec(typeof dataUrl === 'string' ? dataUrl : '');
-  if (!m) throw new Error('El logo debe ser una imagen PNG, JPG o WebP');
-  const bytes = Buffer.from(m[2], 'base64');
-  if (bytes.length > LOGO_MAX_BYTES) throw new Error('El logo pesa más de 300 KB. Usa una imagen más pequeña');
-  if (!FIRMAS_LOGO[m[1]](bytes)) throw new Error('El archivo no es una imagen válida');
-  return dataUrl;
+  return validarImagen(dataUrl, { maxBytes: LIMITES_IMAGEN.logo, etiqueta: 'El logo' });
 }
 
 function guardarLogoNegocio(db, { dataUrl }, usuarioId) {
@@ -471,13 +460,36 @@ function listarSucursales(db) {
   return db.prepare('SELECT * FROM sucursales WHERE deleted_at IS NULL ORDER BY nombre').all();
 }
 
-function crearSucursal(db, { nombre, direccion, telefono }, usuarioId) {
+// La foto del local es opcional: '' o null la quita; sin el campo, se deja como está.
+function imagenSucursal(imagen) {
+  if (imagen === undefined) return undefined;
+  if (!imagen) return null;
+  return validarImagen(imagen, { maxBytes: LIMITES_IMAGEN.sucursal, etiqueta: 'La foto del local' });
+}
+
+function crearSucursal(db, { nombre, direccion, telefono, imagen }, usuarioId) {
   session.requerirPermiso('configuracion.gestionar');
-  if (!nombre) throw new Error('El nombre de la sucursal es obligatorio');
+  if (!nombre || !String(nombre).trim()) throw new Error('El nombre de la sucursal es obligatorio');
   const id = crypto.randomUUID();
-  db.prepare('INSERT INTO sucursales (id, nombre, direccion, telefono, activo) VALUES (?, ?, ?, ?, 1)').run(id, nombre, direccion || null, telefono || null);
-  registrarAuditoria(db, { usuarioId, modulo: 'configuracion', entidad: 'sucursales', entidadId: id, accion: 'crear', detalle: { nombre } });
+  db.prepare('INSERT INTO sucursales (id, nombre, direccion, telefono, imagen, activo) VALUES (?, ?, ?, ?, ?, 1)')
+    .run(id, String(nombre).trim(), direccion || null, telefono || null, imagenSucursal(imagen) || null);
+  registrarAuditoria(db, { usuarioId, modulo: 'configuracion', entidad: 'sucursales', entidadId: id, accion: 'crear', detalle: { nombre, imagen: Boolean(imagen) } });
   return id;
+}
+
+function actualizarSucursal(db, sucursalId, { nombre, direccion, telefono, imagen }, usuarioId) {
+  session.requerirPermiso('configuracion.gestionar');
+  const actual = db.prepare('SELECT * FROM sucursales WHERE id = ? AND deleted_at IS NULL').get(sucursalId);
+  if (!actual) throw new Error('Sucursal no encontrada');
+  if (!nombre || !String(nombre).trim()) throw new Error('El nombre de la sucursal es obligatorio');
+  const foto = imagenSucursal(imagen);
+  db.prepare(
+    `UPDATE sucursales SET nombre = ?, direccion = ?, telefono = ?, imagen = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?`
+  ).run(String(nombre).trim(), direccion || null, telefono || null, foto === undefined ? actual.imagen : foto, sucursalId);
+  registrarAuditoria(db, {
+    usuarioId, modulo: 'configuracion', entidad: 'sucursales', entidadId: sucursalId, accion: 'editar',
+    detalle: { nombre, imagen: foto === undefined ? 'sin cambio' : foto ? 'actualizada' : 'quitada' },
+  });
 }
 
 // =========================================================================
@@ -574,6 +586,11 @@ function register(ipcMain, getDb) {
     const db = getDb();
     return db.transaction(() => crearSucursal(db, payload, usuarioId))();
   });
+  ipcMain.handle('config:actualizarSucursal', (event, { sucursalId, payload, usuarioId }) => {
+    const db = getDb();
+    db.transaction(() => actualizarSucursal(db, sucursalId, payload || {}, usuarioId))();
+    return true;
+  });
 
   ipcMain.handle('config:listarBitacora', (event, filtros) => listarBitacora(getDb(), filtros || {}));
 
@@ -592,7 +609,7 @@ module.exports = {
   listarParametrosNegocio, actualizarParametroNegocio, listarUsuarios, crearUsuario, actualizarUsuario,
   listarRoles, listarPermisos, permisosDeRol, actualizarPermisosRol, actualizarLimiteDescuentoRol, crearRol, editarRol, eliminarRol,
   listarTasasItbis, crearTasaItbis, actualizarTasaItbis, listarTiposNcf, crearTipoNcf, ampliarRangoNcf,
-  actualizarEstadoTipoNcf, listarSucursales, crearSucursal,
+  actualizarEstadoTipoNcf, listarSucursales, crearSucursal, actualizarSucursal,
   listarModulos, modulosActivos, moduloActivo, exigirModulo, actualizarModulo,
   listarMonedas, tasaDelDia, guardarTasaCambio,
 };

@@ -481,7 +481,13 @@ async function cargarParametros() {
 
 async function cargarSucursales() {
   const sucursales = await window.puntoXConfig.listarSucursales();
-  document.getElementById('sucursales-tbody').innerHTML = sucursales.map((s) => `<tr><td>${esc(s.nombre)}</td><td>${esc(s.direccion || '—')}</td><td>${esc(s.telefono || '—')}</td></tr>`).join('');
+  const puedeEditar = Boolean(window.puntoXConfig.actualizarSucursal);
+  document.getElementById('sucursales-tbody').innerHTML = sucursales.map((s) => `<tr>
+      <td>${s.imagen ? `<img class="foto-mini" style="width:52px; height:36px;" src="${esc(s.imagen)}" alt="" />` : '<span class="foto-mini" style="width:52px; height:36px; font-size:12px;">—</span>'}</td>
+      <td>${esc(s.nombre)}</td><td>${esc(s.direccion || '—')}</td><td>${esc(s.telefono || '—')}</td>
+      <td>${puedeEditar ? `<span class="enlace-accion" data-permiso="configuracion.gestionar" data-editar-sucursal="${esc(s.id)}" role="button" tabindex="0">Editar</span>` : ''}</td>
+    </tr>`).join('');
+  document.querySelectorAll('[data-editar-sucursal]').forEach((el) => el.addEventListener('click', () => abrirSucursal(sucursales.find((s) => s.id === el.dataset.editarSucursal))));
 
   const almacenes = await window.puntoXInventario.listarAlmacenes();
   document.getElementById('almacenes-tbody').innerHTML = almacenes.map((a) => {
@@ -500,30 +506,67 @@ async function cargarSucursales() {
   window.__sucursalesCache = sucursales;
 }
 
-document.getElementById('btn-nueva-sucursal').addEventListener('click', () => {
-  window.PuntoXModal.abrirModal('Nueva sucursal', `
+// Alta y edición de sucursal, con la foto del local (opcional).
+function abrirSucursal(sucursal) {
+  const esEdicion = Boolean(sucursal);
+  let imagen = sucursal ? sucursal.imagen || null : null;
+  let imagenCambiada = false;
+  window.PuntoXModal.abrirModal(esEdicion ? 'Editar sucursal' : 'Nueva sucursal', `
     <div class="form-grid">
-      <div class="form-field"><label>Nombre *</label><input id="s-nombre" /></div>
-      <div class="form-field"><label>Teléfono</label><input id="s-telefono" /></div>
-      <div class="form-field" style="grid-column: span 2;"><label>Dirección</label><input id="s-direccion" /></div>
+      <div class="form-field"><label for="s-nombre">Nombre *</label><input id="s-nombre" value="${esc(sucursal ? sucursal.nombre : '')}" /></div>
+      <div class="form-field"><label for="s-telefono">Teléfono</label><input id="s-telefono" value="${esc(sucursal && sucursal.telefono ? sucursal.telefono : '')}" /></div>
+      <div class="form-field" style="grid-column: 1 / -1;"><label for="s-direccion">Dirección</label><input id="s-direccion" value="${esc(sucursal && sucursal.direccion ? sucursal.direccion : '')}" /></div>
+    </div>
+    <div class="form-seccion">
+      <div class="form-seccion__titulo">Foto del local</div>
+      <div style="display:flex; gap:14px; align-items:flex-end; flex-wrap:wrap;">
+        <div class="foto-local" id="s-foto-vista"></div>
+        <div style="display:flex; flex-direction:column; gap:8px;">
+          <button type="button" class="btn btn-secundario btn-chico" id="s-foto-cargar">Cargar foto</button>
+          <button type="button" class="btn btn-secundario btn-chico" id="s-foto-quitar">Quitar foto</button>
+        </div>
+      </div>
+      <input type="file" id="s-foto-archivo" accept="image/png,image/jpeg,image/webp" hidden />
+      <div class="galeria__ayuda">PNG, JPG o WebP. Se reduce sola para que pese poco.</div>
     </div>
     <div class="form-seccion" style="display:flex; justify-content:flex-end; gap:8px;">
       <button type="button" class="btn btn-secundario" id="s-cancelar">Cancelar</button>
-      <button type="button" class="btn btn-primario" id="s-guardar">Crear sucursal</button>
+      <button type="button" class="btn btn-primario" id="s-guardar">${esEdicion ? 'Guardar cambios' : 'Crear sucursal'}</button>
     </div>
   `);
+  const pintarFoto = () => {
+    document.getElementById('s-foto-vista').innerHTML = imagen ? `<img src="${esc(imagen)}" alt="Foto del local" />` : 'Sin foto';
+    document.getElementById('s-foto-quitar').style.display = imagen ? '' : 'none';
+  };
+  pintarFoto();
+  const archivo = document.getElementById('s-foto-archivo');
+  document.getElementById('s-foto-cargar').addEventListener('click', () => archivo.click());
+  archivo.addEventListener('change', async () => {
+    const f = archivo.files[0];
+    archivo.value = '';
+    if (!f) return;
+    try { imagen = await window.PuntoXImagen.fotoSucursal(f); imagenCambiada = true; pintarFoto(); } catch (err) { mostrarError(err.message); }
+  });
+  document.getElementById('s-foto-quitar').addEventListener('click', () => { imagen = null; imagenCambiada = true; pintarFoto(); });
   document.getElementById('s-cancelar').addEventListener('click', window.PuntoXModal.cerrarModal);
   document.getElementById('s-guardar').addEventListener('click', async () => {
+    const payload = {
+      nombre: document.getElementById('s-nombre').value,
+      telefono: document.getElementById('s-telefono').value || null,
+      direccion: document.getElementById('s-direccion').value || null,
+    };
+    if (imagenCambiada) payload.imagen = imagen || '';
     try {
-      await window.puntoXConfig.crearSucursal({
-        payload: { nombre: document.getElementById('s-nombre').value, telefono: document.getElementById('s-telefono').value || null, direccion: document.getElementById('s-direccion').value || null },
-        usuarioId: state.info.usuario.id,
-      });
+      if (esEdicion) await window.puntoXConfig.actualizarSucursal({ sucursalId: sucursal.id, payload, usuarioId: state.info.usuario.id });
+      else await window.puntoXConfig.crearSucursal({ payload, usuarioId: state.info.usuario.id });
       window.PuntoXModal.cerrarModal();
+      mostrarExito(esEdicion ? 'Sucursal actualizada.' : 'Sucursal creada.');
       cargarSucursales();
     } catch (err) { mostrarError(err.message); }
   });
-});
+}
+
+document.getElementById('btn-nueva-sucursal').addEventListener('click', () => abrirSucursal(null));
 
 document.getElementById('btn-nuevo-almacen').addEventListener('click', async () => {
   const sucursales = window.__sucursalesCache || await window.puntoXConfig.listarSucursales();

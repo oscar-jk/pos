@@ -445,9 +445,10 @@ function crearFactura(db, payload) {
 
 const CUENTA_MERCANCIA_ENTREGADA = '1350';
 
+// "Hoy" en hora de RD (UTC-4, sin horario de verano), igual que el '-4 hours' de las consultas:
+// no depende de la zona horaria de la computadora.
 function hoyLocal() {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  return new Date(Date.now() - 4 * 3600000).toISOString().slice(0, 10);
 }
 
 function detalleDocumento(db, documentoId) {
@@ -1462,7 +1463,7 @@ function ventasPorPeriodo(db, { desde, hasta, sucursalId, vendedorId, clienteId,
 
   return db
     .prepare(
-      `SELECT strftime('${formato}', dv.fecha, 'localtime') AS periodo, COUNT(*) AS num_facturas,
+      `SELECT strftime('${formato}', dv.fecha, '-4 hours') AS periodo, COUNT(*) AS num_facturas,
               SUM(dv.subtotal) AS subtotal, SUM(dv.descuento_total) AS descuento,
               SUM(dv.itbis_total) AS itbis, SUM(dv.total) AS total
        FROM documentos_venta dv LEFT JOIN tipos_ncf tn ON tn.id = dv.tipo_ncf_id
@@ -1582,13 +1583,13 @@ function resumenCobrosDelDia(db, { fecha, sucursalId } = {}) {
   const porSucursal = sucursalId ? ' AND dv.sucursal_id = ?' : '';
   const args = sucursalId ? [dia, sucursalId] : [dia];
   const facturado = db
-    .prepare(`SELECT COALESCE(SUM(dv.total), 0) AS total FROM documentos_venta dv WHERE dv.tipo = 'factura' AND dv.estado != 'anulado' AND dv.deleted_at IS NULL AND date(dv.fecha, 'localtime') = date(?)${porSucursal}`)
+    .prepare(`SELECT COALESCE(SUM(dv.total), 0) AS total FROM documentos_venta dv WHERE dv.tipo = 'factura' AND dv.estado != 'anulado' AND dv.deleted_at IS NULL AND date(dv.fecha, '-4 hours') = date(?)${porSucursal}`)
     .get(...args).total;
   const filasPago = db
     .prepare(
       `SELECT pv.forma_pago, COALESCE(SUM(pv.monto), 0) AS total
        FROM pagos_venta pv JOIN documentos_venta dv ON dv.id = pv.documento_id
-       WHERE dv.estado != 'anulado' AND dv.deleted_at IS NULL AND date(dv.fecha, 'localtime') = date(?)${porSucursal}
+       WHERE dv.estado != 'anulado' AND dv.deleted_at IS NULL AND date(dv.fecha, '-4 hours') = date(?)${porSucursal}
        GROUP BY pv.forma_pago`
     )
     .all(...args);

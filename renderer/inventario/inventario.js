@@ -12,6 +12,11 @@ function mostrarError(msg) {
   window.scrollTo(0, 0);
 }
 
+// Miniatura de producto para listas (o un marcador cuando no tiene foto).
+function fotoMini(p) {
+  return p && p.imagen_miniatura ? `<img class="foto-mini" src="${esc(p.imagen_miniatura)}" alt="" />` : '<span class="foto-mini foto-mini--vacia" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="m4 18 5-5 4 4 3-3 4 4"/></svg></span>';
+}
+
 function fmt(n) {
   return (n || 0).toLocaleString('es-DO', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
@@ -84,6 +89,7 @@ async function cargarProductos() {
 
   tbody.innerHTML = productos.map((p) => `
     <tr>
+      <td>${fotoMini(p)}</td>
       <td>${esc(p.codigo_interno)}</td>
       <td>${esc(p.descripcion)}${p.es_kit ? ' <span class="pill-estado" style="background:var(--color-info);">KIT</span>' : ''}</td>
       <td>${esc(p.categoria_nombre || '—')}</td>
@@ -144,6 +150,13 @@ async function abrirFormularioProducto(productoId) {
     </div>
 
     <div class="form-seccion">
+      <div class="form-seccion__titulo">Fotos</div>
+      <div class="galeria" id="galeria-producto"></div>
+      <input type="file" id="f-fotos" accept="image/png,image/jpeg,image/webp" multiple hidden />
+      <div class="galeria__ayuda">Hasta 6 fotos (PNG, JPG o WebP). La primera es la principal: se ve en la lista, en la búsqueda y en la cuadrícula de venta. También puedes arrastrarlas aquí.</div>
+    </div>
+
+    <div class="form-seccion">
       <div class="form-seccion__titulo">Códigos de barra (presentaciones)</div>
       <div id="lista-codigos-barra"></div>
       <button type="button" class="btn btn-secundario btn-chico" id="btn-agregar-codigo-barra">+ Agregar código de barra</button>
@@ -175,6 +188,36 @@ async function abrirFormularioProducto(productoId) {
   const componentes = producto && producto.componentes
     ? producto.componentes.map((c) => ({ componenteProductoId: c.componente_producto_id, descripcion: c.descripcion, cantidad: c.cantidad }))
     : [];
+
+  // Fotos: las que ya están guardadas viajan solo con su id; las nuevas, con la imagen.
+  const fotos = producto && producto.imagenes ? producto.imagenes.map((f) => ({ id: f.id, imagen: f.imagen, miniatura: f.miniatura })) : [];
+  const MAX_FOTOS = 6;
+
+  function renderFotos() {
+    const galeria = document.getElementById('galeria-producto');
+    galeria.innerHTML = fotos.map((f, i) => `
+      <div class="galeria__item ${i === 0 ? 'galeria__item--principal' : ''}">
+        <img src="${esc(f.miniatura)}" alt="Foto ${i + 1} del producto" />
+        ${i === 0 ? '<span class="galeria__etiqueta">Principal</span>' : ''}
+        <div class="galeria__acciones">
+          ${i > 0 ? `<button type="button" class="galeria__btn" data-principal="${i}" title="Usar como principal" aria-label="Usar la foto ${i + 1} como principal">★</button>` : ''}
+          <button type="button" class="galeria__btn" data-quitar-foto="${i}" title="Quitar foto" aria-label="Quitar la foto ${i + 1}">✕</button>
+        </div>
+      </div>`).join('') + (fotos.length < MAX_FOTOS ? '<button type="button" class="galeria__agregar" id="btn-agregar-foto"><span style="font-size:20px; line-height:1;">+</span>Agregar foto</button>' : '');
+    galeria.querySelectorAll('[data-quitar-foto]').forEach((b) => b.addEventListener('click', () => { fotos.splice(Number(b.dataset.quitarFoto), 1); renderFotos(); }));
+    galeria.querySelectorAll('[data-principal]').forEach((b) => b.addEventListener('click', () => { const [f] = fotos.splice(Number(b.dataset.principal), 1); fotos.unshift(f); renderFotos(); }));
+    const agregar = document.getElementById('btn-agregar-foto');
+    if (agregar) agregar.addEventListener('click', () => document.getElementById('f-fotos').click());
+  }
+
+  async function agregarFotos(archivos) {
+    mostrarError(null);
+    for (const archivo of [...archivos]) {
+      if (fotos.length >= MAX_FOTOS) { mostrarError(`Un producto puede tener hasta ${MAX_FOTOS} fotos`); break; }
+      try { fotos.push(await window.PuntoXImagen.fotoProducto(archivo)); } catch (err) { mostrarError(err.message); }
+    }
+    renderFotos();
+  }
 
   function renderCodigosBarra() {
     document.getElementById('lista-codigos-barra').innerHTML = codigosBarra.map((c, i) => `
@@ -224,6 +267,14 @@ async function abrirFormularioProducto(productoId) {
   renderCodigosBarra();
   renderUnidadesAlt();
   renderComponentes();
+  renderFotos();
+
+  const inputFotos = document.getElementById('f-fotos');
+  inputFotos.addEventListener('change', async () => { const archivos = [...inputFotos.files]; inputFotos.value = ''; await agregarFotos(archivos); });
+  const galeria = document.getElementById('galeria-producto');
+  galeria.addEventListener('dragover', (e) => { e.preventDefault(); galeria.classList.add('galeria--arrastrando'); });
+  galeria.addEventListener('dragleave', () => galeria.classList.remove('galeria--arrastrando'));
+  galeria.addEventListener('drop', (e) => { e.preventDefault(); galeria.classList.remove('galeria--arrastrando'); agregarFotos(e.dataTransfer.files); });
 
   document.getElementById('btn-agregar-codigo-barra').addEventListener('click', () => { codigosBarra.push({ codigoBarra: '', presentacion: 'unidad', factorConversion: 1 }); renderCodigosBarra(); });
   document.getElementById('btn-agregar-unidad-alt').addEventListener('click', () => { unidadesAlt.push({ unidadId: state.unidades[0]?.id, factorConversion: 1 }); renderUnidadesAlt(); });
@@ -291,6 +342,7 @@ async function abrirFormularioProducto(productoId) {
       esServicio: document.getElementById('f-es-servicio').checked,
       activo: esEdicion ? document.getElementById('f-activo').checked : true,
       codigosBarra, unidadesAlternativas: unidadesAlt, componentes,
+      imagenes: fotos.map((f) => (f.id ? { id: f.id } : { imagen: f.imagen, miniatura: f.miniatura })),
     };
     if (!esEdicion) payload.costoPromedio = parseFloat(document.getElementById('f-costo').value) || 0;
 

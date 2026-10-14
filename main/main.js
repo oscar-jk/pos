@@ -20,6 +20,7 @@ const proyeccionesIpc = require('./ipc/proyecciones');
 const formatosVentasIpc = require('./ipc/formatos-ventas');
 const onboardingIpc = require('./ipc/onboarding');
 const deliveryIpc = require('./ipc/delivery');
+const reportesIpc = require('./ipc/reportes');
 const colaEcf = require('./ecf/cola');
 const ecfEmision = require('./ecf/emision');
 
@@ -90,6 +91,7 @@ function registerCoreIpc() {
   formatosVentasIpc.register(ipcSeguro, getDb);
   onboardingIpc.register(ipcSeguro, getDb);
   deliveryIpc.register(ipcSeguro, getDb);
+  reportesIpc.register(ipcSeguro, getDb);
 }
 
 function createMainWindow() {
