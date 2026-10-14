@@ -1,0 +1,432 @@
+<title>Guía de Nodo</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&display=swap">
+<style>
+/* Guía de uso de un POS: índice fijo a la izquierda y lectura en una columna, con la identidad Nodo
+   (superficie casi blanca, tinta casi negra, verde azulado como único color de acción, punto ámbar). */
+:root {
+  --bg: #F6F8F6;
+  --surface: #FFFFFF;
+  --surface-2: #E9EEEB;
+  --border: #D9E0DC;
+  --ink: #11181A;
+  --muted: #4D5D5E;
+  --brand: #0A6B68;
+  --brand-tint: #D3EBE8;
+  --on-brand: #FFFFFF;
+  --accent: #F2A33A;
+  --warn: #7A4F00;
+  --warn-tint: #FBEBCB;
+  --font-display: 'Manrope', 'Segoe UI', system-ui, sans-serif;
+  --font-body: 'Instrument Sans', 'Segoe UI', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'Cascadia Mono', Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0D1213; --surface: #141B1C; --surface-2: #1C2627; --border: #263233; --ink: #EDF2F0; --muted: #A2B1B1;
+    --brand: #35BDB5; --brand-tint: #123433; --on-brand: #052120; --accent: #F5B04A; --warn: #F2BE5C; --warn-tint: #33280F;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0D1213; --surface: #141B1C; --surface-2: #1C2627; --border: #263233; --ink: #EDF2F0; --muted: #A2B1B1;
+  --brand: #35BDB5; --brand-tint: #123433; --on-brand: #052120; --accent: #F5B04A; --warn: #F2BE5C; --warn-tint: #33280F;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 16px; line-height: 1.6; margin: 0; padding-inline: 16px; }
+a { color: var(--brand); text-underline-offset: 3px; }
+a:focus-visible, button:focus-visible, summary:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; border-radius: 4px; }
+
+.pagina { max-width: 1180px; margin: 0 auto; padding-block: 40px 80px; display: grid; grid-template-columns: 250px minmax(0, 1fr); gap: 48px; align-items: start; }
+
+/* Encabezado */
+.cabeza { grid-column: 1 / -1; border-bottom: 1px solid var(--border); padding-bottom: 28px; }
+.marca { font-family: var(--font-display); font-weight: 800; font-size: 20px; letter-spacing: -0.02em; display: inline-flex; align-items: baseline; gap: 1px; }
+.marca::after { content: ''; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); display: inline-block; }
+.cabeza h1 { font-family: var(--font-display); font-size: clamp(30px, 4.6vw, 44px); line-height: 1.1; letter-spacing: -0.03em; margin: 14px 0 12px; text-wrap: balance; }
+.cabeza p { color: var(--muted); max-width: 64ch; margin: 0; }
+.acceso { display: flex; flex-wrap: wrap; gap: 10px 22px; margin-top: 18px; font-size: 14px; }
+.acceso span { color: var(--muted); }
+.acceso code { font-family: var(--font-mono); font-size: 13px; background: var(--surface-2); padding: 2px 6px; border-radius: 4px; color: var(--ink); }
+
+/* Índice */
+.indice { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 20px); max-height: calc(100vh - 40px); overflow-y: auto; font-size: 14px; }
+.indice summary { list-style: none; font-family: var(--font-display); font-weight: 700; font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); cursor: default; margin-bottom: 10px; }
+.indice summary::-webkit-details-marker { display: none; }
+.indice ol { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; counter-reset: sec; }
+.indice li a { display: flex; gap: 10px; padding: 6px 10px; border-radius: 6px; text-decoration: none; color: var(--ink); }
+.indice li a::before { counter-increment: sec; content: counter(sec, decimal-leading-zero); font-family: var(--font-mono); font-size: 12px; color: var(--muted); padding-top: 2px; }
+.indice li a:hover { background: var(--surface-2); }
+
+/* Contenido */
+main { min-width: 0; }
+section { padding-block: 8px 28px; border-bottom: 1px solid var(--border); margin-bottom: 28px; scroll-margin-top: 20px; }
+section:last-child { border-bottom: none; }
+h2 { font-family: var(--font-display); font-size: 26px; letter-spacing: -0.02em; line-height: 1.2; margin: 0 0 6px; text-wrap: balance; }
+.ruta { font-size: 13px; color: var(--muted); margin: 0 0 16px; }
+.ruta b { color: var(--ink); font-weight: 600; }
+h3 { font-family: var(--font-display); font-size: 17px; margin: 26px 0 8px; letter-spacing: -0.01em; }
+p, li { max-width: 68ch; }
+ul, ol { padding-left: 22px; }
+li { margin-bottom: 4px; }
+ol.pasos { counter-reset: paso; list-style: none; padding-left: 0; }
+ol.pasos > li { counter-increment: paso; position: relative; padding-left: 36px; margin-bottom: 10px; }
+ol.pasos > li::before { content: counter(paso); position: absolute; left: 0; top: 1px; width: 24px; height: 24px; border-radius: 50%; background: var(--brand-tint); color: var(--brand); font-family: var(--font-mono); font-size: 12px; font-weight: 600; display: flex; align-items: center; justify-content: center; }
+.boton { font-family: var(--font-body); font-weight: 600; font-size: 0.92em; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 1px 7px; white-space: nowrap; }
+kbd { font-family: var(--font-mono); font-size: 12px; font-weight: 600; background: var(--surface); border: 1px solid var(--border); border-bottom-width: 2px; border-radius: 5px; padding: 1px 6px; }
+.nota { background: var(--brand-tint); border-radius: 8px; padding: 12px 16px; margin: 16px 0; font-size: 15px; max-width: 68ch; }
+.nota.aviso { background: var(--warn-tint); }
+.nota strong { font-family: var(--font-display); }
+
+.tabla { overflow-x: auto; margin: 14px 0; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); }
+table { border-collapse: collapse; width: 100%; font-size: 14px; }
+th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--border); vertical-align: top; }
+th { font-family: var(--font-display); font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); background: var(--surface-2); }
+tr:last-child td { border-bottom: none; }
+td:first-child { font-weight: 600; white-space: nowrap; }
+
+.atajos { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px 20px; margin: 12px 0; padding: 0; list-style: none; }
+.atajos li { display: flex; gap: 10px; align-items: baseline; margin: 0; font-size: 15px; }
+.atajos kbd { min-width: 44px; text-align: center; }
+
+dl.faq dt { font-family: var(--font-display); font-weight: 700; margin-top: 18px; }
+dl.faq dd { margin: 4px 0 0; color: var(--ink); max-width: 68ch; }
+
+@media (max-width: 860px) {
+  .pagina { grid-template-columns: 1fr; gap: 24px; padding-block: 24px 60px; }
+  .indice { position: static; max-height: none; border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; background: var(--surface); }
+  .indice summary { cursor: pointer; margin-bottom: 0; }
+  .indice[open] summary { margin-bottom: 10px; }
+}
+@media (prefers-reduced-motion: no-preference) { html { scroll-behavior: smooth; } }
+</style>
+
+<div class="pagina">
+  <header class="cabeza">
+    <span class="marca">nodo</span>
+    <h1>Guía de usuario</h1>
+    <p>Cómo usar Nodo en el día a día: vender y facturar con comprobantes fiscales, llevar el inventario, comprar, cobrar, pagar, cuadrar la caja y leer la contabilidad, que se genera sola detrás de cada operación. Cada sección dice dónde está cada cosa en el menú.</p>
+    <div class="acceso">
+      <div><span>Demo en la web:</span> <a href="https://oscar-jk.github.io/pos/">oscar-jk.github.io/pos</a></div>
+      <div><span>Administrador:</span> <code>admin</code> / <code>admin123</code></div>
+      <div><span>Cajera de prueba:</span> <code>cajero</code> / <code>cajero123</code></div>
+    </div>
+  </header>
+
+  <details class="indice" id="indice" open>
+    <summary>Contenido</summary>
+    <ol>
+      <li><a href="#inicio">Primeros pasos</a></li>
+      <li><a href="#dashboard">Dashboard</a></li>
+      <li><a href="#ventas">Ventas y facturación</a></li>
+      <li><a href="#inventario">Inventario</a></li>
+      <li><a href="#compras">Compras y proveedores</a></li>
+      <li><a href="#cxc">Cuentas por cobrar</a></li>
+      <li><a href="#cxp">Cuentas por pagar</a></li>
+      <li><a href="#caja">Caja y tesorería</a></li>
+      <li><a href="#contabilidad">Contabilidad</a></li>
+      <li><a href="#reportes">Reportes</a></li>
+      <li><a href="#configuracion">Configuración</a></li>
+      <li><a href="#roles">Roles y permisos</a></li>
+      <li><a href="#atajos">Atajos de teclado</a></li>
+      <li><a href="#preguntas">Preguntas frecuentes</a></li>
+    </ol>
+  </details>
+
+  <main>
+    <section id="inicio">
+      <h2>Primeros pasos</h2>
+      <p class="ruta">Inicio de sesión · Asistente inicial · Barra superior</p>
+
+      <h3>Entrar</h3>
+      <p>Escribe tu usuario y contraseña. La primera vez que entras con una contraseña asignada por otra persona, Nodo te pide cambiarla antes de continuar. Usa al menos 6 caracteres.</p>
+
+      <h3>Asistente inicial</h3>
+      <p>En una instalación nueva, el administrador pasa por un asistente de seis pasos que deja el sistema listo para facturar:</p>
+      <ol class="pasos">
+        <li><b>Bienvenida.</b> Qué vas a configurar.</li>
+        <li><b>Tu negocio.</b> Nombre, RNC, razón social, dirección, teléfono y logo. El logo sale en el menú, el inicio de sesión y la factura impresa.</li>
+        <li><b>Comprobantes.</b> Las secuencias de NCF que te autorizó la DGII (consumo, crédito fiscal, etc.).</li>
+        <li><b>Sucursal y módulos.</b> Datos de tu local y módulos opcionales, como cuentas abiertas para bar o restaurante.</li>
+        <li><b>Equipo.</b> Crea los usuarios y asígnales un rol.</li>
+        <li><b>Listo.</b> Resumen; todo se puede cambiar después en Configuración.</li>
+      </ol>
+
+      <h3>Lo que siempre tienes a mano</h3>
+      <ul>
+        <li><b>Menú lateral.</b> Muestra solo los módulos que tu rol permite.</li>
+        <li><b>Consulta de precio</b> en la barra superior (<kbd>F2</kbd>): escribe parte del nombre, el código o escanea el código de barra y ves los tres precios, la promoción vigente y la existencia en cada almacén, sin salir de la pantalla en la que estás.</li>
+        <li><b>Tema claro u oscuro</b> con el botón de la luna.</li>
+        <li><b>Alertas</b> (triángulo): lo que necesita atención, como productos bajo el mínimo o lotes por vencer.</li>
+        <li><b>Cerrar sesión</b> con el botón de salida junto a tu nombre.</li>
+      </ul>
+      <div class="nota"><strong>ITBIS incluido.</strong> En Nodo todos los precios de venta ya incluyen el ITBIS. El sistema lo desglosa en la factura; nunca lo suma por encima.</div>
+    </section>
+
+    <section id="dashboard">
+      <h2>Dashboard</h2>
+      <p class="ruta">Menú <b>Dashboard</b></p>
+      <p>Es la pantalla de inicio. Arriba ves el saludo, la fecha, tu sucursal y, si la cargaste, la foto del local. Debajo:</p>
+      <ul>
+        <li><b>Indicadores del día:</b> ventas de hoy, efectivo en caja y total por cobrar.</li>
+        <li><b>Centro de alertas</b> con enlaces directos a lo que hay que atender (stock bajo, sobre-stock, vencimientos, cobros y pagos).</li>
+        <li><b>Caja del día</b> con el estado de tu turno y un atajo a Caja y Tesorería.</li>
+        <li><b>Accesos a cada módulo</b> que tu rol puede usar.</li>
+      </ul>
+    </section>
+
+    <section id="ventas">
+      <h2>Ventas y facturación</h2>
+      <p class="ruta">Menú <b>Ventas y Facturación</b> · enlaces superiores: Cotizaciones, pedidos y conduces · Comprobantes electrónicos · Promociones</p>
+
+      <h3>Venta rápida y venta completa</h3>
+      <p><b>Venta rápida</b> es el mostrador: consumidor final, cobro inmediato. <b>Venta completa</b> agrega cliente, vendedor, condición de pago a crédito y delivery. Cambias entre las dos con los botones de arriba a la derecha.</p>
+
+      <h3>Hacer una factura</h3>
+      <ol class="pasos">
+        <li>Agrega productos: búscalos por nombre o código, escanea el código de barra, o toca un producto en la cuadrícula de <b>productos frecuentes</b> (los más vendidos de los últimos 30 días, con su foto si la tiene; filtra por categoría con las pastillas de arriba).</li>
+        <li>Ajusta cantidades y descuentos por línea. El descuento máximo depende de tu rol.</li>
+        <li>Elige el cliente (o deja Consumidor final), el nivel de precio (detalle, mayorista, distribuidor) y el comprobante fiscal. Para crédito fiscal el cliente necesita RNC o cédula.</li>
+        <li>Registra el pago: efectivo, tarjeta, transferencia o crédito, combinables. En <b>Efectivo recibido</b> escribe lo que te entrega el cliente y Nodo calcula el cambio.</li>
+        <li>Pulsa <span class="boton">Cobrar</span> (<kbd>F10</kbd>). Al terminar puedes imprimir la factura en hoja o el tique térmico.</li>
+      </ol>
+
+      <h3>Facturas recientes: imprimir, devolver, anular</h3>
+      <p>Debajo del carrito está la lista de facturas recientes. Cada una tiene:</p>
+      <ul>
+        <li><span class="boton">Imprimir</span> para reimprimirla.</li>
+        <li><span class="boton">Devolver</span> para registrar una devolución total o parcial; genera la nota de crédito y devuelve la mercancía al inventario.</li>
+        <li><span class="boton">Anular</span> con motivo obligatorio. Nada se borra: la anulación revierte el inventario, la cuenta por cobrar y el asiento contable, y queda en la bitácora.</li>
+      </ul>
+
+      <h3>Cotizaciones, pedidos y conduces</h3>
+      <p>Una cotización se puede convertir en pedido y luego en factura sin volver a escribir nada. El pedido reserva la mercancía (aparece como comprometida en el inventario). El conduce registra la salida de mercancía que se factura después.</p>
+
+      <h3>Promociones</h3>
+      <p>Descuentos por porcentaje o monto fijo, por producto o categoría, con fecha de inicio y fin. Se aplican solos en la venta mientras estén vigentes.</p>
+
+      <h3>Delivery</h3>
+      <p>En venta completa marca la factura como delivery, con zona y repartidor. El pedido pasa por pendiente, en ruta y entregado, y lo sigues en Cotizaciones, pedidos y conduces; el reporte de tiempos de entrega mide cuánto tarda cada repartidor y cada zona.</p>
+
+      <h3>Cuentas abiertas</h3>
+      <p>Si activaste el módulo (Configuración, Parámetros de negocio), puedes abrir cuentas por mesa o cliente, ir agregando consumos, imprimir la precuenta y facturar al cerrar.</p>
+
+      <div class="nota aviso"><strong>Comprobantes electrónicos (e-CF).</strong> La pantalla existe, pero la emisión electrónica queda pendiente hasta que el negocio tenga la autorización de la DGII. Mientras tanto se factura con NCF serie B.</div>
+    </section>
+
+    <section id="inventario">
+      <h2>Inventario</h2>
+      <p class="ruta">Menú <b>Inventario</b> · pestañas Productos, Existencias, Ajustes, Mermas y averías, Transferencias, Conversiones, Lotes y vencimientos, Listas de precio</p>
+
+      <h3>Crear o editar un producto</h3>
+      <ol class="pasos">
+        <li>Pulsa <span class="boton">+ Nuevo producto</span>, o <span class="boton">Editar</span> en la fila de uno existente.</li>
+        <li>Llena código interno, descripción, categoría (puedes crear una ahí mismo con <b>+ Nueva</b>), unidad, tasa de ITBIS y los tres precios con ITBIS incluido.</li>
+        <li>Define stock mínimo y máximo. Al crear, puedes indicar el costo inicial y la existencia inicial.</li>
+        <li>En <b>Fotos</b>, agrega hasta 6 imágenes con <span class="boton">+ Agregar foto</span> o arrastrándolas. La primera es la principal; la estrella ★ convierte cualquier otra en principal y la ✕ la quita. La foto principal se ve en la lista de productos, en la búsqueda del mostrador y en la cuadrícula de venta.</li>
+        <li>Agrega códigos de barra por presentación (unidad, caja, paquete, con su factor), unidades alternativas y, si es un combo, sus componentes.</li>
+        <li>Guarda.</li>
+      </ol>
+      <p>Opciones del producto: <b>controla lote y vencimiento</b>, <b>permite venta en negativo</b>, <b>es un kit o combo</b> (descuenta los componentes) y <b>es un servicio</b> (no lleva existencia).</p>
+
+      <h3>Movimientos</h3>
+      <ul>
+        <li><b>Ajustes</b> de entrada o salida con motivo (conteo físico, corrección).</li>
+        <li><b>Mermas y averías</b>: producto dañado o vencido; se lleva a gasto.</li>
+        <li><b>Transferencias</b> entre almacenes o sucursales.</li>
+        <li><b>Conversiones</b>: transformar unidades de un producto en otro (por ejemplo, un saco en libras).</li>
+        <li><b>Kardex</b> de cada producto desde el enlace en su fila, con filtros por fecha, tipo y almacén.</li>
+      </ul>
+      <p>También desde Productos: <span class="boton">Imprimir etiquetas</span> de precio y código de barra. En Listas de precio defines precios especiales por cliente o categoría de cliente.</p>
+      <div class="nota"><strong>Costos.</strong> El costo promedio se recalcula con cada compra. Quien no tiene el permiso de ver costos (por ejemplo, la cajera) lo ve vacío.</div>
+    </section>
+
+    <section id="compras">
+      <h2>Compras y proveedores</h2>
+      <p class="ruta">Menú <b>Compras y Proveedores</b> · pestañas Proveedores, Presupuestos, Órdenes de compra, Facturas de compra, Notas de crédito/débito, Comparación de costos, Compras por producto</p>
+      <ol class="pasos">
+        <li><b>Presupuestos</b>: pide precios a varios proveedores y compáralos lado a lado; el mejor se convierte en orden de compra.</li>
+        <li><b>Orden de compra</b>: lo que le pides al proveedor.</li>
+        <li><b>Factura de compra</b>: al registrarla con su NCF entra la mercancía al inventario, se actualiza el costo y nace la cuenta por pagar si es a crédito.</li>
+        <li><b>Notas de crédito y débito</b> del proveedor por devoluciones o cargos adicionales.</li>
+      </ol>
+      <p>La <b>Comparación de costos</b> muestra qué proveedor te ha vendido más barato cada producto. Los gastos que no son mercancía (luz, alquiler) también se registran con su NCF para el formato 606.</p>
+    </section>
+
+    <section id="cxc">
+      <h2>Cuentas por cobrar</h2>
+      <p class="ruta">Menú <b>Cuentas por Cobrar</b> · pestañas Clientes, Cobrar, Antigüedad de saldos, Facturas vencidas, Gestión de cobros, CxC empleados</p>
+      <ul>
+        <li><b>Clientes</b>: datos fiscales, límite y días de crédito, categoría y bloqueo. Desde cada cliente: <span class="boton">Estado de cuenta</span>, que puedes imprimir o exportar.</li>
+        <li><b>Cobrar</b>: elige el cliente, marca las facturas que paga y registra el recibo de ingreso. Si el cliente te retiene ITBIS o ISR, regístralo en el mismo recibo.</li>
+        <li><b>Antigüedad de saldos</b> y <b>facturas vencidas</b> para saber a quién llamar primero.</li>
+        <li><b>Gestión de cobros</b>: anota cada llamada o visita y la promesa de pago.</li>
+        <li><b>CxC empleados</b>: préstamos y adelantos al personal, con sus abonos.</li>
+      </ul>
+    </section>
+
+    <section id="cxp">
+      <h2>Cuentas por pagar</h2>
+      <p class="ruta">Menú <b>Cuentas por Pagar</b> · pestañas Proveedores, Facturas de compra, Pagar, Antigüedad de saldos, Próximas a vencer, Cheques posdatados</p>
+      <ul>
+        <li><b>Pagar</b>: elige el proveedor, las facturas y la forma de pago (efectivo, transferencia, cheque). Los pagos que requieren aprobación esperan a quien tiene ese permiso.</li>
+        <li><b>Próximas a vencer</b> para programar pagos.</li>
+        <li><b>Cheques posdatados</b> pendientes de cobro por el proveedor.</li>
+      </ul>
+    </section>
+
+    <section id="caja">
+      <h2>Caja y tesorería</h2>
+      <p class="ruta">Menú <b>Caja y Tesorería</b> · pestañas Turno actual, Historial de turnos, Caja chica, Transferencias a banco, Conciliación bancaria</p>
+
+      <h3>Turno de caja</h3>
+      <ol class="pasos">
+        <li>Al empezar el día, <span class="boton">Abrir turno</span> con el fondo inicial.</li>
+        <li>Durante el turno, cada venta y cobro en efectivo se suma solo. Registra entradas y salidas manuales con su motivo.</li>
+        <li>Al terminar, <span class="boton">Cerrar turno</span>: escribe el efectivo contado físicamente. Nodo lo compara con lo esperado y registra el sobrante o faltante.</li>
+        <li><span class="boton">Imprimir arqueo</span> para firmar el cierre.</li>
+      </ol>
+
+      <h3>Caja chica</h3>
+      <p>Fondo fijo para gastos menores. Cada gasto lleva comprobante; cuando el fondo baja, <span class="boton">Reponer fondo</span> cierra el periodo y deja todo el monto disponible otra vez.</p>
+
+      <h3>Banco</h3>
+      <p>En <b>Transferencias a banco</b> registras los depósitos del efectivo de caja. En <b>Conciliación bancaria</b> cargas el estado de cuenta del banco y Nodo lo cruza con sus movimientos (<span class="boton">Conciliar automáticamente</span>).</p>
+    </section>
+
+    <section id="contabilidad">
+      <h2>Contabilidad</h2>
+      <p class="ruta">Menú <b>Contabilidad</b> · pestañas Catálogo de cuentas, Libro diario, Libro mayor, Balance de comprobación, Estados financieros, Periodos</p>
+      <p>No tienes que hacer asientos para el trabajo diario: cada venta, compra, cobro, pago, ajuste y cierre de caja genera su asiento de partida doble.</p>
+      <ul>
+        <li><b>Asiento manual</b> (<span class="boton">+ Nuevo asiento manual</span>) para depreciaciones, provisiones o correcciones. Debe cuadrar.</li>
+        <li><b>Libro diario y mayor</b> para revisar cualquier cuenta.</li>
+        <li><b>Estados financieros</b>: estado de resultados y balance general a cualquier fecha.</li>
+        <li><b>Periodos</b>: <span class="boton">Cerrar periodo</span> bloquea los movimientos del mes. Solo el administrador puede <span class="boton">Reabrir</span>.</li>
+      </ul>
+    </section>
+
+    <section id="reportes">
+      <h2>Reportes</h2>
+      <p class="ruta">Menú <b>Reportes</b></p>
+      <p>A la izquierda están todos los reportes agrupados por módulo (solo los de los módulos que tu rol ve). Elige uno, ajusta los filtros (sucursal, fechas, vendedor…) y pulsa <span class="boton">Aplicar</span>. Cualquier tabla se puede bajar con <span class="boton">Exportar a Excel</span>.</p>
+
+      <h3>Elegir las columnas de un reporte</h3>
+      <ol class="pasos">
+        <li>Abre el reporte y pulsa <span class="boton">Columnas</span>.</li>
+        <li>Desmarca las que no quieres ver. En <b>Más columnas disponibles</b> marca datos que el reporte trae pero no mostraba (por ejemplo, en el historial de facturas: vendedor, condición de pago, moneda).</li>
+        <li>Ordénalas con las flechas ↑ ↓.</li>
+      </ol>
+      <p>Tu selección se guarda para tu usuario y la verás igual la próxima vez. <span class="boton">Restablecer</span> vuelve a las columnas originales.</p>
+
+      <h3>Crear tu propio reporte</h3>
+      <p>En <b>Mis reportes</b>, pulsa <span class="boton">+ Crear reporte</span>. A la derecha verás una vista previa que cambia con cada ajuste.</p>
+      <ol class="pasos">
+        <li><b>Datos.</b> Ponle nombre y elige de dónde salen los datos: cualquier reporte de la lista o los listados completos de productos, clientes o proveedores. Elige el <b>período al abrirlo</b> (hoy, este mes, mes pasado, últimos 30 días, este año…).</li>
+        <li><b>Columnas.</b> Marca las que quieres; cambia su título si quieres y ordénalas con las flechas.</li>
+        <li><b>Condiciones</b> (opcional). Por ejemplo: <i>Total es mayor o igual a 10,000</i>, <i>Cliente contiene "SRL"</i>, <i>Fecha desde el 1/10</i>. Se cumplen todas a la vez.</li>
+        <li><b>Agrupar y ordenar.</b> Agrupa por un campo (cliente, vendedor, categoría…) y elige cómo se resume cada número: suma, promedio, mínimo o máximo. Se agrega la columna Registros. Ordena por cualquier columna y limita a las primeras 10, 25, 50… filas. Activa la fila de totales.</li>
+        <li>Si quieres que lo vean todos, marca <b>Compartir con todos los usuarios</b>. Pulsa <span class="boton">Guardar reporte</span>.</li>
+      </ol>
+      <p>Tus reportes aparecen arriba en <b>Mis reportes</b>, con <span class="boton">Editar</span>, <span class="boton">Duplicar</span>, <span class="boton">Eliminar</span> y <span class="boton">Exportar a Excel</span>. Los compartidos por otra persona muestran su nombre; solo quien lo creó (o un administrador) lo puede cambiar. Atajo: desde cualquier reporte, <span class="boton">Guardar como reporte propio</span> abre el editor con ese reporte y tus columnas ya elegidas.</p>
+      <div class="nota"><strong>Ejemplo.</strong> "Ventas del mes por cliente": datos de <i>Historial de Facturas y Anulaciones</i>, período <i>Este mes</i>, condición <i>Estado es distinto de anulado</i>, agrupar por <i>Cliente</i>, ordenar por <i>Total</i> de mayor a menor, con totales.</div>
+
+      <h3>Formatos para la DGII</h3>
+      <p><b>606</b> (compras), <b>607</b> (ventas) y <b>608</b> (anulados): elige el mes y descarga el TXT para la Oficina Virtual o el CSV para revisarlo. El 607 muestra aparte el resumen de facturas de consumo, que se digita en el formulario. Revisa los archivos con tu contador antes del primer envío.</p>
+    </section>
+
+    <section id="configuracion">
+      <h2>Configuración</h2>
+      <p class="ruta">Menú <b>Configuración</b> · pestañas Negocio, Usuarios, Roles y permisos, Parámetros fiscales, Facturación electrónica, Parámetros de negocio, Sucursales y almacenes, Impresoras, Bitácora</p>
+      <ul>
+        <li><b>Negocio:</b> nombre, iniciales, RNC, razón social, dirección, teléfono y <b>logo</b> (<span class="boton">Cargar logo</span>; PNG, JPG o WebP; se reduce solo).</li>
+        <li><b>Usuarios:</b> crea, edita o desactiva usuarios; asigna rol, sucursal y porcentaje de comisión. Si cambias la contraseña de alguien, se le pedirá cambiarla al entrar.</li>
+        <li><b>Parámetros fiscales:</b> tasas de ITBIS y secuencias de NCF (desde, hasta, vencimiento). <span class="boton">Anular secuencias no usadas</span> cuando una secuencia vence.</li>
+        <li><b>Parámetros de negocio:</b> días de crédito, mora, método de valoración del inventario, base de comisión y módulos opcionales.</li>
+        <li><b>Sucursales y almacenes:</b> crea o <span class="boton">Editar</span> sucursales con su <b>foto del local</b> (se ve en la lista y en el dashboard de quienes trabajan ahí), almacenes y cajas.</li>
+        <li><b>Impresoras:</b> elige la impresora de facturas, la de tiques y la de etiquetas de cada sucursal.</li>
+        <li><b>Bitácora:</b> quién creó, editó o anuló qué y cuándo, en todos los módulos.</li>
+      </ul>
+    </section>
+
+    <section id="roles">
+      <h2>Roles y permisos</h2>
+      <p class="ruta">Menú <b>Configuración</b> · pestaña <b>Roles y permisos</b></p>
+      <h3>Crear un rol</h3>
+      <ol class="pasos">
+        <li>Pulsa <span class="boton">+ Nuevo rol</span>.</li>
+        <li>Escribe el nombre y, si quieres partir de uno existente, elige <b>Empezar con los permisos de</b>.</li>
+        <li>Marca los permisos por módulo y fija el <b>límite de descuento</b> del rol.</li>
+        <li>Asígnalo a los usuarios en la pestaña Usuarios.</li>
+      </ol>
+      <p>Los roles base no se pueden renombrar ni eliminar, pero sí ajustar sus permisos (salvo Administrador/Dueño, que siempre tiene todo). Un rol con usuarios asignados no se puede eliminar.</p>
+      <h3>Roles que trae Nodo</h3>
+      <div class="tabla">
+        <table>
+          <thead><tr><th>Rol</th><th>Qué puede hacer</th></tr></thead>
+          <tbody>
+            <tr><td>Administrador/Dueño</td><td>Todo, incluida la configuración de impuestos, el catálogo contable y reabrir periodos cerrados.</td></tr>
+            <tr><td>Cajero/Vendedor</td><td>Facturar, cotizar, cobrar, abrir y cerrar caja, consultar inventario. No ve costos ni entra a contabilidad o compras. Descuento hasta 10 %.</td></tr>
+            <tr><td>Encargado de Inventario</td><td>Productos, ajustes, transferencias, recepción, mermas y etiquetas. Ve costos. No factura ni cobra.</td></tr>
+            <tr><td>Comprador</td><td>Órdenes y facturas de compra, devoluciones y notas de débito. No aprueba pagos.</td></tr>
+            <tr><td>Contador</td><td>Lectura en los módulos operativos; contabilidad completa, cierre de periodos y bitácora.</td></tr>
+            <tr><td>Cobrador/Gestor de cartera</td><td>Solo cuentas por cobrar: recibos y gestión de cobros.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="nota"><strong>En la demo web</strong> los roles deciden qué módulos ve cada usuario. Entra como <code>cajero</code> / <code>cajero123</code> para ver cómo se ve el sistema con el rol de cajera. En la app de escritorio, además, cada operación verifica el permiso antes de guardarse.</div>
+    </section>
+
+    <section id="atajos">
+      <h2>Atajos de teclado</h2>
+      <p class="ruta">Pantalla de venta</p>
+      <ul class="atajos">
+        <li><kbd>F1</kbd> Nueva venta</li>
+        <li><kbd>F2</kbd> Consultar precio (en cualquier pantalla)</li>
+        <li><kbd>F3</kbd> Elegir cliente</li>
+        <li><kbd>F4</kbd> Cantidad de la última línea</li>
+        <li><kbd>F8</kbd> Descuento global</li>
+        <li><kbd>F10</kbd> Cobrar</li>
+        <li><kbd>Supr</kbd> Quitar la línea seleccionada</li>
+        <li><kbd>Esc</kbd> Cerrar la ventana abierta</li>
+      </ul>
+    </section>
+
+    <section id="preguntas">
+      <h2>Preguntas frecuentes</h2>
+      <dl class="faq">
+        <dt>No veo un módulo en el menú.</dt>
+        <dd>Tu rol no tiene permisos de ese módulo. Pídele al administrador que te los agregue en Configuración, Roles y permisos.</dd>
+        <dt>No puedo anular una factura.</dt>
+        <dd>Hace falta el permiso de anular. Además, si el mes ya se cerró en Contabilidad, primero hay que reabrir el periodo.</dd>
+        <dt>Me dice que no hay comprobantes disponibles.</dt>
+        <dd>La secuencia de NCF de ese tipo se agotó o venció. Registra la nueva secuencia en Configuración, Parámetros fiscales.</dd>
+        <dt>La foto o el logo no se carga.</dt>
+        <dd>Usa una imagen PNG, JPG o WebP. Nodo la reduce sola; si aun así es muy pesada, prueba con una imagen más sencilla. En la demo web las fotos se guardan en tu navegador, que tiene poco espacio: si te avisa que no hay espacio, quita algunas fotos.</dd>
+        <dt>¿Dónde están mis datos?</dt>
+        <dd>En la app de escritorio, en un solo archivo en tu computadora (carpeta de datos de la aplicación, <code>punto-x.sqlite</code>). Funciona sin internet. Haz copias de ese archivo con regularidad. En la demo web, los datos viven solo en el navegador que estás usando y se borran si limpias los datos del sitio.</dd>
+        <dt>¿Se puede borrar algo por error?</dt>
+        <dd>No. Nodo nunca borra documentos: los anula y revierte su efecto, y deja la huella en la bitácora.</dd>
+      </dl>
+    </section>
+  </main>
+</div>
+
+<script>
+// En pantallas angostas el índice empieza cerrado (sin cambiar nada en pantallas grandes).
+(function () {
+  try {
+    var indice = document.getElementById('indice');
+    if (window.matchMedia('(max-width: 860px)').matches) indice.removeAttribute('open');
+    indice.addEventListener('toggle', function () {
+      if (!window.matchMedia('(max-width: 860px)').matches && !indice.open) indice.open = true;
+    });
+    indice.querySelectorAll('a').forEach(function (a) {
+      a.addEventListener('click', function () { if (window.matchMedia('(max-width: 860px)').matches) indice.removeAttribute('open'); });
+    });
+  } catch (e) { /* el índice queda abierto */ }
+})();
+</script>
