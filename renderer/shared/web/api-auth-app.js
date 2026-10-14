@@ -1,6 +1,6 @@
-// Sesión y datos generales de la app, versión web. Sin permisos por rol (todo usuario
-// autenticado puede hacer todo) — la matriz de permisos real vive solo en la app de
-// escritorio; esto es una demo de flujo, no un sistema de control de acceso.
+// Sesión y datos generales de la app, versión web. Los permisos del rol de cada usuario deciden
+// qué módulos ve; la verificación fuerte de permisos vive en la app de escritorio (proceso
+// principal). Esto es una demo de flujo, no un sistema de control de acceso.
 (function () {
   if (window.__PUNTOX_ES_ELECTRON) return; // ya estamos en Electron: no pisar el bridge real
   const store = window.PuntoXWebStore;
@@ -37,9 +37,9 @@
         if (fila) {
           usuario = {
             id: fila.id, nombreCompleto: fila.nombre_completo, rol: fila.rol_nombre,
-            // Sin matriz de permisos en la web: se le da acceso a todo lo que ya está
-            // portado, para no bloquear la prueba con un sistema de permisos a medio hacer.
-            permisos: ['*'],
+            // Los permisos del rol: el menú y las pantallas muestran solo lo que el rol permite.
+            // (En la demo la regla vive en la pantalla; en escritorio, además, en el proceso principal.)
+            permisos: store.permisosDeUsuario(db, fila),
           };
         }
       }

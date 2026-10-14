@@ -1,34 +1,33 @@
-// Configuración, versión web. Datos del negocio, usuarios, parámetros fiscales, sucursales y
-// bitácora — todo funcional. La matriz de roles y permisos se muestra de forma informativa
-// solamente (un único rol "Administrador/Dueño" con todo marcado): la versión web no aplica
-// permisos por rol, así que editarlos aquí no cambiaría el comportamiento de nada.
+// Configuración, versión web. Datos del negocio, usuarios, roles y permisos, parámetros fiscales,
+// sucursales, bitácora y reportes personalizados. Los roles traen los permisos reales de
+// escritorio y deciden qué módulos ve cada usuario de la demo.
 (function () {
   if (window.__PUNTOX_ES_ELECTRON) return;
   const store = window.PuntoXWebStore;
 
-  const ROL_UNICO = { id: 'rol-unico-web', nombre: 'Administrador/Dueño', descripcion: 'En la versión web de prueba todos los usuarios tienen acceso completo.', es_rol_sistema: true, limite_descuento_pct: 100 };
-  const PERMISOS_INFORMATIVOS = [
+  const ROL_UNICO = { id: store.ROL_ADMIN_ID, nombre: 'Administrador/Dueño', descripcion: 'Acceso total.', es_rol_sistema: true, limite_descuento_pct: 100 };
+  // Catálogo de permisos: el real de escritorio cuando la compilación lo inyecta; si no, uno corto.
+  const PERMISOS_CORTOS = [
     ['ventas', 'ventas.factura.crear', 'Crear factura de venta'], ['ventas', 'ventas.factura.anular', 'Anular factura de venta'],
     ['inventario', 'inventario.producto.crear', 'Crear/editar productos'], ['inventario', 'inventario.ajuste.crear', 'Registrar ajustes'],
     ['compras', 'compras.orden.crear', 'Crear orden de compra'], ['compras', 'compras.factura.crear', 'Registrar factura de compra'],
     ['cxc', 'cxc.recibo.crear', 'Registrar cobros'], ['cxp', 'cxp.pago.crear', 'Registrar pagos'],
     ['caja', 'caja.apertura', 'Abrir/cerrar turno de caja'], ['contabilidad', 'contabilidad.asiento_manual.crear', 'Registrar asientos manuales'],
     ['configuracion', 'configuracion.gestionar', 'Gestionar configuración del negocio'],
-  ].map(([modulo, codigo, descripcion]) => ({ id: codigo, modulo, codigo, descripcion }));
+  ];
+  const PERMISOS_INFORMATIVOS = (store.catalogo().permisos.length ? store.catalogo().permisos : PERMISOS_CORTOS)
+    .map(([modulo, codigo, descripcion]) => ({ id: codigo, modulo, codigo, descripcion }));
 
-  // Los roles se guardan en el almacenamiento de la demo; la primera vez se crea el de administrador.
   // Fotos en la demo: misma forma que en escritorio (data URL PNG, JPG o WebP), más livianas.
-function imagenWeb(dataUrl, etiqueta) {
-  if (!dataUrl) return null;
-  if (!/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(dataUrl)) throw new Error(`${etiqueta} debe ser una imagen PNG, JPG o WebP`);
-  if (dataUrl.length > 560000) throw new Error(`${etiqueta} pesa demasiado. Usa una imagen más pequeña`);
-  return dataUrl;
-}
-
-function rolesDe(db) {
-    if (!Array.isArray(db.roles)) db.roles = [{ ...ROL_UNICO, permisos: [] }];
-    return db;
+  function imagenWeb(dataUrl, etiqueta) {
+    if (!dataUrl) return null;
+    if (!/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(dataUrl)) throw new Error(`${etiqueta} debe ser una imagen PNG, JPG o WebP`);
+    if (dataUrl.length > 560000) throw new Error(`${etiqueta} pesa demasiado. Usa una imagen más pequeña`);
+    return dataUrl;
   }
+
+  // Los roles se guardan en el almacenamiento de la demo (los base se crean la primera vez).
+  const rolesDe = (db) => store.rolesDe(db);
 
   function bitacora(db, { usuarioId, modulo, entidad, entidadId, accion, detalle }) {
     db.bitacora.push({ id: store.uuid(), usuario_id: usuarioId || null, modulo, entidad, entidad_id: entidadId, accion, detalle: detalle ? JSON.stringify(detalle) : null, created_at: store.ahora() });

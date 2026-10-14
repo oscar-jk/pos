@@ -22,4 +22,10 @@ fs.writeFileSync(path.join(destino, 'index.html'), `<!DOCTYPE html>
 <body><p><a href="renderer/login/index.html">Abrir la demo de Nodo</a></p></body></html>
 `);
 fs.writeFileSync(path.join(destino, '.nojekyll'), '');
+
+// Catálogo real de permisos y roles base (los mismos de escritorio), para que en la demo los roles
+// decidan qué módulos ve cada usuario.
+const { PERMISOS, ROLES } = require(path.join(raiz, 'main', 'db', 'seed'));
+const storeDemo = path.join(destino, 'renderer', 'shared', 'web', 'store.js');
+fs.writeFileSync(storeDemo, `window.__PUNTOX_CATALOGO_PERMISOS = ${JSON.stringify({ permisos: PERMISOS, roles: ROLES })};\n` + fs.readFileSync(storeDemo, 'utf8'));
 console.log('Demo web en dist-demo/');
